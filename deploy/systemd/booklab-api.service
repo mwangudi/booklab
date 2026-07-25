@@ -1,0 +1,30 @@
+# Booklab Bookshop API (Fastify + Prisma) — systemd unit.
+#
+# Install:
+#   sudo cp deploy/systemd/booklab-api.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now booklab-api
+#
+# Reads config from backend/.env (via dotenv) in WorkingDirectory. Listens on 127.0.0.1:4100.
+
+[Unit]
+Description=Booklab Bookshop API (Fastify + Prisma)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/booklab/backend
+ExecStart=/usr/bin/node dist/server.js
+Restart=on-failure
+RestartSec=5
+# Basic hardening
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,16 @@
+# Dependencies & build output
+node_modules/
+dist/
+
+# Environment / secrets — never commit real credentials
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+
+# Local SQLite (branch runtime) & Prisma temp
+prisma/*.db
+prisma/*.db-journal
+prisma/dev.db*

@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 40 33% 98%;
+  --foreground: 20 30% 12%;
+  --card: 0 0% 100%;
+  --muted: 32 30% 95%;
+  --muted-foreground: 25 12% 42%;
+  --border: 30 25% 89%;
+  --input: 30 25% 85%;
+  --ring: 24 90% 47%;
+  --primary: 24 90% 47%;
+  --primary-foreground: 0 0% 100%;
+}
+
+.dark {
+  --background: 20 24% 8%;
+  --foreground: 34 33% 94%;
+  --card: 20 22% 12%;
+  --muted: 20 18% 18%;
+  --muted-foreground: 30 12% 62%;
+  --border: 20 18% 22%;
+  --input: 20 18% 24%;
+  --ring: 28 92% 55%;
+  --primary: 28 92% 52%;
+  --primary-foreground: 0 0% 100%;
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Thin, unobtrusive scrollbars. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

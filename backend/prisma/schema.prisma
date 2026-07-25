@@ -1,0 +1,397 @@
+// Bookshop management — Prisma schema (cloud/MySQL).
+// The SQLite branch variant is generated from this file by scripts/gen-sqlite-schema.mjs.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  MANAGER
+  CASHIER
+}
+
+enum PaymentMethod {
+  CASH
+  MPESA
+  CARD
+}
+
+enum PriceTier {
+  RETAIL
+  WHOLESALE
+  SCHOOL
+}
+
+enum ExpenseCategory {
+  RENT
+  SALARY
+  UTILITIES
+  SUPPLIES
+  MARKETING
+  MISC
+}
+
+enum StockMoveType {
+  INTAKE
+  ADJUST
+  SALE
+  VOID
+  TRANSFER_IN
+  TRANSFER_OUT
+}
+
+enum MpesaStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum EmploymentType {
+  PERMANENT
+  CONTRACT
+  CASUAL
+  INTERN
+}
+
+enum PayrollStatus {
+  DRAFT
+  CLOSED
+}
+
+model User {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(CASHIER)
+  active       Boolean   @default(true)
+  branchId     Int?
+  branch       Branch?   @relation(fields: [branchId], references: [id])
+  createdAt    DateTime  @default(now())
+  uuid         String    @unique @default(uuid())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
+  sales        Sale[]
+  voidedSales  Sale[]          @relation("SaleVoidedBy")
+  movements    StockMovement[]
+  auditLogs    AuditLog[]
+  employee     Employee?
+}
+
+model Branch {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique
+  location  String
+  createdAt DateTime  @default(now())
+  uuid      String    @unique @default(uuid())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  users     User[]
+  stock     Stock[]
+  sales     Sale[]
+  expenses  Expense[]
+  movements StockMovement[]
+  employees Employee[]
+}
+
+/// A book is the sellable product. `sku` is the internal code; `isbn` optional.
+model Book {
+  id        Int        @id @default(autoincrement())
+  title     String
+  author    String?
+  isbn      String?    @unique
+  sku       String     @unique
+  category  String?
+  unitPrice Decimal    @db.Decimal(10, 2)
+  /// Optional wholesale/school tier prices. When null, `unitPrice` (retail) applies.
+  priceWholesale Decimal? @db.Decimal(10, 2)
+  priceSchool    Decimal? @db.Decimal(10, 2)
+  costPrice Decimal    @db.Decimal(10, 2)
+  createdAt DateTime   @default(now())
+  uuid      String     @unique @default(uuid())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+  stock     Stock[]
+  saleItems SaleItem[]
+  movements StockMovement[]
+
+  @@index([deletedAt])
+}
+
+/// On-hand quantity of a book at a branch. Derived from movement events on sync.
+model Stock {
+  id       Int      @id @default(autoincrement())
+  branchId Int
+  bookId   Int
+  quantity Int      @default(0)
+  /// Optional per-branch selling price. When null, the catalogue `Book.unitPrice` applies.
+  price    Decimal? @db.Decimal(10, 2)
+  branch   Branch   @relation(fields: [branchId], references: [id])
+  book     Book     @relation(fields: [bookId], references: [id])
+
+  @@unique([branchId, bookId])
+}
+
+model Sale {
+  id             Int           @id @default(autoincrement())
+  branchId       Int
+  userId         Int
+  total          Decimal       @db.Decimal(12, 2)
+  paymentMethod  PaymentMethod @default(CASH)
+  mpesaRef       String?
+  priceTier      PriceTier     @default(RETAIL)
+  /// Set when the sale is reversed. Voided sales are excluded from all revenue reporting.
+  voidedAt       DateTime?
+  voidedById     Int?
+  voidReason     String?
+  /// How many duplicate copies of the receipt have been printed.
+  reprintCount   Int           @default(0)
+  createdAt      DateTime      @default(now())
+  uuid           String        @unique @default(uuid())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  originBranchId Int?
+  branch         Branch        @relation(fields: [branchId], references: [id])
+  user           User          @relation(fields: [userId], references: [id])
+  voidedBy       User?         @relation("SaleVoidedBy", fields: [voidedById], references: [id])
+  items          SaleItem[]
+
+  @@index([branchId, createdAt])
+  @@index([voidedAt])
+}
+
+model SaleItem {
+  id        Int       @id @default(autoincrement())
+  saleId    Int
+  bookId    Int
+  quantity  Int
+  unitPrice Decimal   @db.Decimal(10, 2)
+  // Cost snapshot at sale time so P&L COGS is accurate historically.
+  costPrice Decimal   @default(0) @db.Decimal(10, 2)
+  uuid      String    @unique @default(uuid())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  sale      Sale      @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  book      Book      @relation(fields: [bookId], references: [id])
+}
+
+model Expense {
+  id             Int             @id @default(autoincrement())
+  branchId       Int?
+  category       ExpenseCategory
+  description    String?
+  amount         Decimal         @db.Decimal(12, 2)
+  incurredAt     DateTime        @default(now())
+  /// Set when the expense was posted automatically by closing a payroll run.
+  payrollRunId   Int?
+  uuid           String          @unique @default(uuid())
+  updatedAt      DateTime        @updatedAt
+  deletedAt      DateTime?
+  originBranchId Int?
+  branch         Branch?         @relation(fields: [branchId], references: [id])
+
+  @@index([branchId, incurredAt])
+  @@index([payrollRunId])
+}
+
+/// Event-sourced stock change (intake/adjustment). Synced idempotently by uuid;
+/// each side applies the delta to Stock. Sales carry their own decrement events.
+model StockMovement {
+  id             Int           @id @default(autoincrement())
+  branchId       Int
+  bookId         Int
+  delta          Int
+  type           StockMoveType @default(INTAKE)
+  note           String?
+  /// Who performed the movement (null for system/sync-applied events).
+  userId         Int?
+  createdAt      DateTime      @default(now())
+  uuid           String        @unique @default(uuid())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  originBranchId Int?
+  branch         Branch        @relation(fields: [branchId], references: [id])
+  book           Book          @relation(fields: [bookId], references: [id])
+  user           User?         @relation(fields: [userId], references: [id])
+
+  @@index([branchId, createdAt])
+  @@index([bookId, createdAt])
+}
+
+/// Append-only trail of sensitive changes (price overrides, voids, transfers).
+model AuditLog {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  branchId  Int?
+  entity    String
+  entityId  Int?
+  action    String
+  details   String?  @db.Text
+  ip        String?  @db.VarChar(45)
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([entity, createdAt])
+  @@index([branchId, createdAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+}
+
+/// An M-Pesa STK push (Lipa Na M-Pesa Online) request and its result. Cloud-only.
+model MpesaPayment {
+  id                Int         @id @default(autoincrement())
+  checkoutRequestId String      @unique
+  merchantRequestId String?
+  amount            Decimal     @db.Decimal(12, 2)
+  phone             String
+  accountRef        String?
+  status            MpesaStatus @default(PENDING)
+  resultCode        Int?
+  resultDesc        String?     @db.Text
+  mpesaReceipt      String?
+  branchId          Int?
+  saleId            Int?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([status, createdAt])
+}
+
+/// Local write queue on a branch runtime; drained to the cloud by the sync runner.
+model Outbox {
+  id         Int       @id @default(autoincrement())
+  entity     String
+  entityUuid String
+  op         String    @default("upsert")
+  payload    String    @db.LongText
+  createdAt  DateTime  @default(now())
+  syncedAt   DateTime?
+  attempts   Int       @default(0)
+  lastError  String?   @db.Text
+
+  @@index([syncedAt])
+  @@index([entity, entityUuid])
+}
+
+/// Per-entity pull/push cursors on a branch runtime.
+model SyncState {
+  id           Int       @id @default(autoincrement())
+  entity       String    @unique
+  lastPulledAt DateTime?
+  lastPushedAt DateTime?
+  cursor       String?
+  updatedAt    DateTime  @updatedAt
+}
+
+/// A person on the payroll. Deliberately separate from `User`: staff who never
+/// sign in still get paid, and not every login is an employee. `userId` links
+/// the two when the person does have an account.
+model Employee {
+  id                 Int            @id @default(autoincrement())
+  staffNo            String         @unique
+  firstName          String
+  lastName           String
+  nationalId         String?
+  kraPin             String?
+  nssfNo             String?
+  shifNo             String?
+  phone              String?
+  email              String?
+  jobTitle           String?
+  employmentType     EmploymentType @default(PERMANENT)
+  branchId           Int?
+  userId             Int?           @unique
+  basicSalary        Decimal        @default(0) @db.Decimal(12, 2)
+  houseAllowance     Decimal        @default(0) @db.Decimal(12, 2)
+  transportAllowance Decimal        @default(0) @db.Decimal(12, 2)
+  otherAllowance     Decimal        @default(0) @db.Decimal(12, 2)
+  otherDeductions    Decimal        @default(0) @db.Decimal(12, 2)
+  bankName           String?
+  bankAccount        String?
+  hiredAt            DateTime?
+  endedAt            DateTime?
+  active             Boolean        @default(true)
+  deletedAt          DateTime?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  uuid               String         @unique @default(uuid())
+  branch             Branch?        @relation(fields: [branchId], references: [id])
+  user               User?          @relation(fields: [userId], references: [id])
+  payslips           Payslip[]
+
+  @@index([branchId, active])
+  @@index([deletedAt])
+}
+
+/// One monthly payroll cycle across the whole business. Draft until closed;
+/// closing locks the figures and posts the cost to the P&L as SALARY expenses.
+model PayrollRun {
+  id              Int           @id @default(autoincrement())
+  year            Int
+  month           Int
+  status          PayrollStatus @default(DRAFT)
+  note            String?
+  grossTotal      Decimal       @default(0) @db.Decimal(14, 2)
+  deductionsTotal Decimal       @default(0) @db.Decimal(14, 2)
+  netTotal        Decimal       @default(0) @db.Decimal(14, 2)
+  employerTotal   Decimal       @default(0) @db.Decimal(14, 2)
+  createdById     Int?
+  closedById      Int?
+  closedAt        DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  payslips        Payslip[]
+
+  @@unique([year, month])
+  @@index([status])
+}
+
+/// A single employee's pay for one run. Figures are snapshotted so historical
+/// payslips never change when salaries or statutory rates are updated.
+model Payslip {
+  id                  Int        @id @default(autoincrement())
+  runId               Int
+  employeeId          Int
+  branchId            Int?
+  basicSalary         Decimal    @default(0) @db.Decimal(12, 2)
+  allowances          Decimal    @default(0) @db.Decimal(12, 2)
+  grossPay            Decimal    @default(0) @db.Decimal(12, 2)
+  nssf                Decimal    @default(0) @db.Decimal(12, 2)
+  shif                Decimal    @default(0) @db.Decimal(12, 2)
+  housingLevy         Decimal    @default(0) @db.Decimal(12, 2)
+  taxablePay          Decimal    @default(0) @db.Decimal(12, 2)
+  paye                Decimal    @default(0) @db.Decimal(12, 2)
+  otherDeductions     Decimal    @default(0) @db.Decimal(12, 2)
+  totalDeductions     Decimal    @default(0) @db.Decimal(12, 2)
+  netPay              Decimal    @default(0) @db.Decimal(12, 2)
+  employerNssf        Decimal    @default(0) @db.Decimal(12, 2)
+  employerHousingLevy Decimal    @default(0) @db.Decimal(12, 2)
+  run                 PayrollRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employee            Employee   @relation(fields: [employeeId], references: [id])
+
+  @@unique([runId, employeeId])
+  @@index([employeeId])
+}
+
+/// Statutory rates, editable by an admin so PAYE/NSSF/SHIF changes never need a
+/// code release. Single row (id = 1). `payeBands` is JSON: [{ upTo, rate }].
+model PayrollSetting {
+  id              Int      @id @default(1)
+  payeBands       String   @db.Text
+  personalRelief  Decimal  @default(2400) @db.Decimal(12, 2)
+  insuranceRelief Decimal  @default(0) @db.Decimal(12, 2)
+  nssfTier1Limit  Decimal  @default(8000) @db.Decimal(12, 2)
+  nssfTier2Limit  Decimal  @default(72000) @db.Decimal(12, 2)
+  nssfRate        Decimal  @default(0.06) @db.Decimal(6, 4)
+  shifRate        Decimal  @default(0.0275) @db.Decimal(6, 4)
+  shifMinimum     Decimal  @default(300) @db.Decimal(12, 2)
+  housingLevyRate Decimal  @default(0.015) @db.Decimal(6, 4)
+  updatedAt       DateTime @updatedAt
+}

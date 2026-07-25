@@ -1,0 +1,220 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
+import { SYNC_ROLE, enqueueOutbox } from '../lib/outbox.js';
+import { actor, writeAudit } from '../lib/audit.js';
+
+const saleSchema = z.object({
+  branchId: z.number().int().optional(),
+  paymentMethod: z.enum(['CASH', 'MPESA', 'CARD']).default('CASH'),
+  priceTier: z.enum(['RETAIL', 'WHOLESALE', 'SCHOOL']).default('RETAIL'),
+  mpesaRef: z.string().optional(),
+  items: z
+    .array(z.object({ bookId: z.number().int(), quantity: z.number().int().positive(), unitPrice: z.number().nonnegative() }))
+    .min(1),
+});
+
+const voidSchema = z.object({ reason: z.string().trim().min(3).max(200) });
+
+export async function saleRoutes(app: FastifyInstance) {
+  app.addHook('preHandler', authGuard);
+
+  app.get('/', async (req, reply) => {
+    const { branchId, from, to } = req.query as { branchId?: string; from?: string; to?: string };
+    const scoped = branchScope(req, reply, branchId ? Number(branchId) : undefined);
+    return app.prisma.sale.findMany({
+      where: { branchId: scoped, createdAt: { gte: from ? new Date(from) : undefined, lte: to ? new Date(to) : undefined } },
+      include: { items: { include: { book: true } }, branch: true, user: true, voidedBy: { select: { id: true, name: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  });
+
+  app.post('/', async (req, reply) => {
+    const body = saleSchema.parse(req.body);
+    const branchId = enforceWriteBranch(req, reply, body.branchId);
+    const total = body.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+
+    // Snapshot each book's current cost for accurate historical P&L.
+    const books = await app.prisma.book.findMany({
+      where: { id: { in: body.items.map((i) => i.bookId) } },
+      select: { id: true, uuid: true, costPrice: true },
+    });
+    const bookById = new Map(books.map((b) => [b.id, b]));
+
+    const sale = await app.prisma.$transaction(async (tx) => {
+      const created = await tx.sale.create({
+        data: {
+          branchId,
+          userId: req.user.id,
+          originBranchId: branchId,
+          paymentMethod: body.paymentMethod,
+          priceTier: body.priceTier,
+          mpesaRef: body.mpesaRef,
+          total,
+          items: {
+            create: body.items.map((i) => ({
+              bookId: i.bookId,
+              quantity: i.quantity,
+              unitPrice: i.unitPrice,
+              costPrice: Number(bookById.get(i.bookId)?.costPrice ?? 0),
+            })),
+          },
+        },
+        include: { items: true },
+      });
+
+      for (const item of body.items) {
+        await tx.stock.upsert({
+          where: { branchId_bookId: { branchId, bookId: item.bookId } },
+          create: { branchId, bookId: item.bookId, quantity: -item.quantity },
+          update: { quantity: { decrement: item.quantity } },
+        });
+        // Audit trail: every stock change is an explicit, attributable event.
+        await tx.stockMovement.create({
+          data: {
+            branchId,
+            bookId: item.bookId,
+            delta: -item.quantity,
+            type: 'SALE',
+            note: `Sale #${created.id}`,
+            userId: req.user.id,
+            originBranchId: branchId,
+          },
+        });
+      }
+
+      if (SYNC_ROLE === 'branch') {
+        const [branch, user] = await Promise.all([
+          tx.branch.findUnique({ where: { id: branchId }, select: { uuid: true } }),
+          tx.user.findUnique({ where: { id: req.user.id }, select: { uuid: true } }),
+        ]);
+        await enqueueOutbox(tx, 'sale', created.uuid, {
+          branchUuid: branch?.uuid,
+          userUuid: user?.uuid,
+          total,
+          paymentMethod: created.paymentMethod,
+          mpesaRef: created.mpesaRef,
+          createdAt: created.createdAt,
+          items: created.items.map((i) => ({
+            uuid: i.uuid,
+            bookUuid: bookById.get(i.bookId)?.uuid,
+            quantity: i.quantity,
+            unitPrice: Number(i.unitPrice),
+            costPrice: Number(i.costPrice),
+          })),
+        });
+      }
+      return created;
+    });
+
+    await writeAudit(app.prisma, {
+      ...actor(req),
+      branchId,
+      entity: 'sale',
+      entityId: sale.id,
+      action: 'CREATE',
+      details: { total, paymentMethod: body.paymentMethod, priceTier: body.priceTier, lines: body.items.length },
+    });
+    reply.code(201).send(sale);
+  });
+
+  // Reprint a receipt. Any cashier may reprint a sale from their own branch —
+  // customers lose receipts — but every copy is counted and audited, and the
+  // paper is marked as a duplicate so it cannot pass as an original.
+  app.post('/:id/reprint', async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid sale id' });
+
+    const sale = await app.prisma.sale.findUnique({ where: { id }, select: { id: true, branchId: true, total: true } });
+    if (!sale) return reply.code(404).send({ error: 'Sale not found' });
+    branchScope(req, reply, sale.branchId);
+
+    const updated = await app.prisma.sale.update({
+      where: { id },
+      data: { reprintCount: { increment: 1 } },
+      include: {
+        items: { include: { book: true } },
+        branch: true,
+        user: true,
+        voidedBy: { select: { id: true, name: true } },
+      },
+    });
+
+    await writeAudit(app.prisma, {
+      ...actor(req),
+      branchId: sale.branchId,
+      entity: 'sale',
+      entityId: id,
+      action: 'REPRINT',
+      details: { copy: updated.reprintCount, total: Number(sale.total) },
+    });
+
+    return updated;
+  });
+
+  // Reverse a sale: restores stock, keeps the record, and excludes it from revenue.
+  app.post('/:id/void', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid sale id' });
+    const { reason } = voidSchema.parse(req.body ?? {});
+
+    const sale = await app.prisma.sale.findUnique({ where: { id }, include: { items: true } });
+    if (!sale) return reply.code(404).send({ error: 'Sale not found' });
+    // Managers may only void sales made at their own branch.
+    branchScope(req, reply, sale.branchId);
+    if (sale.voidedAt) return reply.code(409).send({ error: 'This sale has already been voided.' });
+
+    const voided = await app.prisma.$transaction(async (tx) => {
+      const updated = await tx.sale.update({
+        where: { id },
+        data: { voidedAt: new Date(), voidedById: req.user.id, voidReason: reason },
+        include: { items: true, branch: true, user: true, voidedBy: { select: { id: true, name: true } } },
+      });
+      for (const item of sale.items) {
+        await tx.stock.upsert({
+          where: { branchId_bookId: { branchId: sale.branchId, bookId: item.bookId } },
+          create: { branchId: sale.branchId, bookId: item.bookId, quantity: item.quantity },
+          update: { quantity: { increment: item.quantity } },
+        });
+        await tx.stockMovement.create({
+          data: {
+            branchId: sale.branchId,
+            bookId: item.bookId,
+            delta: item.quantity,
+            type: 'VOID',
+            note: `Void of sale #${id}: ${reason}`,
+            userId: req.user.id,
+            originBranchId: sale.branchId,
+          },
+        });
+      }
+      await writeAudit(tx, {
+        userId: req.user.id,
+        branchId: sale.branchId,
+        entity: 'sale',
+        entityId: id,
+        action: 'VOID',
+        details: { reason, total: Number(sale.total), items: sale.items.length },
+      });
+      return updated;
+    });
+
+    return voided;
+  });
+
+  // Today's sales by branch (admin = all, others = own). Voided sales are excluded.
+  app.get('/today-by-branch', async (req, reply) => {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const scoped = branchScope(req, reply, undefined);
+    const branchWhere = scoped == null ? {} : { id: scoped };
+    const branches = await app.prisma.branch.findMany({ where: branchWhere, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+    return Promise.all(
+      branches.map(async (b) => {
+        const agg = await app.prisma.sale.aggregate({ where: { branchId: b.id, createdAt: { gte: startOfDay }, voidedAt: null }, _sum: { total: true }, _count: { _all: true } });
+        return { branchId: b.id, name: b.name, txn: agg._count._all, net: Number(agg._sum.total ?? 0) };
+      }),
+    );
+  });
+}
