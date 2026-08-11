@@ -278,25 +278,6 @@ export default function PosPage() {
           <p className="text-sm text-muted-foreground">Sell books, stationery and more.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          {/* Tier is switched constantly at the till, so it stays one tap away. */}
-          <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Price tier">
-            {TIER_OPTIONS.map((t) => (
-              <button
-                key={t.value}
-                role="tab"
-                aria-selected={tier === t.value}
-                onClick={() => changeTier(t.value)}
-                className={cn(
-                  'flex-1 sm:flex-none px-3.5 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
-                  tier === t.value
-                    ? 'bg-primary text-primary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-background',
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
           {isAdmin && (
             <div className="sm:w-56">
               <BranchSelect value={branchId} onChange={setBranchId} />
@@ -317,7 +298,7 @@ export default function PosPage() {
         <div className="grid lg:grid-cols-[1fr_380px] gap-5 items-start">
           {/* Catalogue */}
           <Card className="p-4">
-            <div className="relative mb-4">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 autoFocus
@@ -326,6 +307,29 @@ export default function PosPage() {
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9"
               />
+            </div>
+
+            {/* Tier sits with the catalogue because it re-prices what is on screen. */}
+            <div className="mt-3 mb-4 flex items-center gap-2">
+              <span className="text-xs text-muted-foreground shrink-0">Price</span>
+              <div className="inline-flex flex-1 sm:flex-none rounded-lg border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Price tier">
+                {TIER_OPTIONS.map((t) => (
+                  <button
+                    key={t.value}
+                    role="tab"
+                    aria-selected={tier === t.value}
+                    onClick={() => changeTier(t.value)}
+                    className={cn(
+                      'flex-1 sm:flex-none px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
+                      tier === t.value
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-background',
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {loading ? (
