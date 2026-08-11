@@ -3,15 +3,18 @@ import { Link } from 'react-router-dom';
 import { Eye, Plus, Trash2, Truck } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
-import { dateShort, fmt, money, num, startOfMonth, today } from '../../lib/format';
+import { dateShort, fmt, money, num, today } from '../../lib/format';
 import type { GoodsReceipt } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
 
+// Deliveries arrive in bursts each term, so default to the year rather than the month.
+const startOfYear = () => `${new Date().getFullYear()}-01-01`;
+
 export default function GoodsReceiptsPage() {
   const [status, setStatus] = useState('');
-  const [from, setFrom] = useState(startOfMonth());
+  const [from, setFrom] = useState(startOfYear());
   const [to, setTo] = useState(today());
   const [error, setError] = useState<string | null>(null);
 

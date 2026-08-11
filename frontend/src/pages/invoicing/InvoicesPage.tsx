@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Eye, FileText, Plus, Receipt, Trash2, Truck, Wallet } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
-import { dateShort, fmt, money, num, startOfMonth, today } from '../../lib/format';
+import { dateShort, fmt, money, num, today } from '../../lib/format';
 import { printDeliveryNote, printInvoice } from '../../lib/documents';
 import type { Invoice } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -18,9 +18,12 @@ const STATUS_TONE: Record<string, 'green' | 'red' | 'amber' | 'blue' | 'purple' 
   CANCELLED: 'red',
 };
 
+// School supply is termly, so year-to-date is a more useful default than this month.
+const startOfYear = () => `${new Date().getFullYear()}-01-01`;
+
 export default function InvoicesPage() {
   const [status, setStatus] = useState('');
-  const [from, setFrom] = useState(startOfMonth());
+  const [from, setFrom] = useState(startOfYear());
   const [to, setTo] = useState(today());
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<number | null>(null);

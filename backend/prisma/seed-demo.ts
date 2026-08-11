@@ -42,6 +42,14 @@ const daysAgo = (d: number, hour = 10, minute = 0) => {
 async function clearAll() {
   console.log('Clearing transactional data…');
   await prisma.$transaction([
+    prisma.customerPayment.deleteMany({}),
+    prisma.invoiceItem.deleteMany({}),
+    prisma.invoice.deleteMany({}),
+    prisma.customer.deleteMany({}),
+    prisma.supplierPayment.deleteMany({}),
+    prisma.goodsReceiptItem.deleteMany({}),
+    prisma.goodsReceipt.deleteMany({}),
+    prisma.supplier.deleteMany({}),
     prisma.saleItem.deleteMany({}),
     prisma.sale.deleteMany({}),
     prisma.stockMovement.deleteMany({}),
@@ -447,6 +455,215 @@ async function main() {
     await prisma.auditLog.createMany({ data: audits.slice(i, i + 1000) });
   }
   console.log(`Wrote ${audits.length} audit entries.`);
+
+  /* 9. Schools supplied on credit: invoices, deliveries and part payments. */
+  const schools: Array<[string, string, string, string, number, number, boolean]> = [
+    // name, contact, phone, address, opening balance, terms, chargeVat
+    ['St. Mary’s Junior School', 'Sr. Agnes Wafula', '0712 445 890', 'P.O. Box 210, Luanda', 42950, 30, true],
+    ['Kapsabet Boys High School', 'Mr. Kiptoo (Bursar)', '0722 118 340', 'P.O. Box 45, Kapsabet', 0, 30, true],
+    ['Mumias Girls Academy', 'Mrs. Nekesa', '0733 907 221', 'P.O. Box 88, Mumias', 18400, 45, false],
+    ['Ebusiratsi Primary School', 'Mr. Odhiambo', '0701 552 118', 'P.O. Box 12, Luanda', 0, 30, true],
+    ['Nangili Teachers College', 'Procurement Office', '0745 220 761', 'P.O. Box 301, Kakamega', 0, 60, true],
+  ];
+  const supplyItems = catalogue.slice(0, 14);
+  let invoiceSeq = 0;
+  let dnSeq = 0;
+
+  for (const [name, contact, phone, address, opening, terms, chargeVat] of schools) {
+    const customer = await prisma.customer.create({
+      data: {
+        name, contactPerson: contact, phone, address,
+        type: name.includes('College') ? 'INSTITUTION' : 'SCHOOL',
+        openingBalance: opening,
+        openingBalanceDate: opening > 0 ? daysAgo(210) : null,
+        paymentTermsDays: terms,
+        chargeVat,
+        kraPin: `P0${int(10000000, 99999999)}X`,
+      },
+    });
+
+    // Two or three supply runs each, spread over the term.
+    const runs = int(2, 3);
+    let owed = opening;
+    for (let r = 0; r < runs; r++) {
+      const ago = [72, 44, 16][r] ?? 16;
+      const issued = daysAgo(ago, 10, int(0, 59));
+      const lines = [];
+      for (let l = 0; l < int(2, 4); l++) {
+        const book = pick(supplyItems);
+        if (lines.some((x) => x.bookId === book.id)) continue;
+        const qty = int(4, 40);
+        const price = Number(book.priceSchool ?? book.unitPrice);
+        // Printed books are zero-rated; everything else takes the product's rate.
+        const rate = chargeVat ? Number(book.vatRate) : 0;
+        const net = round2(qty * price);
+        const vat = round2(net * (rate / 100));
+        lines.push({
+          bookId: book.id,
+          description: book.title,
+          unit: book.unit,
+          quantity: qty,
+          unitPrice: price,
+          vatRate: rate,
+          netAmount: net,
+          vatAmount: vat,
+          total: round2(net + vat),
+          sortOrder: lines.length,
+        });
+      }
+      if (lines.length === 0) continue;
+
+      const subtotal = round2(lines.reduce((s, l) => s + l.netAmount, 0));
+      const vatTotal = round2(lines.reduce((s, l) => s + l.vatAmount, 0));
+      const total = round2(subtotal + vatTotal);
+      const delivered = r < runs - 1;
+
+      invoiceSeq += 1;
+      dnSeq += 1;
+      const inv = await prisma.invoice.create({
+        data: {
+          number: `INV-${String(invoiceSeq).padStart(4, '0')}`,
+          deliveryNoteNo: `DN-${String(dnSeq).padStart(4, '0')}`,
+          customerId: customer.id,
+          branchId: pick([luanda.id, kapsabet.id, mumias.id]),
+          status: delivered ? 'DELIVERED' : 'ISSUED',
+          priceTier: 'SCHOOL',
+          chargeVat,
+          issueDate: issued,
+          dueDate: new Date(issued.getTime() + terms * 864e5),
+          deliveredAt: delivered ? new Date(issued.getTime() + 2 * 864e5) : null,
+          receivedBy: delivered ? contact : null,
+          receivedDesignation: delivered ? 'Bursar' : null,
+          subtotal, vatTotal, total,
+          createdById: manager.id,
+          items: { create: lines },
+        },
+      });
+      owed += total;
+
+      // Most schools pay something; a couple deliberately fall behind.
+      if (r === 0 && opening > 0) {
+        await prisma.customerPayment.create({
+          data: { customerId: customer.id, amount: opening, paidAt: daysAgo(ago - 8, 11), method: 'BANK_TRANSFER', reference: 'TRANSFER', createdById: admin.id },
+        });
+        owed -= opening;
+      }
+      if (delivered && chance(0.7)) {
+        const part = round2(total * pick([0.4, 0.6, 1]));
+        await prisma.customerPayment.create({
+          data: {
+            customerId: customer.id,
+            invoiceId: inv.id,
+            amount: part,
+            paidAt: daysAgo(Math.max(1, ago - 20), 14),
+            method: pick(['BANK_TRANSFER', 'CHEQUE', 'MPESA'] as const),
+            reference: pick(['TRANSFER', `CHQ${int(1000, 9999)}`, `S${int(100000, 999999)}`]),
+            createdById: admin.id,
+          },
+        });
+        owed -= part;
+        if (part >= total - 0.01) await prisma.invoice.update({ where: { id: inv.id }, data: { status: 'PAID' } });
+      }
+    }
+  }
+  console.log(`Added ${schools.length} credit customers with invoices and payments.`);
+
+  /* 10. Suppliers we buy from on credit, with received deliveries. */
+  const vendors: Array<[string, string, string, number, number]> = [
+    ['Queenex Publishers Limited', 'Sales Desk', 'P. O. Box 56049, Nairobi 00200', 58746, 30],
+    ['Kenya Literature Bureau', 'Mr. Mwangi', 'P. O. Box 30022, Nairobi', 0, 45],
+    ['Text Book Centre', 'Trade Counter', 'Kijabe Street, Nairobi', 24300, 30],
+    ['Centropen Stationers', 'Ms. Achieng', 'Industrial Area, Nairobi', 0, 30],
+  ];
+  let grnSeq = 0;
+  for (const [name, contact, address, opening, terms] of vendors) {
+    const supplier = await prisma.supplier.create({
+      data: {
+        name, contactPerson: contact, address,
+        phone: `020${int(1000000, 9999999)}`,
+        kraPin: `P0${int(10000000, 99999999)}Z`,
+        openingBalance: opening,
+        openingBalanceDate: opening > 0 ? daysAgo(180) : null,
+        paymentTermsDays: terms,
+      },
+    });
+
+    for (let r = 0; r < int(2, 3); r++) {
+      const ago = [58, 33, 12][r] ?? 12;
+      const when = daysAgo(ago, 9, int(0, 59));
+      const lines = [];
+      for (let l = 0; l < int(3, 6); l++) {
+        const book = pick(catalogue);
+        if (lines.some((x) => x.bookId === book.id)) continue;
+        const qty = int(20, 120);
+        const cost = Number(book.costPrice) || 100;
+        lines.push({
+          bookId: book.id,
+          description: book.title,
+          unit: book.unit,
+          quantity: qty,
+          unitCost: cost,
+          total: round2(qty * cost),
+          sortOrder: lines.length,
+        });
+      }
+      if (lines.length === 0) continue;
+      const totalCost = round2(lines.reduce((s, l) => s + l.total, 0));
+
+      grnSeq += 1;
+      const grn = await prisma.goodsReceipt.create({
+        data: {
+          number: `GRN-${String(grnSeq).padStart(4, '0')}`,
+          supplierId: supplier.id,
+          branchId: pick([luanda.id, kapsabet.id, mumias.id]),
+          deliveryNoteNo: `${int(1000, 9999)}`,
+          invoiceNo: `${int(38000, 42999)}`,
+          receivedAt: when,
+          status: 'POSTED',
+          postedAt: when,
+          postedById: manager.id,
+          createdById: manager.id,
+          totalCost,
+          items: { create: lines },
+        },
+      });
+
+      // Stock arrived, so record it the same way posting the receipt would.
+      for (const l of lines) {
+        await prisma.stock.upsert({
+          where: { branchId_bookId: { branchId: grn.branchId, bookId: l.bookId } },
+          create: { branchId: grn.branchId, bookId: l.bookId, quantity: l.quantity },
+          update: { quantity: { increment: l.quantity } },
+        });
+        await prisma.stockMovement.create({
+          data: {
+            branchId: grn.branchId, bookId: l.bookId, delta: l.quantity, type: StockMoveType.INTAKE,
+            note: `${grn.number} · ${name}`, userId: manager.id, originBranchId: grn.branchId, createdAt: when,
+          },
+        });
+      }
+
+      if (chance(0.7)) {
+        await prisma.supplierPayment.create({
+          data: {
+            supplierId: supplier.id,
+            receiptId: grn.id,
+            amount: round2(totalCost * pick([0.5, 0.75, 1])),
+            paidAt: daysAgo(Math.max(1, ago - 15), 15),
+            method: 'BANK_TRANSFER',
+            reference: 'TRANSFER',
+            createdById: admin.id,
+          },
+        });
+      }
+    }
+    if (opening > 0) {
+      await prisma.supplierPayment.create({
+        data: { supplierId: supplier.id, amount: round2(opening * 0.6), paidAt: daysAgo(90, 12), method: 'BANK_TRANSFER', reference: 'TRANSFER', createdById: admin.id },
+      });
+    }
+  }
+  console.log(`Added ${vendors.length} suppliers with goods receipts and payments.`);
 
   console.log('\nDemo data ready. Extra login: manager@booklabbookshop.co.ke / manager123');
   console.log('Run a payroll for last month in the app to see it post to the P&L.');
