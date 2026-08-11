@@ -235,9 +235,7 @@ function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => v
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-border shrink-0">
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-primary-foreground">
-          <BookOpen className="h-5 w-5" />
-        </div>
+        <img src="/logo-print.png" alt="" className="h-9 w-auto shrink-0 object-contain" />
         <div className="leading-tight">
           <div className="text-[13px] font-bold text-foreground">Booklab Bookshop</div>
           <div className="text-[10px] text-muted-foreground">For Quality, For You</div>

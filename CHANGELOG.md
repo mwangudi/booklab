@@ -49,8 +49,10 @@ print documents.
   now a compact footer on the items table rather than separate full-height rows,
   which also stops narrow columns wrapping headings like `SUBTO TAL`.
 
-### Lists
+### Interface
 
+- The **shop logo replaces the generic book icon** at the top of the staff
+  sidebar, on both the desktop rail and the mobile drawer.
 - The **primary add action now sits beside the search box**, directly above the
   table it acts on, instead of at the top of the page: search across nine
   columns, the action across three, stacking to full width on a phone. Applies to
