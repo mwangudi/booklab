@@ -192,9 +192,6 @@ export default function SuppliersPage() {
             <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
               {showArchived ? 'Active list' : 'Archived'}
             </Button>
-            <Button onClick={openNew}>
-              <Plus className="h-4 w-4" /> New supplier
-            </Button>
           </>
         }
       />
@@ -220,6 +217,11 @@ export default function SuppliersPage() {
             emptyText={showArchived ? 'No archived suppliers.' : 'No suppliers yet. Add the publishers and wholesalers you buy from.'}
             pageSize={12}
             rowKey={(s) => s.id}
+            actionSlot={
+              <Button onClick={openNew}>
+                <Plus className="h-4 w-4" /> New supplier
+              </Button>
+            }
           />
         )}
       </Card>

@@ -120,18 +120,11 @@ export default function InvoicesPage() {
         title="Invoices"
         subtitle="Supply schools and institutions on credit, then print their invoice and delivery note."
         right={
-          <>
-            <Link to="/customers">
-              <Button variant="outline">
-                <Wallet className="h-4 w-4" /> Customers
-              </Button>
-            </Link>
-            <Link to="/invoices/new">
-              <Button>
-                <Plus className="h-4 w-4" /> New invoice
-              </Button>
-            </Link>
-          </>
+          <Link to="/customers">
+            <Button variant="outline">
+              <Wallet className="h-4 w-4" /> Customers
+            </Button>
+          </Link>
         }
       />
 
@@ -182,6 +175,13 @@ export default function InvoicesPage() {
             emptyText="No invoices in this period."
             pageSize={12}
             rowKey={(r) => r.id}
+            actionSlot={
+              <Link to="/invoices/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> New invoice
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

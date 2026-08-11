@@ -59,6 +59,8 @@ export default function PosPage() {
   const [tier, setTier] = useState<PriceTier>('RETAIL');
   const [phone, setPhone] = useState('');
   const [cashGiven, setCashGiven] = useState('');
+  const [discount, setDiscount] = useState('');
+  const [discountReason, setDiscountReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<{ id: number; total: number; receipt: ReceiptData } | null>(null);
@@ -89,14 +91,24 @@ export default function PosPage() {
 
   const filtered = useMemo(() => {
     const rows = stock ?? [];
+    // Fast movers first so the till finds them without scrolling; anything never
+    // sold falls back to alphabetical order.
+    const ranked = [...rows].sort((a, b) => (b.sold ?? 0) - (a.sold ?? 0) || a.book.title.localeCompare(b.book.title));
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r) =>
+    if (!q) return ranked;
+    return ranked.filter((r) =>
       [r.book.title, r.book.sku, r.book.author, r.book.isbn, r.book.category]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q)),
     );
   }, [stock, search]);
+
+  // A discount belongs to one basket, so it never carries over to the next customer.
+  const clearCart = () => {
+    setCart([]);
+    setDiscount('');
+    setDiscountReason('');
+  };
 
   const inCart = (bookId: number) => cart.find((l) => l.bookId === bookId)?.quantity ?? 0;
 
@@ -152,7 +164,10 @@ export default function PosPage() {
     );
   };
 
-  const total = cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  const subtotal = cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
+  // A discount can never exceed the basket or turn the sale negative.
+  const discountAmount = Math.min(Math.max(0, num(discount)), subtotal);
+  const total = subtotal - discountAmount;
   const change = method === 'CASH' && cashGiven ? num(cashGiven) - total : 0;
 
   const finalizeSale = async (mpesaRef?: string | null) => {
@@ -167,6 +182,8 @@ export default function PosPage() {
         branchId: isAdmin ? branchId : undefined,
         paymentMethod: method,
         priceTier: tier,
+        discount: discountAmount,
+        discountReason: discountAmount > 0 ? discountReason.trim() || undefined : undefined,
         mpesaRef: method === 'MPESA' ? mpesaRef ?? undefined : undefined,
         items: cart.map((l) => ({ bookId: l.bookId, quantity: l.quantity, unitPrice: l.unitPrice })),
       });
@@ -179,6 +196,8 @@ export default function PosPage() {
         paymentMethod: method,
         mpesaRef: mpesaRef ?? undefined,
         items: lines,
+        subtotal: totalNow + discountAmount,
+        discount: discountAmount,
         total: num(sale.total),
         cashGiven: paidCash,
         change: paidCash != null ? paidCash - totalNow : undefined,
@@ -188,6 +207,8 @@ export default function PosPage() {
       setCart([]);
       setPhone('');
       setCashGiven('');
+      setDiscount('');
+      setDiscountReason('');
       refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not complete the sale.');
@@ -338,9 +359,10 @@ export default function PosPage() {
               <EmptyState icon={<Search className="h-8 w-8" />} title="No matching products" hint="Try a different search, or add the product to your catalogue." />
             ) : (
               <div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2.5 max-h-[calc(100vh-260px)] overflow-y-auto pr-1">
-                {filtered.map((row) => {
+                {filtered.map((row, i) => {
                   const remaining = row.quantity - inCart(row.bookId);
                   const soldOut = remaining <= 0;
+                  const topSeller = !search.trim() && i < 6 && (row.sold ?? 0) > 0;
                   return (
                     <button
                       key={row.bookId}
@@ -353,7 +375,7 @@ export default function PosPage() {
                     >
                       <div className="flex items-start justify-between gap-2">
                         <span className="text-sm font-medium text-foreground line-clamp-2">{row.book.title}</span>
-                        {row.book.category && <Pill tone="blue">{row.book.category}</Pill>}
+                        {topSeller ? <Pill tone="amber">Top seller</Pill> : row.book.category && <Pill tone="blue">{row.book.category}</Pill>}
                       </div>
                       <div className="mt-1 text-[11px] text-muted-foreground font-mono">{row.book.sku}</div>
                       <div className="mt-2 flex items-center justify-between">
@@ -377,7 +399,7 @@ export default function PosPage() {
                 {cart.length > 0 && <Pill tone="blue">{cart.length}</Pill>}
               </h3>
               {cart.length > 0 && (
-                <button onClick={() => setCart([])} className="text-xs text-muted-foreground hover:text-[#9b2626]">
+                <button onClick={clearCart} className="text-xs text-muted-foreground hover:text-[#9b2626]">
                   Clear
                 </button>
               )}
@@ -491,6 +513,44 @@ export default function PosPage() {
                   <div className="text-right text-xs text-muted-foreground w-28 shrink-0">
                     Change
                     <div className={cn('text-sm font-semibold font-mono', change < 0 ? 'text-[#9b2626]' : 'text-foreground')}>{money(Math.max(0, change))}</div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs font-medium text-muted-foreground shrink-0 w-20">Discount</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0"
+                    value={discount}
+                    onChange={(e) => setDiscount(e.target.value)}
+                    disabled={cart.length === 0}
+                    className="font-mono text-right"
+                  />
+                </div>
+                {discountAmount > 0 && (
+                  <Input
+                    placeholder="Reason for the discount"
+                    value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)}
+                    maxLength={190}
+                    className="text-xs"
+                  />
+                )}
+              </div>
+
+              {discountAmount > 0 && (
+                <div className="space-y-1 text-sm">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span className="font-mono">{money(subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[#9b2626]">
+                    <span>Discount</span>
+                    <span className="font-mono">−{money(discountAmount)}</span>
                   </div>
                 </div>
               )}

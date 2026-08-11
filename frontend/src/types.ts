@@ -321,6 +321,8 @@ export interface Stock {
   quantity: number;
   /** Optional per-branch selling price override; when null the catalogue price applies. */
   price: Money | null;
+  /** Units sold at this branch in the recent window; used to rank the till catalogue. */
+  sold?: number;
   book: Book;
 }
 
@@ -354,6 +356,9 @@ export interface Sale {
   branchId: number;
   userId: number;
   total: Money;
+  subtotal?: Money;
+  discount?: Money;
+  discountReason?: string | null;
   paymentMethod: PaymentMethod;
   priceTier?: PriceTier;
   mpesaRef: string | null;
@@ -433,6 +438,7 @@ export interface ZReport {
     txns: number;
     itemsSold: number;
     avgBasket: number;
+    discounts: number;
     voidedCount: number;
     voidedAmount: number;
     expenses: number;

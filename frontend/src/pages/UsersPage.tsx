@@ -40,13 +40,6 @@ export default function UsersPage() {
       <PageHeader
         title="Users"
         subtitle="Staff accounts and their access."
-        right={
-          <Link to="/settings/users/new">
-            <Button>
-              <Plus className="h-4 w-4" /> New user
-            </Button>
-          </Link>
-        }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -67,6 +60,13 @@ export default function UsersPage() {
             initialSort={{ key: 'name', dir: 'asc' }}
             emptyText="No users yet."
             rowKey={(u) => u.id}
+            actionSlot={
+              <Link to="/settings/users/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> New user
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

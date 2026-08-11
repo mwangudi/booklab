@@ -109,11 +109,6 @@ export default function PayrollPage() {
       <PageHeader
         title="Payroll"
         subtitle="Run monthly pay, then close it to post the cost to your profit & loss."
-        right={
-          <Button onClick={() => { setOpen(true); setError(null); }}>
-            <Plus className="h-4 w-4" /> New payroll run
-          </Button>
-        }
       />
 
       {error && !open && <Alert tone="red">{error}</Alert>}
@@ -137,6 +132,11 @@ export default function PayrollPage() {
             emptyText="No payroll has been run yet."
             pageSize={12}
             rowKey={(r) => r.id}
+            actionSlot={
+              <Button onClick={() => { setOpen(true); setError(null); }}>
+                <Plus className="h-4 w-4" /> New payroll run
+              </Button>
+            }
           />
         )}
       </Card>

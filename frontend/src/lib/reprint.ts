@@ -19,6 +19,8 @@ export function receiptFromSale(sale: Sale, opts: { copy?: number; reprintedBy?:
       unitPrice: num(i.unitPrice),
     })),
     total: num(sale.total),
+    subtotal: num(sale.subtotal ?? sale.total),
+    discount: num(sale.discount ?? 0),
     voided: !!sale.voidedAt,
     copy: opts.copy,
     reprintedBy: opts.reprintedBy,

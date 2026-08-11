@@ -140,11 +140,12 @@ export async function reportRoutes(app: FastifyInstance) {
 
     const byMethod = new Map<string, { method: string; txns: number; amount: number }>();
     const byCashier = new Map<number, { name: string; txns: number; amount: number }>();
-    let revenue = 0, cogs = 0, itemsSold = 0;
+    let revenue = 0, cogs = 0, itemsSold = 0, discounts = 0;
 
     for (const s of sales) {
       const amt = Number(s.total);
       revenue += amt;
+      discounts += Number(s.discount ?? 0);
       cogs += s.items.reduce((a, i) => a + i.quantity * Number(i.costPrice), 0);
       itemsSold += s.items.reduce((a, i) => a + i.quantity, 0);
       const m = byMethod.get(s.paymentMethod) ?? { method: s.paymentMethod, txns: 0, amount: 0 };
@@ -166,6 +167,7 @@ export async function reportRoutes(app: FastifyInstance) {
         txns: sales.length,
         itemsSold,
         avgBasket: sales.length ? revenue / sales.length : 0,
+        discounts,
         voidedCount: voided.length,
         voidedAmount: voided.reduce((a, s) => a + Number(s.total), 0),
         expenses: cashExpenses,

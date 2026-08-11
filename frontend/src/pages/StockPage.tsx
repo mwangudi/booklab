@@ -209,11 +209,6 @@ export default function StockPage() {
                 </Button>
               </Link>
             )}
-            <Link to="/stock/intake">
-              <Button>
-                <PackagePlus className="h-4 w-4" /> Receive stock
-              </Button>
-            </Link>
           </div>
         }
       />
@@ -238,6 +233,13 @@ export default function StockPage() {
             emptyText="No stock recorded for this branch yet."
             pageSize={12}
             rowKey={(r) => r.id}
+            actionSlot={
+              <Link to="/stock/intake">
+                <Button>
+                  <PackagePlus className="h-4 w-4" /> Receive stock
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

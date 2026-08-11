@@ -25,6 +25,8 @@ interface DataTableProps<T> {
   pageSize?: number;
   emptyText?: string;
   rightSlot?: ReactNode;
+  /** Primary "add" action, pinned to the right of the search box above the table. */
+  actionSlot?: ReactNode;
   initialSort?: { key: string; dir: 'asc' | 'desc' };
   rowKey?: (row: T, index: number) => string | number;
 }
@@ -37,6 +39,7 @@ export function DataTable<T>({
   pageSize = 10,
   emptyText = 'No records',
   rightSlot,
+  actionSlot,
   initialSort,
   rowKey,
 }: DataTableProps<T>) {
@@ -84,24 +87,29 @@ export function DataTable<T>({
 
   return (
     <div className="flex flex-col gap-3">
-      {(searchable || rightSlot) && (
-        <div className="flex flex-wrap items-center gap-2">
-          {searchable && (
-            <div className="relative flex-1 min-w-0 sm:min-w-[240px]">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
-                type="text"
-                placeholder={searchPlaceholder}
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setPage(0);
-                }}
-                className="w-full rounded-lg border border-input bg-background pl-8 pr-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-              />
-            </div>
+      {(searchable || rightSlot || actionSlot) && (
+        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+          <div className={cn('flex flex-wrap items-center gap-2', actionSlot ? 'sm:col-span-9' : 'sm:col-span-12')}>
+            {searchable && (
+              <div className="relative flex-1 min-w-0 sm:min-w-[240px]">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder={searchPlaceholder}
+                  value={query}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    setPage(0);
+                  }}
+                  className="w-full rounded-lg border border-input bg-background pl-8 pr-3 py-2 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                />
+              </div>
+            )}
+            {rightSlot && <div className="flex items-center gap-2 flex-wrap">{rightSlot}</div>}
+          </div>
+          {actionSlot && (
+            <div className="sm:col-span-3 flex items-center gap-2 [&>*]:flex-1 [&_button]:w-full">{actionSlot}</div>
           )}
-          {rightSlot && <div className="flex items-center gap-2 flex-wrap">{rightSlot}</div>}
         </div>
       )}
 

@@ -118,11 +118,6 @@ export default function CustomersPage() {
               {showArchived ? <Users className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
               {showArchived ? 'Active list' : 'Archived'}
             </Button>
-            <Link to="/customers/new">
-              <Button>
-                <Plus className="h-4 w-4" /> New customer
-              </Button>
-            </Link>
           </>
         }
       />
@@ -148,6 +143,13 @@ export default function CustomersPage() {
             emptyText={showArchived ? 'No archived customers.' : 'No customers yet. Add the schools you supply.'}
             pageSize={12}
             rowKey={(c) => c.id}
+            actionSlot={
+              <Link to="/customers/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> New customer
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

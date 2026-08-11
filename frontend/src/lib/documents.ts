@@ -1,7 +1,8 @@
 import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
+import autoTable, { type RowInput } from 'jspdf-autotable';
 import type { Invoice, Statement, SupplierStatement } from '../types';
 import { num } from './format';
+import { PRINT_LOGO_RATIO, loadPrintLogo } from './printLogo';
 
 // Invoice, delivery note and customer statement, laid out to match the
 // templates the shop already issues to schools.
@@ -12,6 +13,12 @@ const TAGLINE = 'For Quality, For You';
 const CONTACT = 'Luanda · Kapsabet · Mumias | 0728 492 372 | booklabbookshop.co.ke';
 
 const money = (n: unknown) => Math.round(num(n)).toLocaleString('en-KE');
+
+/** A totals row whose label spans the leading columns instead of leaving them blank. */
+const totalRow = (label: string, value: string, labelSpan: number): RowInput => [
+  { content: label, colSpan: labelSpan, styles: { halign: 'right' } },
+  value,
+];
 const dmy = (iso: string | Date | null | undefined) => {
   if (!iso) return '';
   const d = typeof iso === 'string' ? new Date(iso) : iso;
@@ -20,32 +27,43 @@ const dmy = (iso: string | Date | null | undefined) => {
 };
 
 /** Shared letterhead; returns the y position to continue from. */
-function header(doc: jsPDF, title: string): number {
+function header(doc: jsPDF, title: string, logo: string | null): number {
   const w = doc.internal.pageSize.getWidth();
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(20);
-  doc.setTextColor(...BRAND_RGB);
-  doc.text(BRAND, w / 2, 52, { align: 'center' });
+  let y: number;
 
-  doc.setFont('helvetica', 'italic');
-  doc.setFontSize(9);
-  doc.setTextColor(90, 90, 90);
-  doc.text(TAGLINE, w / 2, 66, { align: 'center' });
+  if (logo) {
+    // The logo already carries the shop name and tagline, so they are not repeated.
+    const lw = 130;
+    const lh = lw * PRINT_LOGO_RATIO;
+    doc.addImage(logo, 'PNG', (w - lw) / 2, 24, lw, lh);
+    y = 24 + lh + 14;
+  } else {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(20);
+    doc.setTextColor(...BRAND_RGB);
+    doc.text(BRAND, w / 2, 52, { align: 'center' });
+
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(9);
+    doc.setTextColor(90, 90, 90);
+    doc.text(TAGLINE, w / 2, 66, { align: 'center' });
+    y = 78;
+  }
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
   doc.setTextColor(110, 110, 110);
-  doc.text(CONTACT, w / 2, 78, { align: 'center' });
+  doc.text(CONTACT, w / 2, y, { align: 'center' });
 
   doc.setDrawColor(...BRAND_RGB);
   doc.setLineWidth(1.2);
-  doc.line(40, 86, w - 40, 86);
+  doc.line(40, y + 8, w - 40, y + 8);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   doc.setTextColor(40, 40, 40);
-  doc.text(title, w / 2, 106, { align: 'center' });
-  return 120;
+  doc.text(title, w / 2, y + 28, { align: 'center' });
+  return y + 42;
 }
 
 /** RECEIVED BY / SCHOOL STAMP / ID NO / DESIGNATION block. */
@@ -87,10 +105,11 @@ function signatureBlock(doc: jsPDF, y: number, inv?: Invoice) {
 }
 
 /** Tax invoice: description, quantity, unit, unit cost and line total. */
-export function printInvoice(inv: Invoice): void {
+export async function printInvoice(inv: Invoice): Promise<void> {
+  const logo = await loadPrintLogo();
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const w = doc.internal.pageSize.getWidth();
-  let y = header(doc, 'INVOICE');
+  let y = header(doc, 'INVOICE', logo);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -133,13 +152,13 @@ export function printInvoice(inv: Invoice): void {
     ? { 1: { halign: 'right', cellWidth: 42 }, 2: { cellWidth: 52 }, 3: { halign: 'right', cellWidth: 62 }, 4: { halign: 'right', cellWidth: 44 }, 5: { halign: 'right', cellWidth: 72 } }
     : { 1: { halign: 'right', cellWidth: 45 }, 2: { cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 }, 4: { halign: 'right', cellWidth: 80 } };
 
-  const span = vatShown ? 4 : 3;
-  const foot: string[][] = [];
+  const span = vatShown ? 5 : 4;
+  const foot: RowInput[] = [];
   if (vatShown) {
-    foot.push([...Array(span).fill(''), 'SUBTOTAL', money(inv.subtotal)]);
-    foot.push([...Array(span).fill(''), 'VAT', money(inv.vatTotal)]);
+    foot.push(totalRow('SUBTOTAL', money(inv.subtotal), span));
+    foot.push(totalRow('VAT', money(inv.vatTotal), span));
   }
-  foot.push([...Array(span).fill(''), 'TOTAL', money(inv.total)]);
+  foot.push(totalRow('TOTAL', money(inv.total), span));
 
   autoTable(doc, {
     startY: y + 14,
@@ -173,10 +192,11 @@ export function printInvoice(inv: Invoice): void {
 }
 
 /** Delivery note: description and quantity only — never prices. */
-export function printDeliveryNote(inv: Invoice): void {
+export async function printDeliveryNote(inv: Invoice): Promise<void> {
+  const logo = await loadPrintLogo();
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const w = doc.internal.pageSize.getWidth();
-  let y = header(doc, 'DELIVERY NOTE');
+  let y = header(doc, 'DELIVERY NOTE', logo);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -218,10 +238,11 @@ export function printDeliveryNote(inv: Invoice): void {
 }
 
 /** Customer statement with ageing summary and a running balance. */
-export function printStatement(s: Statement): void {
+export async function printStatement(s: Statement): Promise<void> {
+  const logo = await loadPrintLogo();
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const w = doc.internal.pageSize.getWidth();
-  let y = header(doc, 'STATEMENT OF ACCOUNT');
+  let y = header(doc, 'STATEMENT OF ACCOUNT', logo);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
@@ -278,7 +299,7 @@ export function printStatement(s: Statement): void {
     styles: { fontSize: 9, cellPadding: 5, lineColor: [210, 210, 210], lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: { 0: { cellWidth: 75 }, 2: { halign: 'right', cellWidth: 90 }, 3: { halign: 'right', cellWidth: 90 } },
-    foot: [['', 'CLOSING BALANCE', '', money(s.closingBalance)]],
+    foot: [totalRow('CLOSING BALANCE', money(s.closingBalance), 3)],
     footStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold', halign: 'right' },
   });
 
@@ -297,10 +318,11 @@ export function printStatement(s: Statement): void {
 
 /** Supplier statement — what we owe them. Mirrors the customer statement so the
  *  two can be reconciled against each other line by line. */
-export function printSupplierStatement(s: SupplierStatement): void {
+export async function printSupplierStatement(s: SupplierStatement): Promise<void> {
+  const logo = await loadPrintLogo();
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const w = doc.internal.pageSize.getWidth();
-  let y = header(doc, "SUPPLIER STATEMENT (RECONCILIATION)");
+  let y = header(doc, "SUPPLIER STATEMENT (RECONCILIATION)", logo);
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
@@ -356,7 +378,7 @@ export function printSupplierStatement(s: SupplierStatement): void {
     styles: { fontSize: 9, cellPadding: 5, lineColor: [210, 210, 210], lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: "bold" },
     columnStyles: { 0: { cellWidth: 75 }, 2: { halign: "right", cellWidth: 90 }, 3: { halign: "right", cellWidth: 90 } },
-    foot: [["", "CLOSING BALANCE", "", money(s.closingBalance)]],
+    foot: [totalRow("CLOSING BALANCE", money(s.closingBalance), 3)],
     footStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: "bold", halign: "right" },
   });
 

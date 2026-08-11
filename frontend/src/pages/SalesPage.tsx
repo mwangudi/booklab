@@ -179,11 +179,6 @@ export default function SalesPage() {
             <Button variant="outline" onClick={exportPdf} disabled={rows.length === 0}>
               <FileText className="h-4 w-4" /> PDF
             </Button>
-            <Link to="/pos">
-              <Button>
-                <Plus className="h-4 w-4" /> New sale
-              </Button>
-            </Link>
           </>
         }
       />
@@ -226,6 +221,13 @@ export default function SalesPage() {
             emptyText="No sales in this period."
             pageSize={12}
             rowKey={(r) => r.id}
+            actionSlot={
+              <Link to="/pos">
+                <Button>
+                  <Plus className="h-4 w-4" /> New sale
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

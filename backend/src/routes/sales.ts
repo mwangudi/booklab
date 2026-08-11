@@ -9,12 +9,16 @@ const saleSchema = z.object({
   paymentMethod: z.enum(['CASH', 'MPESA', 'CARD']).default('CASH'),
   priceTier: z.enum(['RETAIL', 'WHOLESALE', 'SCHOOL']).default('RETAIL'),
   mpesaRef: z.string().optional(),
+  discount: z.number().nonnegative().default(0),
+  discountReason: z.string().max(190).optional(),
   items: z
     .array(z.object({ bookId: z.number().int(), quantity: z.number().int().positive(), unitPrice: z.number().nonnegative() }))
     .min(1),
 });
 
 const voidSchema = z.object({ reason: z.string().trim().min(3).max(200) });
+
+const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export async function saleRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
@@ -33,7 +37,12 @@ export async function saleRoutes(app: FastifyInstance) {
   app.post('/', async (req, reply) => {
     const body = saleSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
-    const total = body.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+    const subtotal = round2(body.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
+    const discount = round2(Math.min(body.discount, subtotal));
+    if (body.discount > subtotal + 0.01) {
+      return reply.code(400).send({ error: 'The discount cannot be more than the sale total.' });
+    }
+    const total = round2(subtotal - discount);
 
     // Snapshot each book's current cost for accurate historical P&L.
     const books = await app.prisma.book.findMany({
@@ -73,6 +82,9 @@ export async function saleRoutes(app: FastifyInstance) {
           paymentMethod: body.paymentMethod,
           priceTier: body.priceTier,
           mpesaRef: body.mpesaRef,
+          subtotal,
+          discount,
+          discountReason: discount > 0 ? body.discountReason?.trim() || null : null,
           total,
           items: {
             create: body.items.map((i) => ({
@@ -136,7 +148,7 @@ export async function saleRoutes(app: FastifyInstance) {
       entity: 'sale',
       entityId: sale.id,
       action: 'CREATE',
-      details: { total, paymentMethod: body.paymentMethod, priceTier: body.priceTier, lines: body.items.length },
+      details: { total, subtotal, discount, discountReason: body.discountReason ?? null, paymentMethod: body.paymentMethod, priceTier: body.priceTier, lines: body.items.length },
     });
     reply.code(201).send(sale);
   });

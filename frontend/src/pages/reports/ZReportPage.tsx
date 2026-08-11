@@ -55,6 +55,7 @@ export default function ZReportPage() {
             ['Transactions', fmt(s.txns)],
             ['Items sold', fmt(s.itemsSold)],
             ['Average basket', money(s.avgBasket)],
+            ['Discounts given', money(s.discounts)],
             ['Gross profit', money(s.grossProfit)],
             ['Voided sales', `${fmt(s.voidedCount)} (${money(s.voidedAmount)})`],
             ['Expenses paid out', money(s.expenses)],

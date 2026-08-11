@@ -89,18 +89,11 @@ export default function GoodsReceiptsPage() {
         title="Goods received"
         subtitle="Key in supplier delivery notes; posting adds the stock to the branch."
         right={
-          <>
-            <Link to="/suppliers">
-              <Button variant="outline">
-                <Truck className="h-4 w-4" /> Suppliers
-              </Button>
-            </Link>
-            <Link to="/goods-receipts/new">
-              <Button>
-                <Plus className="h-4 w-4" /> Receive goods
-              </Button>
-            </Link>
-          </>
+          <Link to="/suppliers">
+            <Button variant="outline">
+              <Truck className="h-4 w-4" /> Suppliers
+            </Button>
+          </Link>
         }
       />
 
@@ -148,6 +141,13 @@ export default function GoodsReceiptsPage() {
             emptyText="No goods receipts in this period."
             pageSize={12}
             rowKey={(r) => r.id}
+            actionSlot={
+              <Link to="/goods-receipts/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> Receive goods
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

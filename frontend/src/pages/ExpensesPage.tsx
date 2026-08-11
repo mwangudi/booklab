@@ -54,15 +54,6 @@ export default function ExpensesPage() {
       <PageHeader
         title="Expenses"
         subtitle="Rent, salaries, utilities, supplies and more."
-        right={
-          canManage && (
-            <Link to="/expenses/new">
-              <Button>
-                <Plus className="h-4 w-4" /> Record expense
-              </Button>
-            </Link>
-          )
-        }
       />
 
       <Card className="p-4">
@@ -107,6 +98,15 @@ export default function ExpensesPage() {
             emptyText="No expenses in this period."
             pageSize={12}
             rowKey={(e) => e.id}
+            actionSlot={
+              canManage && (
+                <Link to="/expenses/new">
+                  <Button>
+                    <Plus className="h-4 w-4" /> Record expense
+                  </Button>
+                </Link>
+              )
+            }
           />
         )}
       </Card>

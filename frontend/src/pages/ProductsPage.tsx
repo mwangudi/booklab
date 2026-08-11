@@ -193,11 +193,6 @@ export default function ProductsPage() {
               <Button variant="outline" onClick={openImport}>
                 <Upload className="h-4 w-4" /> Import CSV
               </Button>
-              <Link to="/products/new">
-                <Button>
-                  <Plus className="h-4 w-4" /> New product
-                </Button>
-              </Link>
             </>
           )
         }
@@ -229,6 +224,15 @@ export default function ProductsPage() {
                 onChange={setCategory}
                 options={[{ value: '', label: 'All categories' }, ...PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))]}
               />
+            }
+            actionSlot={
+              canManage && (
+                <Link to="/products/new">
+                  <Button>
+                    <Plus className="h-4 w-4" /> New product
+                  </Button>
+                </Link>
+              )
             }
           />
         )}

@@ -120,17 +120,10 @@ export default function EmployeesPage() {
         title={showArchived ? 'Archived employees' : 'Employees'}
         subtitle="Staff on the payroll. They do not need a system login to be paid."
         right={
-          <>
-            <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
-              {showArchived ? <Users className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-              {showArchived ? 'Active list' : 'Archived'}
-            </Button>
-            <Link to="/people/employees/new">
-              <Button>
-                <Plus className="h-4 w-4" /> New employee
-              </Button>
-            </Link>
-          </>
+          <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
+            {showArchived ? <Users className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+            {showArchived ? 'Active list' : 'Archived'}
+          </Button>
         }
       />
 
@@ -155,6 +148,13 @@ export default function EmployeesPage() {
             emptyText={showArchived ? 'No archived employees.' : 'No employees yet. Add your first employee to run payroll.'}
             pageSize={12}
             rowKey={(e) => e.id}
+            actionSlot={
+              <Link to="/people/employees/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> New employee
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

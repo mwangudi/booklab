@@ -23,6 +23,8 @@ const stockTakeSchema = z.object({
     .max(5000),
 });
 const LOW = 5;
+/// Window used to rank best sellers at the till.
+const POPULAR_DAYS = 60;
 
 export async function stockRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
@@ -33,16 +35,27 @@ export async function stockRoutes(app: FastifyInstance) {
   app.get('/branch/:branchId', async (req, reply) => {
     const { branchId } = req.params as { branchId: string };
     const scoped = branchScope(req, reply, Number(branchId));
-    const [books, stock] = await Promise.all([
+    const since = new Date();
+    since.setDate(since.getDate() - POPULAR_DAYS);
+    const [books, stock, sold] = await Promise.all([
       app.prisma.book.findMany({ where: { deletedAt: null }, orderBy: { title: 'asc' } }),
       app.prisma.stock.findMany({ where: { branchId: scoped } }),
+      // Units moved at this branch recently — drives the "top sellers first"
+      // ordering at the till. Voided sales must not count towards popularity.
+      app.prisma.saleItem.groupBy({
+        by: ['bookId'],
+        where: { sale: { branchId: scoped, voidedAt: null, createdAt: { gte: since } } },
+        _sum: { quantity: true },
+      }),
     ]);
     const byBook = new Map(stock.map((s) => [s.bookId, s]));
+    const soldBy = new Map(sold.map((r) => [r.bookId, r._sum.quantity ?? 0]));
     return books.map((book) => {
       const existing = byBook.get(book.id);
-      return existing
+      const base = existing
         ? { ...existing, book }
         : { id: -book.id, branchId: scoped, bookId: book.id, quantity: 0, price: null, book };
+      return { ...base, sold: soldBy.get(book.id) ?? 0 };
     });
   });
 

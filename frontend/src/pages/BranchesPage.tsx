@@ -31,13 +31,6 @@ export default function BranchesPage() {
       <PageHeader
         title="Branches"
         subtitle="Shops and outlets in your network."
-        right={
-          <Link to="/branches/new">
-            <Button>
-              <Plus className="h-4 w-4" /> New branch
-            </Button>
-          </Link>
-        }
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
@@ -56,6 +49,13 @@ export default function BranchesPage() {
             initialSort={{ key: 'name', dir: 'asc' }}
             emptyText="No branches yet."
             rowKey={(b) => b.id}
+            actionSlot={
+              <Link to="/branches/new">
+                <Button>
+                  <Plus className="h-4 w-4" /> New branch
+                </Button>
+              </Link>
+            }
           />
         )}
       </Card>

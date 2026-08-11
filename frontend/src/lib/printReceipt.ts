@@ -6,6 +6,7 @@
 // pass as an original receipt.
 
 import { getReceiptSettings } from './receiptSettings';
+import { PRINT_LOGO_URL } from './printLogo';
 
 export interface ReceiptItem {
   title: string;
@@ -22,6 +23,9 @@ export interface ReceiptData {
   paymentMethod: string;
   mpesaRef?: string | null;
   items: ReceiptItem[];
+  /** Lines total before any discount; omit when nothing was discounted. */
+  subtotal?: number;
+  discount?: number;
   total: number;
   cashGiven?: number | null;
   change?: number | null;
@@ -62,6 +66,12 @@ function buildHtml(d: ReceiptData): string {
         `<div class="row"><span>Change</span><span>${money(d.change ?? 0)}</span></div>`
       : '';
 
+  const discountBlock =
+    d.discount && d.discount > 0
+      ? `<div class="row"><span>Subtotal</span><span>${money(d.subtotal ?? d.total + d.discount)}</span></div>` +
+        `<div class="row"><span>Discount</span><span>-${money(d.discount)}</span></div>`
+      : '';
+
   const isCopy = (d.copy ?? 0) > 0;
   const dupBanner = isCopy
     ? `<div class="stamp">*** DUPLICATE ***</div>
@@ -83,7 +93,7 @@ function buildHtml(d: ReceiptData): string {
     html, body { margin: 0; padding: 0; }
     body { width: ${body}mm; font-family: 'Courier New', ui-monospace, monospace; font-size: ${baseFont}px; color: #000; }
     .center { text-align: center; }
-    .brand { font-size: ${baseFont + 4}px; font-weight: 700; letter-spacing: 1px; }
+    .logo { display: block; margin: 0 auto 4px; width: 62%; max-width: ${body}mm; font-weight: 700; }
     .muted { font-size: ${baseFont - 1}px; }
     .hr { border-top: 1px dashed #000; margin: 6px 0; }
     .row { display: flex; justify-content: space-between; gap: 8px; }
@@ -95,9 +105,8 @@ function buildHtml(d: ReceiptData): string {
     .void { border-style: double; }
   </style></head>
   <body>
-    <div class="center brand">BOOKLAB BOOKSHOP</div>
-    <div class="center muted">For Quality, For You</div>
-    ${d.branchName ? `<div class="center muted">${esc(d.branchName)}${d.branchLocation ? ` &middot; ${esc(d.branchLocation)}` : ''}</div>` : ''}
+    <img class="logo" src="${PRINT_LOGO_URL}" alt="BOOKLAB BOOKSHOP">
+    <div class="center muted">${esc(d.branchName ?? '')}${d.branchName && d.branchLocation ? ` &middot; ${esc(d.branchLocation)}` : ''}</div>
     <div class="hr"></div>
     ${voidBanner}
     ${dupBanner}
@@ -109,6 +118,7 @@ function buildHtml(d: ReceiptData): string {
     <div class="hr"></div>
     ${rows}
     <div class="hr"></div>
+    ${discountBlock}
     <div class="row total"><span>TOTAL</span><span>${money(d.total)}</span></div>
     ${cashBlock}
     <div class="hr"></div>
@@ -116,6 +126,18 @@ function buildHtml(d: ReceiptData): string {
     ${extraFooter}
     <div class="center foot">booklabbookshop.co.ke</div>
   </body></html>`;
+}
+
+/** Resolves once every image in the document has settled, so nothing prints half-drawn. */
+function imagesReady(doc: Document): Promise<void> {
+  const pending = Array.from(doc.images)
+    .filter((img) => !img.complete)
+    .map((img) => new Promise<void>((resolve) => { img.onload = img.onerror = () => resolve(); }));
+  if (!pending.length) return Promise.resolve();
+  return Promise.race([
+    Promise.all(pending).then(() => undefined),
+    new Promise<void>((resolve) => setTimeout(resolve, 3000)),
+  ]);
 }
 
 /** Render the receipt in a hidden iframe and open the print dialog. */
@@ -133,13 +155,16 @@ export function printReceipt(data: ReceiptData): void {
     const w = iframe.contentWindow;
     if (!w) return cleanup();
     w.onafterprint = cleanup;
-    try {
-      w.focus();
-      w.print();
-    } catch {
-      cleanup();
-    }
-    setTimeout(cleanup, 60_000); // safety net
+    // The logo must be decoded first or the printer emits a blank space where it belongs.
+    void imagesReady(w.document).then(() => {
+      try {
+        w.focus();
+        w.print();
+      } catch {
+        cleanup();
+      }
+      setTimeout(cleanup, 60_000); // safety net
+    });
   };
 
   const doc = iframe.contentWindow?.document;
