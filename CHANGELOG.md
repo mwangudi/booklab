@@ -3,6 +3,76 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-08-12
+
+Discounts at the till, a catalogue that puts the fast movers first, and branded
+print documents.
+
+### Point of sale
+
+- **Discounts** — a cash amount can be taken off the basket at the till, with an
+  optional reason. The sale stores the `subtotal` (what the lines came to), the
+  `discount` and the reason alongside the `total`, so a giveaway is recorded
+  rather than hidden inside edited line prices.
+  - Revenue, gross profit and the P&L are all **net of the discount**, so takings
+    are never overstated.
+  - The server caps the discount at the basket total and rejects anything larger
+    or negative — the till cannot be talked past it.
+  - The audit entry for the sale carries the subtotal, discount and reason.
+  - The till shows *Subtotal / Discount / Total*, the receipt prints the same
+    three lines, and the discount clears with the cart so it can never carry over
+    to the next customer.
+  - The daily Z-report reports **discounts given** for the day.
+
+  This complements the price floor added on 2026-08-11: prices still cannot be
+  quietly dropped below the admin's price, but staff can give an explicit,
+  recorded discount.
+
+- **Best sellers first** — the catalogue is ordered by units sold at that branch
+  over the last 60 days, so the products the shop actually moves are on screen
+  without scrolling. Voided sales do not count towards popularity, products that
+  have never sold fall back to alphabetical order, and the leading few are
+  flagged *Top seller*.
+
+### Printing and documents
+
+- **The shop logo now appears on receipts** and on the invoice, delivery note,
+  customer statement and supplier statement PDFs.
+  - The source artwork sits on a black field, which would print as a solid black
+    block on white paper and waste a thermal roll. A print-safe copy
+    (`frontend/public/logo-print.png`) with the background knocked out to white
+    is used for all printing instead; `docs/logo.jpeg` remains the original.
+  - The receipt waits for the logo to decode before opening the print dialog, and
+    prints without it if it cannot be fetched, so printing never blocks on the
+    image.
+- **Invoice and statement totals no longer sprawl.** Subtotal, VAT and total are
+  now a compact footer on the items table rather than separate full-height rows,
+  which also stops narrow columns wrapping headings like `SUBTO TAL`.
+
+### Lists
+
+- The **primary add action now sits beside the search box**, directly above the
+  table it acts on, instead of at the top of the page: search across nine
+  columns, the action across three, stacking to full width on a phone. Applies to
+  products, stock, sales, branches, users, expenses, customers, invoices,
+  employees, payroll, suppliers and goods received. Secondary actions (exports,
+  archive toggles, filters and cross-links) stay in the page header.
+
+### Database migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260811120000_sale_discount` | `Sale.subtotal`, `Sale.discount` and `Sale.discountReason`; backfills `subtotal` from `total` for existing sales |
+
+### API
+
+- `POST /api/sales` accepts optional `discount` (a non-negative amount, capped at
+  the basket total) and `discountReason`, and returns `subtotal` and `discount`
+  on the sale.
+- `GET /api/stock/branch/:branchId` returns `sold` per product — units moved at
+  that branch in the ranking window.
+- `GET /api/reports/zreport` returns `summary.discounts`.
+
 ## 2026-08-11
 
 Trading on credit: invoicing schools, receiving goods from suppliers, and

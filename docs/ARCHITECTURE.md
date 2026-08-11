@@ -18,7 +18,7 @@ Users have a role (`ADMIN`, `MANAGER`, `CASHIER`) and an optional `branchId`.
 - **Branch** — a shop location.
 - **Book** — the sellable product (`sku` unique, optional `isbn`, `unitPrice`, `costPrice`).
 - **Stock** — on-hand quantity per `(branch, book)`.
-- **Sale** / **SaleItem** — a checkout; each item snapshots `unitPrice` **and** `costPrice` so P&L COGS is historically accurate.
+- **Sale** / **SaleItem** — a checkout; each item snapshots `unitPrice` **and** `costPrice` so P&L COGS is historically accurate. The sale holds `subtotal` (the lines before any discount), `discount`, `discountReason` and `total`.
 - **Expense** — rent/salary/utilities/etc. per branch.
 - **StockMovement** — event-sourced stock change (INTAKE/ADJUST) with a `delta`; how branch stock changes reach the cloud.
 - **Outbox** / **SyncState** — offline sync plumbing (branch side).
@@ -27,7 +27,7 @@ Every syncable model carries `uuid` (global identity), `updatedAt`, `deletedAt`,
 
 ## P&L computation
 `GET /api/reports/pnl?from=&to=&branchId=`:
-- **Revenue** = Σ sale totals.
+- **Revenue** = Σ sale totals — already net of any discount given at the till.
 - **COGS** = Σ (saleItem.quantity × saleItem.costPrice) — from the sale-time cost snapshot.
 - **Gross profit** = revenue − COGS.
 - **Expenses** = Σ expense amounts in range.
@@ -36,5 +36,13 @@ Returned as an overall summary, a per-branch breakdown (consolidated), and an ex
 
 ## Why cost is snapshotted on the sale item
 Book cost prices change over time. Storing `costPrice` on each `SaleItem` at checkout means a P&L for last month uses last month's costs, not today's — the correct accounting behaviour.
+
+## Why a discount is recorded on the sale
+A discount could be applied by simply typing a lower price on each line, but then
+nothing distinguishes a deliberate giveaway from a mis-keyed price, and there is
+nothing to report on. Holding `subtotal`, `discount` and `discountReason` on the
+sale keeps the lines at their real prices, keeps revenue net of the reduction,
+and makes every discount attributable in the audit trail and countable on the
+Z-report. The server caps it at the basket total so a sale can never go negative.
 
 See [OFFLINE-SYNC.md](OFFLINE-SYNC.md) for the offline/sync design.

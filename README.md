@@ -4,8 +4,8 @@ Multi-branch retail platform for **Booklab Bookshop** — “For Quality, For Yo
 
 ## What it does
 1. **Catalogue & stock across branches** — sell books, textbooks, exercise books, story books, **stationery**, **lab equipment** and computer supplies; the catalogue category doubles as the product type, with per-branch on-hand quantities and stock intake recorded as sync-safe movement events. Products can be **archived** (soft delete) without losing sales history, and loaded in bulk from a **CSV import**.
-2. **Point of sale** — fast POS with **M-Pesa STK push** (Safaricom Daraja; Paybill or Till, configurable), **price tiers** (retail / wholesale / school) and **EPOS receipt printing** on 58mm or 80mm thermal printers. Receipts can be **reprinted**, always stamped as duplicates.
-3. **Financial controls** — **void/reverse a sale** (stock is returned and revenue excluded), **inter-branch stock transfers**, and a full **stock movement history** showing who changed what.
+2. **Point of sale** — fast POS with **M-Pesa STK push** (Safaricom Daraja; Paybill or Till, configurable), **price tiers** (retail / wholesale / school), **discounts** taken as an amount off the basket, and **EPOS receipt printing** on 58mm or 80mm thermal printers. The catalogue puts each branch's **best sellers first**. Receipts can be **reprinted**, always stamped as duplicates.
+3. **Financial controls** — **void/reverse a sale** (stock is returned and revenue excluded), **inter-branch stock transfers**, and a full **stock movement history** showing who changed what. Prices cannot be dropped below the admin's price; discounts are recorded on the sale with a reason so revenue stays net of them.
 4. **Expenditure** — record rent, salary, utilities, supplies, marketing and misc expenses per branch.
 5. **Payroll** — employees (with or without a system login), monthly payroll runs and Kenyan statutory deductions (PAYE, NSSF, SHIF, Housing Levy) with **editable rates**. Closing a run posts the cost straight into the P&L.
 6. **Reports** — P&L, sales, stock valuation, **daily Z-report** (cash-up) and a **re-order report**, each per branch and exportable to **CSV and PDF**.
@@ -55,5 +55,7 @@ The web app serves the **public site** at `/` and the **staff portal** at `/logi
 
 **Receipt printing:** works with any **58mm or 80mm** thermal printer that has an OS driver (USB, Bluetooth or network). Set the paper width per till under **Till → Receipt & printer**, then use *Test print*. In the browser's print dialog set margins to *None* and turn off headers & footers.
 
+**Branding on printed documents:** receipts and the invoice, delivery note and statement PDFs carry the shop logo. Printing uses `frontend/public/logo-print.png` — the logo with its black background knocked out to white, since the original would print as a solid black block on paper. `frontend/public/logo.jpeg` remains the on-screen version.
+
 ## Status
-In production at `https://booklab.localinvestors.co.ke`. Backend (Fastify + Prisma + MySQL) and frontend (React + Vite + TypeScript) both typecheck and build cleanly, with seven applied migrations. Covers catalogue, stock, POS, sales with void/reprint, expenses, payroll, reporting, auditing and the offline sync engine. See [CHANGELOG.md](CHANGELOG.md) for what shipped when and [docs/ROADMAP.md](docs/ROADMAP.md) for what remains.
+In production at `https://booklab.localinvestors.co.ke`. Backend (Fastify + Prisma + MySQL) and frontend (React + Vite + TypeScript) both typecheck and build cleanly, with nine applied migrations. Covers catalogue, stock, POS, sales with void/reprint/discounts, expenses, credit trading (customers, invoices, suppliers, goods received), payroll, reporting, auditing and the offline sync engine. See [CHANGELOG.md](CHANGELOG.md) for what shipped when and [docs/ROADMAP.md](docs/ROADMAP.md) for what remains.
