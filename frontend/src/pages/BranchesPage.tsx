@@ -4,7 +4,7 @@ import { useApi } from '../lib/useApi';
 import { dateShort } from '../lib/format';
 import type { Branch } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
-import { Button, Card, KpiCard, Loading, PageHeader } from '../components/ui';
+import { Button, Card, KpiCard, Loading, PageHeader, RowAction, RowActions } from '../components/ui';
 
 export default function BranchesPage() {
   const { data: branches, loading } = useApi<Branch[]>('/api/branches');
@@ -19,9 +19,9 @@ export default function BranchesPage() {
       header: '',
       align: 'right',
       render: (b) => (
-        <Link to={`/branches/${b.id}/edit`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-          <Pencil className="h-3.5 w-3.5" /> Edit
-        </Link>
+        <RowActions>
+          <RowAction to={`/branches/${b.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit branch" />
+        </RowActions>
       ),
     },
   ];

@@ -8,7 +8,7 @@ import { BranchSelect, useBranches } from '../components/BranchSelect';
 import { fmt, money, num } from '../lib/format';
 import type { Stock } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
-import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill } from '../components/ui';
+import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../components/ui';
 import { Select2 } from '../components/Select2';
 
 const LOW = 5;
@@ -181,19 +181,13 @@ export default function StockPage() {
       header: '',
       align: 'right',
       render: (r) => (
-        <div className="flex items-center justify-end gap-3">
-          <button onClick={() => openEdit(r)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            <SlidersHorizontal className="h-3.5 w-3.5" /> Set qty
-          </button>
-          <button onClick={() => openPrice(r)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            <Tag className="h-3.5 w-3.5" /> Set price
-          </button>
+        <RowActions>
+          <RowAction onClick={() => openEdit(r)} icon={<SlidersHorizontal className="h-4 w-4" />} label="Set quantity (stock take)" />
+          <RowAction onClick={() => openPrice(r)} icon={<Tag className="h-4 w-4" />} label="Set branch price" />
           {r.quantity > 0 && (branches?.length ?? 0) > 1 && (
-            <button onClick={() => openXfer(r)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-              <ArrowLeftRight className="h-3.5 w-3.5" /> Transfer
-            </button>
+            <RowAction onClick={() => openXfer(r)} icon={<ArrowLeftRight className="h-4 w-4" />} label="Transfer to another branch" />
           )}
-        </div>
+        </RowActions>
       ),
     });
   }

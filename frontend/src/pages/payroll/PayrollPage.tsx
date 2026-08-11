@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, Lock, Plus, Trash2, Wallet } from 'lucide-react';
+import { CalendarDays, Eye, Lock, Plus, Trash2, Wallet } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { dateShort, fmt, money, num } from '../../lib/format';
 import type { PayrollRun } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
-import { Alert, Button, Card, FormField, KpiCard, Loading, Modal, PageHeader, Pill } from '../../components/ui';
+import { Alert, Button, Card, FormField, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -88,16 +88,16 @@ export default function PayrollPage() {
       header: '',
       align: 'right',
       render: (r) => (
-        <div className="flex items-center justify-end gap-3">
-          <Link to={`/payroll/${r.id}`} className="text-xs text-primary hover:underline">
-            {r.status === 'CLOSED' ? 'View' : 'Review'}
-          </Link>
+        <RowActions>
+          <RowAction
+            to={`/payroll/${r.id}`}
+            icon={<Eye className="h-4 w-4" />}
+            label={r.status === 'CLOSED' ? 'View payroll' : 'Review payroll'}
+          />
           {r.status === 'DRAFT' && (
-            <button onClick={() => setDeleteTarget(r)} className="inline-flex items-center gap-1 text-xs text-[#9b2626] hover:underline">
-              <Trash2 className="h-3.5 w-3.5" /> Discard
-            </button>
+            <RowAction onClick={() => setDeleteTarget(r)} icon={<Trash2 className="h-4 w-4" />} label="Discard draft" tone="danger" />
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

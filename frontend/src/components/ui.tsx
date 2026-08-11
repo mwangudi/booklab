@@ -1,6 +1,49 @@
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { Link } from 'react-router-dom';
 import { Loader2, X } from 'lucide-react';
 import { cn } from '../lib/utils';
+
+/* ------------------------------------------------------------- row actions */
+
+/** Icon-only action for table rows; the label stays available as a tooltip and to screen readers. */
+export const RowAction = ({
+  icon,
+  label,
+  to,
+  onClick,
+  tone = 'default',
+  disabled = false,
+}: {
+  icon: ReactNode;
+  label: string;
+  to?: string;
+  onClick?: () => void;
+  tone?: 'default' | 'danger';
+  disabled?: boolean;
+}) => {
+  const cls = cn(
+    'inline-grid h-8 w-8 place-items-center rounded-lg transition-colors',
+    tone === 'danger' ? 'text-[#9b2626] hover:bg-[#9b2626]/10' : 'text-primary hover:bg-primary/10',
+    disabled && 'opacity-40 pointer-events-none',
+  );
+  if (to) {
+    return (
+      <Link to={to} title={label} aria-label={label} className={cls}>
+        {icon}
+      </Link>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} title={label} aria-label={label} className={cls}>
+      {icon}
+    </button>
+  );
+};
+
+/** Right-aligned container for a row's actions. */
+export const RowActions = ({ children }: { children: ReactNode }) => (
+  <div className="flex items-center justify-end gap-1">{children}</div>
+);
 
 /* ------------------------------------------------------------------ layout */
 

@@ -10,7 +10,7 @@ import { downloadCsv, downloadPdfReport } from '../lib/reportExport';
 import type { Sale } from '../types';
 import { BranchSelect } from '../components/BranchSelect';
 import { DataTable, type Column } from '../components/DataTable';
-import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill, Table, Td, Th } from '../components/ui';
+import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions, Table, Td, Th } from '../components/ui';
 
 const paymentTone = (m: string) => (m === 'MPESA' ? 'green' : m === 'CARD' ? 'purple' : 'blue');
 const isVoid = (s: Sale) => !!s.voidedAt;
@@ -150,24 +150,18 @@ export default function SalesPage() {
       header: '',
       align: 'right',
       render: (r) => (
-        <div className="flex items-center justify-end gap-3">
-          <button onClick={() => setSelected(r)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            <Eye className="h-3.5 w-3.5" /> View
-          </button>
-          <button
+        <RowActions>
+          <RowAction onClick={() => setSelected(r)} icon={<Eye className="h-4 w-4" />} label="View sale" />
+          <RowAction
             onClick={() => printSale(r)}
             disabled={reprinting === r.id}
-            className="inline-flex items-center gap-1 text-xs text-primary hover:underline disabled:opacity-50"
-            title="Print a duplicate copy of this receipt"
-          >
-            <Printer className="h-3.5 w-3.5" /> {reprinting === r.id ? 'Printing…' : 'Reprint'}
-          </button>
+            icon={<Printer className="h-4 w-4" />}
+            label="Reprint receipt (duplicate copy)"
+          />
           {canManage && !isVoid(r) && (
-            <button onClick={() => openVoid(r)} className="inline-flex items-center gap-1 text-xs text-[#9b2626] hover:underline">
-              <Ban className="h-3.5 w-3.5" /> Void
-            </button>
+            <RowAction onClick={() => openVoid(r)} icon={<Ban className="h-4 w-4" />} label="Void sale" tone="danger" />
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

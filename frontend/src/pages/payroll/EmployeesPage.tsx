@@ -6,7 +6,7 @@ import { useApi } from '../../lib/useApi';
 import { fmt, money, num } from '../../lib/format';
 import type { Employee } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
-import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill } from '../../components/ui';
+import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 
 const fullName = (e: Employee) => `${e.firstName} ${e.lastName}`.trim();
 
@@ -92,28 +92,24 @@ export default function EmployeesPage() {
       header: '',
       align: 'right',
       render: (e) => (
-        <div className="flex items-center justify-end gap-3">
+        <RowActions>
           {e.deletedAt ? (
-            <button onClick={() => restore(e)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
-            </button>
+            <RowAction onClick={() => restore(e)} icon={<ArchiveRestore className="h-4 w-4" />} label="Restore employee" />
           ) : (
             <>
-              <Link to={`/people/employees/${e.id}/edit`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                <Pencil className="h-3.5 w-3.5" /> Edit
-              </Link>
-              <button
+              <RowAction to={`/people/employees/${e.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit employee" />
+              <RowAction
                 onClick={() => {
                   setTarget(e);
                   setError(null);
                 }}
-                className="inline-flex items-center gap-1 text-xs text-[#9b2626] hover:underline"
-              >
-                <Archive className="h-3.5 w-3.5" /> Archive
-              </button>
+                icon={<Archive className="h-4 w-4" />}
+                label="Archive employee"
+                tone="danger"
+              />
             </>
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

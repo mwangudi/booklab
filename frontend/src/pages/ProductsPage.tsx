@@ -10,7 +10,7 @@ import { csvToItems, type ImportItem } from '../lib/csv';
 import { downloadCsv } from '../lib/reportExport';
 import type { Book } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
-import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill, Td, Th } from '../components/ui';
+import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions, Td, Th } from '../components/ui';
 import { Select2 } from '../components/Select2';
 
 export default function ProductsPage() {
@@ -152,28 +152,24 @@ export default function ProductsPage() {
       header: '',
       align: 'right',
       render: (b) => (
-        <div className="flex items-center justify-end gap-3">
+        <RowActions>
           {b.deletedAt ? (
-            <button onClick={() => restore(b)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-              <ArchiveRestore className="h-3.5 w-3.5" /> Restore
-            </button>
+            <RowAction onClick={() => restore(b)} icon={<ArchiveRestore className="h-4 w-4" />} label="Restore product" />
           ) : (
             <>
-              <Link to={`/products/${b.id}/edit`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-                <Pencil className="h-3.5 w-3.5" /> Edit
-              </Link>
-              <button
+              <RowAction to={`/products/${b.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit product" />
+              <RowAction
                 onClick={() => {
                   setArchiveTarget(b);
                   setArchiveError(null);
                 }}
-                className="inline-flex items-center gap-1 text-xs text-[#9b2626] hover:underline"
-              >
-                <Archive className="h-3.5 w-3.5" /> Archive
-              </button>
+                icon={<Archive className="h-4 w-4" />}
+                label="Archive product"
+                tone="danger"
+              />
             </>
           )}
-        </div>
+        </RowActions>
       ),
     });
   }

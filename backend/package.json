@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "seed": "tsx prisma/seed.ts",
+    "seed:demo": "tsx prisma/seed-demo.ts",
     "sync": "node dist/sync-runner/index.js",
     "branch:schema": "node scripts/gen-sqlite-schema.mjs",
     "branch:generate": "node scripts/gen-sqlite-schema.mjs && prisma generate --schema prisma/schema.sqlite.prisma",

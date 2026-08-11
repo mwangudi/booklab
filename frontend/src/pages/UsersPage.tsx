@@ -4,7 +4,7 @@ import { useApi } from '../lib/useApi';
 import { titleCase } from '../lib/categories';
 import type { User } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
-import { Button, Card, KpiCard, Loading, PageHeader, Pill } from '../components/ui';
+import { Button, Card, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../components/ui';
 
 const roleTone = (r: string): 'purple' | 'blue' | 'gray' => (r === 'ADMIN' ? 'purple' : r === 'MANAGER' ? 'blue' : 'gray');
 
@@ -28,9 +28,9 @@ export default function UsersPage() {
       header: '',
       align: 'right',
       render: (u) => (
-        <Link to={`/settings/users/${u.id}/edit`} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-          <Pencil className="h-3.5 w-3.5" /> Edit
-        </Link>
+        <RowActions>
+          <RowAction to={`/settings/users/${u.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit user" />
+        </RowActions>
       ),
     },
   ];

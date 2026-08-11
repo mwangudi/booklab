@@ -29,8 +29,12 @@ export const dateTime = (iso: string | Date | null | undefined): string => {
   return d.toLocaleString('en-KE', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 
-/** ISO date (yyyy-mm-dd) for <input type="date"> defaults. */
-export const isoDate = (d: Date): string => d.toISOString().slice(0, 10);
+/** ISO date (yyyy-mm-dd) for <input type="date"> defaults, in LOCAL time.
+ *  toISOString() would shift to UTC and, east of Greenwich, return the previous day. */
+export const isoDate = (d: Date): string => {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
 
 /** First day of the current month as yyyy-mm-dd. */
 export const startOfMonth = (): string => {
