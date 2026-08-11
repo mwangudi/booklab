@@ -7,6 +7,7 @@ import {
   Building2,
   ChevronDown,
   ClipboardList,
+  FileText,
   History,
   LayoutDashboard,
   LineChart,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
+  Truck,
   Users,
   Wallet,
   Warehouse,
@@ -65,8 +67,27 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: '/products', label: 'Products', icon: <BookOpen className={ic} /> },
       { to: '/stock', label: 'Stock levels', icon: <Boxes className={ic} />, end: true },
+      { to: '/stock/take', label: 'Stock take', icon: <ClipboardList className={ic} />, roles: ['ADMIN', 'MANAGER'] },
       { to: '/stock/movements', label: 'Stock history', icon: <History className={ic} />, roles: ['ADMIN', 'MANAGER'] },
       { to: '/expenses', label: 'Expenses', icon: <Wallet className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+    ],
+  },
+  {
+    key: 'trade',
+    heading: 'Customers & Invoicing',
+    icon: <FileText className={ic} />,
+    items: [
+      { to: '/invoices', label: 'Invoices', icon: <FileText className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/customers', label: 'Customers', icon: <Users className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+    ],
+  },
+  {
+    key: 'supply',
+    heading: 'Suppliers & Purchasing',
+    icon: <Truck className={ic} />,
+    items: [
+      { to: '/goods-receipts', label: 'Goods received', icon: <Truck className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/suppliers', label: 'Suppliers', icon: <Building2 className={ic} />, roles: ['ADMIN', 'MANAGER'] },
     ],
   },
   {

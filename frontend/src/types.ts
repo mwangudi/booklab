@@ -1,7 +1,7 @@
 // API response shapes. Decimal columns arrive as strings over JSON, so numeric
 // money/price fields are typed `number | string` and coerced with `num()`.
 
-import type { ExpenseCategory, PaymentMethod, PriceTier, Role } from './lib/categories';
+import type { CustomerType, ExpenseCategory, InvoiceStatus, PaymentChannel, PaymentMethod, PriceTier, Role } from './lib/categories';
 
 export type Money = number | string;
 
@@ -20,6 +20,10 @@ export interface Book {
   isbn: string | null;
   sku: string;
   category: string | null;
+  /** Selling unit — Piece, Dozen, Ream, Carton, Metre, Litre… */
+  unit: string;
+  /** VAT percentage applied when invoicing; printed books are commonly zero-rated. */
+  vatRate: Money;
   unitPrice: Money;
   priceWholesale: Money | null;
   priceSchool: Money | null;
@@ -121,6 +125,180 @@ export interface Payslip {
 export interface PayeBand {
   upTo: number | null;
   rate: number;
+}
+
+export interface Customer {
+  id: number;
+  name: string;
+  type: CustomerType;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  kraPin: string | null;
+  notes: string | null;
+  chargeVat: boolean;
+  vatMode: 'EXCLUSIVE' | 'INCLUSIVE';
+  openingBalance: Money;
+  openingBalanceDate: string | null;
+  paymentTermsDays: number;
+  active: boolean;
+  deletedAt: string | null;
+  _count?: { invoices: number };
+}
+
+export interface CustomerBalance {
+  id: number;
+  name: string;
+  type: CustomerType;
+  phone: string | null;
+  contactPerson: string | null;
+  invoices: number;
+  invoiced: number;
+  received: number;
+  balance: number;
+}
+
+export interface InvoiceItem {
+  id?: number;
+  bookId: number | null;
+  description: string;
+  unit: string;
+  quantity: Money;
+  unitPrice: Money;
+  vatRate: Money;
+  netAmount: Money;
+  vatAmount: Money;
+  total: Money;
+  sortOrder?: number;
+}
+
+export interface Invoice {
+  id: number;
+  number: string;
+  deliveryNoteNo: string | null;
+  customerId: number;
+  branchId: number | null;
+  status: InvoiceStatus;
+  priceTier: PriceTier;
+  issueDate: string;
+  dueDate: string | null;
+  deliveredAt: string | null;
+  receivedBy: string | null;
+  receivedIdNo: string | null;
+  receivedDesignation: string | null;
+  notes: string | null;
+  chargeVat: boolean;
+  vatMode: 'EXCLUSIVE' | 'INCLUSIVE';
+  subtotal: Money;
+  vatTotal: Money;
+  total: Money;
+  saleId: number | null;
+  customer?: Customer;
+  branch?: { id?: number; name: string; location?: string } | null;
+  items?: InvoiceItem[];
+  _count?: { items: number };
+}
+
+export interface CustomerPayment {
+  id: number;
+  customerId: number;
+  invoiceId: number | null;
+  amount: Money;
+  paidAt: string;
+  method: PaymentChannel;
+  reference: string | null;
+  note: string | null;
+  customer?: { name: string };
+  invoice?: { number: string } | null;
+}
+
+export interface Statement {
+  customer: Customer;
+  period: { from: string; to: string };
+  openingBalance: number;
+  closingBalance: number;
+  amountDue: number;
+  ageing: { current: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+  rows: Array<{ date: string; kind: 'INVOICE' | 'PAYMENT'; label: string; amount: number; balance: number }>;
+  totals: { invoiced: number; received: number };
+}
+
+export interface Supplier {
+  id: number;
+  name: string;
+  contactPerson: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  kraPin: string | null;
+  notes: string | null;
+  openingBalance: Money;
+  openingBalanceDate: string | null;
+  paymentTermsDays: number;
+  active: boolean;
+  deletedAt: string | null;
+  _count?: { receipts: number };
+}
+
+export interface SupplierBalance {
+  id: number;
+  name: string;
+  phone: string | null;
+  contactPerson: string | null;
+  receipts: number;
+  billed: number;
+  paid: number;
+  balance: number;
+}
+
+export interface GoodsReceiptItem {
+  id?: number;
+  bookId: number;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitCost: Money;
+  total: Money;
+  book?: { sku: string; title: string; unit: string };
+}
+
+export interface GoodsReceipt {
+  id: number;
+  number: string;
+  supplierId: number;
+  branchId: number;
+  deliveryNoteNo: string | null;
+  invoiceNo: string | null;
+  receivedAt: string;
+  status: 'DRAFT' | 'POSTED';
+  notes: string | null;
+  totalCost: Money;
+  postedAt: string | null;
+  supplier?: Supplier;
+  branch?: { id?: number; name: string };
+  items?: GoodsReceiptItem[];
+  _count?: { items: number };
+}
+
+export interface SupplierStatement {
+  supplier: Supplier;
+  period: { from: string; to: string };
+  openingBalance: number;
+  closingBalance: number;
+  amountDue: number;
+  ageing: { current: number; d1_30: number; d31_60: number; d61_90: number; over90: number };
+  rows: Array<{ date: string; kind: 'BILL' | 'PAYMENT'; label: string; amount: number; balance: number }>;
+  totals: { billed: number; paid: number };
+}
+
+export interface StockTakeRow {
+  bookId: number;
+  sku: string;
+  title: string;
+  unit: string;
+  category: string;
+  onHand: number;
 }
 
 export interface PayrollSettings {

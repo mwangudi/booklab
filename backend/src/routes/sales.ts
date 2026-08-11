@@ -38,9 +38,31 @@ export async function saleRoutes(app: FastifyInstance) {
     // Snapshot each book's current cost for accurate historical P&L.
     const books = await app.prisma.book.findMany({
       where: { id: { in: body.items.map((i) => i.bookId) } },
-      select: { id: true, uuid: true, costPrice: true },
+      select: { id: true, uuid: true, title: true, costPrice: true, unitPrice: true, priceWholesale: true, priceSchool: true },
     });
     const bookById = new Map(books.map((b) => [b.id, b]));
+
+    // The till may charge above the configured price but never below it.
+    const overrides = await app.prisma.stock.findMany({
+      where: { branchId, bookId: { in: body.items.map((i) => i.bookId) } },
+      select: { bookId: true, price: true },
+    });
+    const overrideByBook = new Map(overrides.map((o) => [o.bookId, o.price]));
+    const underpriced: string[] = [];
+    for (const item of body.items) {
+      const book = bookById.get(item.bookId);
+      if (!book) return reply.code(400).send({ error: `Unknown product in the sale (id ${item.bookId}).` });
+      const retail = Number(overrideByBook.get(item.bookId) ?? book.unitPrice);
+      const floor =
+        body.priceTier === 'WHOLESALE' ? Number(book.priceWholesale ?? retail)
+        : body.priceTier === 'SCHOOL' ? Number(book.priceSchool ?? retail)
+        : retail;
+      // Tolerate rounding noise from the client, but nothing more.
+      if (item.unitPrice < floor - 0.01) underpriced.push(`${book.title} (minimum ${floor.toFixed(2)})`);
+    }
+    if (underpriced.length > 0) {
+      return reply.code(400).send({ error: `These items are priced below the set price: ${underpriced.join('; ')}.` });
+    }
 
     const sale = await app.prisma.$transaction(async (tx) => {
       const created = await tx.sale.create({

@@ -14,6 +14,14 @@ const transferSchema = z.object({
   quantity: z.number().int().positive(),
   note: z.string().max(200).optional(),
 });
+const stockTakeSchema = z.object({
+  branchId: z.number().int(),
+  note: z.string().max(200).optional(),
+  items: z
+    .array(z.object({ sku: z.string().min(1), counted: z.number().int().min(0) }))
+    .min(1)
+    .max(5000),
+});
 const LOW = 5;
 
 export async function stockRoutes(app: FastifyInstance) {
@@ -157,6 +165,87 @@ export async function stockRoutes(app: FastifyInstance) {
       details: { quantity: body.quantity },
     });
     return result;
+  });
+
+  // Sheet for a monthly count: every stocked product with its system quantity.
+  app.get('/take-sheet', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+    const { branchId } = req.query as { branchId?: string };
+    const scoped = branchScope(req, reply, branchId ? Number(branchId) : undefined);
+    if (scoped == null) return reply.code(400).send({ error: 'Choose a branch to count.' });
+    const [books, stock] = await Promise.all([
+      app.prisma.book.findMany({ where: { deletedAt: null }, orderBy: { title: 'asc' } }),
+      app.prisma.stock.findMany({ where: { branchId: scoped } }),
+    ]);
+    const qty = new Map(stock.map((s) => [s.bookId, s.quantity]));
+    return books.map((b) => ({
+      sku: b.sku,
+      title: b.title,
+      category: b.category ?? '',
+      unit: b.unit,
+      systemQty: qty.get(b.id) ?? 0,
+    }));
+  });
+
+  /**
+   * Apply a counted stock take. Each difference becomes an attributable ADJUST
+   * movement, so the count is fully explained in the stock history.
+   */
+  app.post('/take', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+    const body = stockTakeSchema.parse(req.body);
+    const branchId = enforceWriteBranch(req, reply, body.branchId);
+
+    const skus = body.items.map((i) => i.sku.trim());
+    const books = await app.prisma.book.findMany({ where: { sku: { in: skus } }, select: { id: true, sku: true } });
+    const bookBySku = new Map(books.map((b) => [b.sku, b.id]));
+
+    const note = body.note?.trim() || `Stock take ${new Date().toISOString().slice(0, 10)}`;
+    const results = { counted: 0, adjusted: 0, unchanged: 0, unknown: [] as string[], netUnits: 0 };
+
+    for (const item of body.items) {
+      const sku = item.sku.trim();
+      const bookId = bookBySku.get(sku);
+      if (!bookId) {
+        results.unknown.push(sku);
+        continue;
+      }
+      results.counted += 1;
+      const existing = await app.prisma.stock.findUnique({ where: { branchId_bookId: { branchId, bookId } } });
+      const before = existing?.quantity ?? 0;
+      const delta = item.counted - before;
+      if (delta === 0) {
+        results.unchanged += 1;
+        continue;
+      }
+      await app.prisma.$transaction(async (tx) => {
+        await tx.stock.upsert({
+          where: { branchId_bookId: { branchId, bookId } },
+          create: { branchId, bookId, quantity: item.counted },
+          update: { quantity: item.counted },
+        });
+        await tx.stockMovement.create({
+          data: {
+            branchId,
+            bookId,
+            delta,
+            type: 'ADJUST',
+            note: `${note}: ${before} -> ${item.counted}`,
+            userId: req.user.id,
+            originBranchId: branchId,
+          },
+        });
+      });
+      results.adjusted += 1;
+      results.netUnits += delta;
+    }
+
+    await writeAudit(app.prisma, {
+      ...actor(req),
+      branchId,
+      entity: 'stock.quantity',
+      action: 'STOCK_TAKE_BULK',
+      details: { note, counted: results.counted, adjusted: results.adjusted, netUnits: results.netUnits, unknown: results.unknown.length },
+    });
+    return results;
   });
 
   // Stock movement history — the audit trail behind every quantity change.

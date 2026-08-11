@@ -9,6 +9,7 @@ const bookSchema = z.object({
   isbn: z.string().optional(),
   sku: z.string().min(1),
   category: z.string().optional(),
+  unit: z.string().min(1).max(40).default('Piece'),
   unitPrice: z.number().nonnegative(),
   priceWholesale: z.number().nonnegative().nullable().optional(),
   priceSchool: z.number().nonnegative().nullable().optional(),
@@ -20,6 +21,7 @@ const importItemSchema = z.object({
   title: z.string().min(1),
   category: z.string().nullable().optional(),
   sku: z.string().nullable().optional(),
+  unit: z.string().max(40).nullable().optional(),
   author: z.string().nullable().optional(),
   isbn: z.string().nullable().optional(),
   unitPrice: z.number().nonnegative().optional(),
@@ -139,6 +141,7 @@ export async function bookRoutes(app: FastifyInstance) {
         const data = {
           title: it.title.trim(),
           category: it.category?.trim() || null,
+          unit: it.unit?.trim() || 'Piece',
           author: it.author?.trim() || null,
           isbn: it.isbn?.trim() || null,
           unitPrice: it.unitPrice ?? 0,

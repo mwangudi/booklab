@@ -21,6 +21,8 @@ interface CartLine {
   title: string;
   sku: string;
   unitPrice: number;
+  /** Admin-set price for the selected tier; the cashier may charge more but never less. */
+  minPrice: number;
   quantity: number;
   available: number;
 }
@@ -41,10 +43,10 @@ const tierPrice = (row: Stock, tier: PriceTier): number => {
   return retail;
 };
 
-const TIER_OPTIONS = [
-  { value: 'RETAIL', label: 'Retail price' },
-  { value: 'WHOLESALE', label: 'Wholesale price' },
-  { value: 'SCHOOL', label: 'School price' },
+const TIER_OPTIONS: Array<{ value: PriceTier; label: string }> = [
+  { value: 'RETAIL', label: 'Retail' },
+  { value: 'WHOLESALE', label: 'Wholesale' },
+  { value: 'SCHOOL', label: 'School' },
 ];
 
 export default function PosPage() {
@@ -109,7 +111,7 @@ export default function PosPage() {
       if (row.quantity <= 0) return prev;
       return [
         ...prev,
-        { bookId: row.bookId, title: row.book.title, sku: row.book.sku, unitPrice: tierPrice(row, tier), quantity: 1, available: row.quantity },
+        { bookId: row.bookId, title: row.book.title, sku: row.book.sku, unitPrice: tierPrice(row, tier), minPrice: tierPrice(row, tier), quantity: 1, available: row.quantity },
       ];
     });
   };
@@ -123,8 +125,19 @@ export default function PosPage() {
       }),
     );
 
+  // Prices may be raised at the till but never dropped below the configured price.
   const setPrice = (bookId: number, price: number) =>
-    setCart((prev) => prev.map((l) => (l.bookId === bookId ? { ...l, unitPrice: Math.max(0, price) } : l)));
+    setCart((prev) =>
+      prev.map((l) => {
+        if (l.bookId !== bookId) return l;
+        if (price < l.minPrice) {
+          setError(`${l.title} cannot be sold below ${money(l.minPrice)}.`);
+          return { ...l, unitPrice: l.minPrice };
+        }
+        setError(null);
+        return { ...l, unitPrice: price };
+      }),
+    );
 
   const removeLine = (bookId: number) => setCart((prev) => prev.filter((l) => l.bookId !== bookId));
 
@@ -134,7 +147,7 @@ export default function PosPage() {
     setCart((prev) =>
       prev.map((l) => {
         const row = (stock ?? []).find((s) => s.bookId === l.bookId);
-        return row ? { ...l, unitPrice: tierPrice(row, t) } : l;
+        return row ? { ...l, unitPrice: tierPrice(row, t), minPrice: tierPrice(row, t) } : l;
       }),
     );
   };
@@ -265,8 +278,24 @@ export default function PosPage() {
           <p className="text-sm text-muted-foreground">Sell books, stationery and more.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-          <div className="sm:w-44">
-            <Select2 value={tier} onChange={(v) => changeTier(v as PriceTier)} options={TIER_OPTIONS} searchable={false} />
+          {/* Tier is switched constantly at the till, so it stays one tap away. */}
+          <div className="inline-flex rounded-lg border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Price tier">
+            {TIER_OPTIONS.map((t) => (
+              <button
+                key={t.value}
+                role="tab"
+                aria-selected={tier === t.value}
+                onClick={() => changeTier(t.value)}
+                className={cn(
+                  'flex-1 sm:flex-none px-3.5 py-2 text-sm font-medium rounded-md transition-colors whitespace-nowrap',
+                  tier === t.value
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-background',
+                )}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
           {isAdmin && (
             <div className="sm:w-56">
@@ -416,10 +445,17 @@ export default function PosPage() {
                         <input
                           value={l.unitPrice}
                           onChange={(e) => setPrice(l.bookId, Number(e.target.value) || 0)}
-                          className="w-20 text-right rounded-md border border-input bg-background px-1.5 py-1 text-sm font-mono outline-none focus:border-primary"
+                          title={`Minimum ${money(l.minPrice)}`}
+                          className={cn(
+                            'w-20 text-right rounded-md border bg-background px-1.5 py-1 text-sm font-mono outline-none focus:border-primary',
+                            l.unitPrice > l.minPrice ? 'border-[#1a7a4a]' : 'border-input',
+                          )}
                         />
                       </div>
                     </div>
+                    {l.unitPrice > l.minPrice && (
+                      <div className="mt-1 text-right text-[11px] text-muted-foreground">Set price {money(l.minPrice)}</div>
+                    )}
                     <div className="mt-1.5 text-right text-sm font-semibold font-mono text-foreground">{money(l.quantity * l.unitPrice)}</div>
                   </div>
                 ))}

@@ -12,7 +12,17 @@ import ProductsPage from './pages/ProductsPage';
 import ProductUpsertPage from './pages/ProductUpsertPage';
 import StockPage from './pages/StockPage';
 import StockIntakePage from './pages/StockIntakePage';
+import StockTakePage from './pages/StockTakePage';
 import StockMovementsPage from './pages/StockMovementsPage';
+import CustomersPage from './pages/invoicing/CustomersPage';
+import CustomerUpsertPage from './pages/invoicing/CustomerUpsertPage';
+import InvoicesPage from './pages/invoicing/InvoicesPage';
+import InvoiceEditorPage from './pages/invoicing/InvoiceEditorPage';
+import StatementPage from './pages/invoicing/StatementPage';
+import SuppliersPage from './pages/suppliers/SuppliersPage';
+import GoodsReceiptsPage from './pages/suppliers/GoodsReceiptsPage';
+import GoodsReceiptEditorPage from './pages/suppliers/GoodsReceiptEditorPage';
+import SupplierStatementPage from './pages/suppliers/SupplierStatementPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ExpenseNewPage from './pages/ExpenseNewPage';
 import PnlReportPage from './pages/reports/PnlReportPage';
@@ -64,7 +74,22 @@ export const router = createBrowserRouter([
 
           { path: 'stock', element: <StockPage /> },
           { path: 'stock/intake', element: <StockIntakePage /> },
+          { path: 'stock/take', element: <ManagerOnly><StockTakePage /></ManagerOnly> },
           { path: 'stock/movements', element: <ManagerOnly><StockMovementsPage /></ManagerOnly> },
+
+          { path: 'customers', element: <ManagerOnly><CustomersPage /></ManagerOnly> },
+          { path: 'customers/new', element: <ManagerOnly><CustomerUpsertPage /></ManagerOnly> },
+          { path: 'customers/:id/edit', element: <ManagerOnly><CustomerUpsertPage /></ManagerOnly> },
+          { path: 'customers/:id/statement', element: <ManagerOnly><StatementPage /></ManagerOnly> },
+          { path: 'invoices', element: <ManagerOnly><InvoicesPage /></ManagerOnly> },
+          { path: 'invoices/new', element: <ManagerOnly><InvoiceEditorPage /></ManagerOnly> },
+          { path: 'invoices/:id', element: <ManagerOnly><InvoiceEditorPage /></ManagerOnly> },
+
+          { path: 'suppliers', element: <ManagerOnly><SuppliersPage /></ManagerOnly> },
+          { path: 'suppliers/:id/statement', element: <ManagerOnly><SupplierStatementPage /></ManagerOnly> },
+          { path: 'goods-receipts', element: <ManagerOnly><GoodsReceiptsPage /></ManagerOnly> },
+          { path: 'goods-receipts/new', element: <ManagerOnly><GoodsReceiptEditorPage /></ManagerOnly> },
+          { path: 'goods-receipts/:id', element: <ManagerOnly><GoodsReceiptEditorPage /></ManagerOnly> },
 
           { path: 'expenses', element: <ManagerOnly><ExpensesPage /></ManagerOnly> },
           { path: 'expenses/new', element: <ManagerOnly><ExpenseNewPage /></ManagerOnly> },

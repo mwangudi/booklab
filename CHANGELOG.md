@@ -3,6 +3,80 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-08-11
+
+Trading on credit: invoicing schools, receiving goods from suppliers, and
+statements in both directions.
+
+### Selling to schools and institutions
+
+- **Customers** — schools, institutions, businesses and individuals, each with a
+  contact, KRA PIN, payment terms and an opening balance for debt carried over
+  from before the system. Archive and restore like products.
+- **Invoices** — fully editable while in draft, with lines taken from the
+  catalogue or typed free-hand. Workflow is *draft → issued → delivered → paid*;
+  a delivered or paid invoice locks and can no longer be edited.
+- **Confirming delivery books the goods out as a real sale**, so stock, cost of
+  goods and profit all update through the normal reporting rather than sitting
+  outside it.
+- **Invoice and delivery note PDFs** matching the shop's existing templates —
+  the delivery note deliberately carries no prices, and both end with the
+  *Received by / school stamp / ID no / designation* block.
+- **Customer statements** with a brought-forward balance, every invoice and
+  receipt as a running balance, and ageing across current / 1–30 / 31–60 /
+  61–90 / over 90 days. Printable, exportable, and payments can be recorded
+  against a specific invoice or on account.
+
+### Buying from suppliers
+
+- **Suppliers** with payment terms and an opening balance.
+- **Goods received** — key in the supplier's delivery note as a draft, then post
+  it. Posting adds the quantities to branch stock as attributable intake
+  movements and updates product cost prices so margins stay accurate. A posted
+  receipt cannot be edited or deleted.
+- **Supplier statements** — the mirror image of the customer statement, so the
+  statement a supplier sends can be reconciled against ours line by line, with
+  the same ageing buckets. Payments out are recorded against a receipt or on
+  account.
+
+### VAT
+
+- VAT is **configurable rather than assumed**, because some customers are
+  charged and others are not:
+  - each **customer** has a charge-VAT switch and an inclusive/exclusive default
+  - each **invoice** inherits that and can override it
+  - each **product** carries its own rate, and each **invoice line** can be
+    edited, so zero-rated printed books sit happily on the same invoice as
+    standard-rated stationery
+- Both inclusive and exclusive pricing are supported; the invoice PDF shows a
+  VAT column with subtotal, VAT and total, or states that VAT does not apply.
+
+### Stock
+
+- **Units of measure** on every product — pieces, dozens, reams, quires,
+  cartons, boxes, packets, bundles, rolls, sets, pairs, metres, litres and
+  kilograms — carried through to invoices and delivery notes.
+- **Stock take** — download a count sheet for a branch listing every product and
+  the quantity the system holds, fill in the counted column, and upload it back.
+  Differences are previewed before they are applied and each one becomes an
+  attributable adjustment in the stock history. Unrecognised SKUs are reported
+  and skipped.
+
+### Point of sale
+
+- **Prices can no longer be dropped below the price set by the admin.** The till
+  may charge more, never less, and this is enforced on the server as well as in
+  the till so it cannot be bypassed. Changing a price at the till affects only
+  that sale — it never alters the catalogue or branch price.
+- The retail / wholesale / school selector is now a **tab strip** rather than a
+  dropdown, so switching customer type is a single tap.
+
+### Database migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260811000000_invoicing_and_units` | customers, invoices, invoice items, customer payments, suppliers, goods receipts, supplier payments, product units and VAT rates |
+
 ## 2026-07-25
 
 A large release covering a full system audit, financial controls, payroll,

@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
-import { BOOK_CATEGORIES, PRODUCT_CATEGORIES } from '../lib/categories';
+import { BOOK_CATEGORIES, PRODUCT_CATEGORIES, PRODUCT_UNITS } from '../lib/categories';
 import { num } from '../lib/format';
 import type { Book } from '../types';
 import { Alert, Button, Card, FormField, Input, Loading, PageHeader } from '../components/ui';
@@ -12,6 +12,8 @@ import { Select2 } from '../components/Select2';
 interface FormState {
   title: string;
   category: string;
+  unit: string;
+  vatRate: string;
   author: string;
   isbn: string;
   sku: string;
@@ -21,7 +23,7 @@ interface FormState {
   costPrice: string;
 }
 
-const empty: FormState = { title: '', category: 'Textbook', author: '', isbn: '', sku: '', unitPrice: '', priceWholesale: '', priceSchool: '', costPrice: '' };
+const empty: FormState = { title: '', category: 'Textbook', unit: 'Piece', vatRate: '16', author: '', isbn: '', sku: '', unitPrice: '', priceWholesale: '', priceSchool: '', costPrice: '' };
 
 export default function ProductUpsertPage() {
   const { id } = useParams<{ id: string }>();
@@ -41,6 +43,8 @@ export default function ProductUpsertPage() {
       setForm({
         title: existing.title,
         category: existing.category ?? 'Other',
+        unit: existing.unit || 'Piece',
+        vatRate: String(num(existing.vatRate)),
         author: existing.author ?? '',
         isbn: existing.isbn ?? '',
         sku: existing.sku,
@@ -74,6 +78,8 @@ export default function ProductUpsertPage() {
       title: form.title.trim(),
       sku: form.sku.trim(),
       category: form.category || undefined,
+      unit: form.unit || 'Piece',
+      vatRate: num(form.vatRate),
       author: form.author.trim() || undefined,
       isbn: form.isbn.trim() || undefined,
       unitPrice,
@@ -127,6 +133,17 @@ export default function ProductUpsertPage() {
             </FormField>
             <FormField label="SKU / product code *" hint="Unique internal code used at the till.">
               <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="BK-0001" className="font-mono" />
+            </FormField>
+            <FormField label="Sold in" hint="Pieces, dozens, reams, cartons, metres, litres…">
+              <Select2
+                value={form.unit}
+                onChange={(v) => set('unit', v)}
+                options={PRODUCT_UNITS.map((u) => ({ value: u, label: u }))}
+                searchable={false}
+              />
+            </FormField>
+            <FormField label="VAT rate (%)" hint="Printed books are usually zero-rated; stationery is 16%.">
+              <Input type="number" min="0" max="100" step="0.5" value={form.vatRate} onChange={(e) => set('vatRate', e.target.value)} className="font-mono" />
             </FormField>
           </div>
 

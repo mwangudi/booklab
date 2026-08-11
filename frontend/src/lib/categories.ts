@@ -33,6 +33,35 @@ export const BOOK_CATEGORIES: ReadonlySet<string> = new Set([
   'Children',
 ]);
 
+/** Units a product can be sold in — reams of manilla, cartons of books, metres of material. */
+export const PRODUCT_UNITS = [
+  'Piece',
+  'Dozen',
+  'Ream',
+  'Quire',
+  'Carton',
+  'Box',
+  'Packet',
+  'Bundle',
+  'Roll',
+  'Set',
+  'Pair',
+  'Metre',
+  'Litre',
+  'Kilogram',
+] as const;
+
+export type ProductUnit = (typeof PRODUCT_UNITS)[number];
+
+export const CUSTOMER_TYPES = ['SCHOOL', 'INSTITUTION', 'BUSINESS', 'INDIVIDUAL'] as const;
+export type CustomerType = (typeof CUSTOMER_TYPES)[number];
+
+export const INVOICE_STATUSES = ['DRAFT', 'ISSUED', 'DELIVERED', 'PAID', 'CANCELLED'] as const;
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
+
+export const PAYMENT_CHANNELS = ['CASH', 'MPESA', 'BANK_TRANSFER', 'CHEQUE', 'CARD'] as const;
+export type PaymentChannel = (typeof PAYMENT_CHANNELS)[number];
+
 export const EXPENSE_CATEGORIES = ['RENT', 'SALARY', 'UTILITIES', 'SUPPLIES', 'MARKETING', 'MISC'] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
 
