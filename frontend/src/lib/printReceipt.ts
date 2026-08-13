@@ -6,7 +6,7 @@
 // pass as an original receipt.
 
 import { getReceiptSettings } from './receiptSettings';
-import { PRINT_LOGO_BW_URL } from './printLogo';
+import { PRINT_LOGO_BW_URL, loadPrintLogoBw } from './printLogo';
 
 export interface ReceiptItem {
   title: string;
@@ -46,7 +46,7 @@ const money = (n: number) => 'KES ' + Math.round(n).toLocaleString('en-KE');
 
 const SHOP_TEL = 'Tel: 0728 492 372';
 
-function buildHtml(d: ReceiptData): string {
+function buildHtml(d: ReceiptData, logoSrc: string = PRINT_LOGO_BW_URL): string {
   const cfg = getReceiptSettings();
   const paper = cfg.paperWidth;
   // Thermal printers cannot print to the edge of the roll. These are the usual
@@ -117,7 +117,7 @@ function buildHtml(d: ReceiptData): string {
   </style></head>
   <body>
     <div class="head">
-      <img class="logo" src="${PRINT_LOGO_BW_URL}" alt="">
+      <img class="logo" src="${logoSrc}" alt="">
       <div class="headtext">
         <div class="brand">BOOKLAB BOOKSHOP</div>
         <div class="muted">${esc(SHOP_TEL)}</div>
@@ -159,6 +159,12 @@ function imagesReady(doc: Document): Promise<void> {
 
 /** Render the receipt in a hidden iframe and open the print dialog. */
 export function printReceipt(data: ReceiptData): void {
+  // Fetched in this document, where the service worker can serve it from cache,
+  // then handed to the iframe as data.
+  void loadPrintLogoBw().then((logo) => writeAndPrint(data, logo ?? PRINT_LOGO_BW_URL));
+}
+
+function writeAndPrint(data: ReceiptData, logoSrc: string): void {
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;';
@@ -187,7 +193,7 @@ export function printReceipt(data: ReceiptData): void {
   const doc = iframe.contentWindow?.document;
   if (!doc) return cleanup();
   doc.open();
-  doc.write(buildHtml(data));
+  doc.write(buildHtml(data, logoSrc));
   doc.close();
 }
 

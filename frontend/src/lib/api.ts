@@ -5,10 +5,15 @@
 // - Throws `ApiError` on non-2xx with the parsed body (when JSON) attached.
 // - On 401, clears the stored auth and dispatches `bookshop:auth-change` so the
 //   useAuth hook can react and (UI-side) we can redirect to /login.
+// - Any answer from the server refills the offline trading budget.
+
+import { markSynced } from './offlineBudget';
 
 const TOKEN_KEY = 'bookshop_token';
 const USER_KEY = 'bookshop_user';
 export const AUTH_EVENT = 'bookshop:auth-change';
+/** Fired when the connection or the offline budget changes, so the UI can react. */
+export const OFFLINE_EVENT = 'bookshop:offline-change';
 
 export class ApiError extends Error {
   status: number;
@@ -58,6 +63,10 @@ async function request<T>(method: Method, path: string, body?: unknown, init?: R
     body: body !== undefined ? JSON.stringify(body) : undefined,
     ...init,
   });
+
+  // The server answered, so the till is reconciled and the offline clock resets.
+  markSynced();
+  window.dispatchEvent(new Event(OFFLINE_EVENT));
 
   if (res.status === 401) {
     setToken(null);

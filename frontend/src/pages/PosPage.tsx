@@ -10,6 +10,8 @@ import { PAYMENT_METHODS, PRICE_TIERS, type PaymentMethod, type PriceTier } from
 import { printReceipt, type ReceiptData } from '../lib/printReceipt';
 import { getReceiptSettings } from '../lib/receiptSettings';
 import { reprintSale } from '../lib/reprint';
+import { useOffline } from '../lib/useOffline';
+import { queueSale } from '../lib/offlineQueue';
 import type { Sale, Stock } from '../types';
 import { BranchSelect } from '../components/BranchSelect';
 import { Alert, Button, Card, EmptyState, Input, Modal, Pill } from '../components/ui';
@@ -63,7 +65,7 @@ export default function PosPage() {
   const [discountReason, setDiscountReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ id: number; total: number; receipt: ReceiptData } | null>(null);
+  const [done, setDone] = useState<{ id: number | string; total: number; receipt: ReceiptData } | null>(null);
   const [mpesa, setMpesa] = useState<MpesaState>({ stage: 'idle' });
 
   const stockPath = branchId ? `/api/stock/branch/${branchId}` : null;
@@ -71,6 +73,7 @@ export default function PosPage() {
   const { data: mpesaCfg } = useApi<{ mock: boolean; env: string }>('/api/mpesa/config');
 
   const branch = branches?.find((b) => b.id === branchId) ?? null;
+  const offline = useOffline();
 
   const pollRef = useRef<number | null>(null);
   const triesRef = useRef(0);
@@ -177,19 +180,24 @@ export default function PosPage() {
     const lines = cart.map((l) => ({ title: l.title, qty: l.quantity, unitPrice: l.unitPrice }));
     const paidCash = method === 'CASH' && cashGiven ? num(cashGiven) : undefined;
     const totalNow = total;
-    try {
-      const sale = await api.post<Sale>('/api/sales', {
-        branchId: isAdmin ? branchId : undefined,
-        paymentMethod: method,
-        priceTier: tier,
-        discount: discountAmount,
-        discountReason: discountAmount > 0 ? discountReason.trim() || undefined : undefined,
-        mpesaRef: method === 'MPESA' ? mpesaRef ?? undefined : undefined,
-        items: cart.map((l) => ({ bookId: l.bookId, quantity: l.quantity, unitPrice: l.unitPrice })),
-      });
+    // The till decides the id, so a sale sent twice on a flaky line is only
+    // ever rung up once.
+    const saleUuid = crypto.randomUUID();
+    const payload = {
+      uuid: saleUuid,
+      branchId: isAdmin ? branchId : undefined,
+      paymentMethod: method,
+      priceTier: tier,
+      discount: discountAmount,
+      discountReason: discountAmount > 0 ? discountReason.trim() || undefined : undefined,
+      mpesaRef: method === 'MPESA' ? mpesaRef ?? undefined : undefined,
+      items: cart.map((l) => ({ bookId: l.bookId, quantity: l.quantity, unitPrice: l.unitPrice })),
+    };
+
+    const finish = (receiptNo: string | number, saleTotal: number) => {
       const receipt: ReceiptData = {
-        receiptNo: sale.id,
-        dateTime: dateTime(sale.createdAt ?? new Date().toISOString()),
+        receiptNo,
+        dateTime: dateTime(new Date().toISOString()),
         branchName: branch?.name,
         branchLocation: branch?.location,
         cashier: user?.name,
@@ -198,17 +206,45 @@ export default function PosPage() {
         items: lines,
         subtotal: totalNow + discountAmount,
         discount: discountAmount,
-        total: num(sale.total),
+        total: saleTotal,
         cashGiven: paidCash,
         change: paidCash != null ? paidCash - totalNow : undefined,
       };
-      setDone({ id: sale.id, total: num(sale.total), receipt });
+      setDone({ id: receiptNo, total: saleTotal, receipt });
       if (getReceiptSettings().autoPrint) printReceipt(receipt);
       setCart([]);
       setPhone('');
       setCashGiven('');
       setDiscount('');
       setDiscountReason('');
+    };
+
+    // No connection: keep the sale on the device and send it on reconnect. The
+    // receipt is stamped with the local reference until the shop assigns a number.
+    if (!navigator.onLine) {
+      try {
+        await queueSale({
+          uuid: saleUuid,
+          payload,
+          branchId: branchId ?? 0,
+          total: totalNow,
+          createdAt: Date.now(),
+          attempts: 0,
+        });
+        finish(`OFFLINE-${saleUuid.slice(0, 8).toUpperCase()}`, totalNow);
+        offline.refreshPending();
+      } catch {
+        setError('Could not save the sale on this device. Do not hand over the goods.');
+        throw new Error('offline queue failed');
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
+    try {
+      const sale = await api.post<Sale>('/api/sales', payload);
+      finish(sale.id, num(sale.total));
       refresh();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not complete the sale.');
@@ -273,6 +309,14 @@ export default function PosPage() {
     if (cart.length === 0) return;
     if (isAdmin && !branchId) {
       setError('Select a branch first.');
+      return;
+    }
+    if (offline.expired) {
+      setError('This device has been offline too long. Reconnect to the shop before selling again.');
+      return;
+    }
+    if (method === 'MPESA' && !offline.online) {
+      setError('M-Pesa needs a connection. Take cash, or wait until you are back online.');
       return;
     }
     if (method === 'MPESA') {
@@ -420,13 +464,16 @@ export default function PosPage() {
                   >
                     <Printer className="h-3.5 w-3.5" /> Print receipt
                   </button>
-                  <button
-                    onClick={() => reprintSale(done.id, user?.name)}
-                    className="inline-flex items-center gap-1 text-xs font-medium text-[#1a7a4a] hover:underline"
-                    title="Prints a copy stamped DUPLICATE and records it in the audit log"
-                  >
-                    <Printer className="h-3.5 w-3.5" /> Duplicate copy
-                  </button>
+                  {/* A sale still queued on the device has no shop reference to reprint against. */}
+                  {typeof done.id === 'number' && (
+                    <button
+                      onClick={() => reprintSale(done.id as number, user?.name)}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-[#1a7a4a] hover:underline"
+                      title="Prints a copy stamped DUPLICATE and records it in the audit log"
+                    >
+                      <Printer className="h-3.5 w-3.5" /> Duplicate copy
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -560,7 +607,7 @@ export default function PosPage() {
                 <span className="font-mono">{money(total)}</span>
               </div>
 
-              <Button className="w-full" size="md" onClick={checkout} loading={submitting} disabled={cart.length === 0}>
+              <Button className="w-full" size="md" onClick={checkout} loading={submitting} disabled={cart.length === 0 || offline.expired}>
                 {method === 'MPESA' ? (
                   <>
                     <Smartphone className="h-4 w-4" /> Charge via M-Pesa

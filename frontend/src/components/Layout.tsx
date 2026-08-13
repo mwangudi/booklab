@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { logout, useAuth, type Role } from '../lib/auth';
 import { cn } from '../lib/utils';
+import { ConnectionBar } from './ConnectionBar';
 
 interface NavItem {
   to: string;
@@ -335,7 +336,7 @@ export default function Layout() {
 
       <div className="lg:pl-64">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center gap-2 sm:gap-3 border-b border-border bg-card/80 backdrop-blur px-3 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-14 sm:h-16 items-center gap-2 sm:gap-3 border-b border-border bg-card/80 backdrop-blur px-3 sm:px-6 safe-top">
           <button
             className="lg:hidden grid h-10 w-10 -ml-1 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
             onClick={() => setMobileOpen(true)}
@@ -368,6 +369,7 @@ export default function Layout() {
 
         {/* pb-24 leaves room for the mobile bottom bar */}
         <main key={location.pathname} className="p-3 sm:p-6 pb-24 lg:pb-6">
+          <ConnectionBar />
           <Outlet />
         </main>
       </div>

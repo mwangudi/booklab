@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
 import { SYNC_ROLE, enqueueOutbox } from '../lib/outbox.js';
@@ -14,6 +15,12 @@ const saleSchema = z.object({
   items: z
     .array(z.object({ bookId: z.number().int(), quantity: z.number().int().positive(), unitPrice: z.number().nonnegative() }))
     .min(1),
+  /**
+   * Supplied by a till that recorded this sale offline. Replaying the same id
+   * returns the sale that already exists instead of ringing it up again, so a
+   * retry on a flaky connection cannot charge the customer twice.
+   */
+  uuid: z.string().uuid().optional(),
 });
 
 const voidSchema = z.object({ reason: z.string().trim().min(3).max(200) });
@@ -37,6 +44,15 @@ export async function saleRoutes(app: FastifyInstance) {
   app.post('/', async (req, reply) => {
     const body = saleSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
+
+    if (body.uuid) {
+      const already = await app.prisma.sale.findUnique({
+        where: { uuid: body.uuid },
+        include: { items: { include: { book: true } }, branch: true, user: true },
+      });
+      if (already) return reply.code(200).send(already);
+    }
+
     const subtotal = round2(body.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0));
     const discount = round2(Math.min(body.discount, subtotal));
     if (body.discount > subtotal + 0.01) {
@@ -73,9 +89,12 @@ export async function saleRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: `These items are priced below the set price: ${underpriced.join('; ')}.` });
     }
 
-    const sale = await app.prisma.$transaction(async (tx) => {
-      const created = await tx.sale.create({
+    let alreadyExisted = false;
+    const sale = await app.prisma
+      .$transaction(async (tx) => {
+        const created = await tx.sale.create({
         data: {
+          uuid: body.uuid,
           branchId,
           userId: req.user.id,
           originBranchId: branchId,
@@ -144,7 +163,26 @@ export async function saleRoutes(app: FastifyInstance) {
         });
       }
       return created;
-    });
+      })
+      .catch(async (e) => {
+        // Two replays of the same offline sale can both pass the existence check
+        // above and race to here. The unique index is the real arbiter: whichever
+        // loses returns the sale the winner created rather than failing.
+        if (body.uuid && e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+          const existing = await app.prisma.sale.findUnique({
+            where: { uuid: body.uuid },
+            include: { items: { include: { book: true } }, branch: true, user: true },
+          });
+          if (existing) {
+            alreadyExisted = true;
+            return existing;
+          }
+        }
+        throw e;
+      });
+
+    // A replay must not be audited or counted a second time.
+    if (alreadyExisted) return reply.code(200).send(sale);
 
     await writeAudit(app.prisma, {
       ...actor(req),

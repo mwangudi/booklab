@@ -307,10 +307,11 @@ Then trade for a week on one branch before moving the others.
 
 Honest list of what is not finished:
 
-- **Mobile PWA** — requested, not started. Phones cannot install the app or work
-  offline yet.
 - **Branch laptops have never been deployed.** The runtime is built and proven
   against production, but `install-services.ps1` has not been run on real
   hardware.
+- **A phone must be online once before it can sell offline.** The catalogue is
+  cached on first load, so a device straight out of the box needs a connection
+  to fetch it. In practice staff sign in at the shop, which is enough.
 - **Payroll and M-Pesa do not sync** to a branch. Payroll is head-office work and
   M-Pesa needs a connection anyway, so neither blocks trading.

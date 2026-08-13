@@ -5,6 +5,38 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
 
 ## 2026-08-14
 
+### The app installs on a phone and keeps selling offline
+
+Booklab is now a progressive web app. On a phone it can be installed to the home
+screen and opened like any other app — full screen, its own icon, no browser bar.
+
+- **The app shell is cached**, so it opens without a connection instead of
+  showing a browser error. The catalogue, stock and branch list a till last saw
+  are kept too, so there is something to sell from.
+- **Sales made offline are held on the device** and sent when the connection
+  returns. Each one carries the id it will be created with, so a sale that is
+  retried on a flaky line is only ever rung up once — the server returns the
+  existing sale rather than charging the customer again.
+- **Two hours of trading, then it must reconnect.** The longer a till runs blind
+  the further its stock drifts from the shop's and the more unsent money sits on
+  one phone, so past the budget selling is paused until the device has
+  reconciled. The countdown is on screen, and the clock runs from the last
+  successful contact rather than from when the signal dropped.
+- The strip at the top of every page shows what is unsent and offers to send it,
+  and **M-Pesa is refused offline** rather than failing at the customer — it
+  needs Safaricom, so an outage means cash.
+- **Updates are offered, not forced.** A till must not reload itself mid-sale, so
+  a new version raises a prompt and the user chooses when to take it. The app
+  checks hourly, which matters for a device left open all day.
+- Phone polish: safe-area padding so it paints correctly under a notch, no
+  rubber-band scrolling, no accidental double-tap zoom, and 16px inputs so iOS
+  does not zoom the page when a field takes focus.
+
+A receipt printed offline keeps its logo: the receipt renders in an iframe the
+service worker does not control, so the image is embedded rather than fetched.
+A sale still queued shows an `OFFLINE-` reference and cannot be reprinted as a
+duplicate, because the shop has not issued it a number yet.
+
 ### Receipts match the letterhead
 
 The receipt header now mirrors the invoice: the logo sits to the left with the

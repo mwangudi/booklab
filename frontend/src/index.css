@@ -44,6 +44,29 @@ body {
   color: hsl(var(--foreground));
   font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
+  /* Installed on a phone the app owns the whole screen, so it must not rubber-band
+     like a web page or let a stray double-tap zoom the till mid-sale. */
+  overscroll-behavior-y: none;
+  touch-action: manipulation;
+}
+
+/* Painting under the notch is what makes it feel like an app rather than a tab. */
+@supports (padding: env(safe-area-inset-top)) {
+  .safe-top { padding-top: env(safe-area-inset-top); }
+  .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
+  .safe-x {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* iOS zooms the page when a field smaller than 16px takes focus. */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
 
 /* Thin, unobtrusive scrollbars. */
