@@ -9,8 +9,9 @@ import { PRINT_LOGO_RATIO, loadPrintLogo } from './printLogo';
 
 const BRAND = 'BOOKLAB BOOKSHOP';
 const BRAND_RGB: [number, number, number] = [180, 83, 9];
-const TAGLINE = 'For Quality, For You';
-const CONTACT = 'Luanda · Kapsabet · Mumias | 0728 492 372 | booklabbookshop.co.ke';
+const TEL = 'Tel: 0728 492 372';
+const KRA_PIN = 'KRA PIN: A003869623J';
+const CONTACT = 'Luanda · Kapsabet · Mumias | booklabbookshop.co.ke';
 
 const money = (n: unknown) => Math.round(num(n)).toLocaleString('en-KE');
 
@@ -26,44 +27,42 @@ const dmy = (iso: string | Date | null | undefined) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-/** Shared letterhead; returns the y position to continue from. */
+/** Shared letterhead: logo on the left, shop details centred. Returns the y to continue from. */
 function header(doc: jsPDF, title: string, logo: string | null): number {
   const w = doc.internal.pageSize.getWidth();
-  let y: number;
 
   if (logo) {
-    // The logo already carries the shop name and tagline, so they are not repeated.
-    const lw = 130;
-    const lh = lw * PRINT_LOGO_RATIO;
-    doc.addImage(logo, 'PNG', (w - lw) / 2, 24, lw, lh);
-    y = 24 + lh + 14;
-  } else {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(20);
-    doc.setTextColor(...BRAND_RGB);
-    doc.text(BRAND, w / 2, 52, { align: 'center' });
-
-    doc.setFont('helvetica', 'italic');
-    doc.setFontSize(9);
-    doc.setTextColor(90, 90, 90);
-    doc.text(TAGLINE, w / 2, 66, { align: 'center' });
-    y = 78;
+    const lw = 96;
+    doc.addImage(logo, 'PNG', 40, 26, lw, lw * PRINT_LOGO_RATIO);
   }
 
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(...BRAND_RGB);
+  doc.text(BRAND, w / 2, 52, { align: 'center' });
+
+  doc.setFontSize(14);
+  doc.setTextColor(40, 40, 40);
+  doc.text(TEL, w / 2, 72, { align: 'center' });
+
   doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(90, 90, 90);
+  doc.text(KRA_PIN, w / 2, 87, { align: 'center' });
+
   doc.setFontSize(8);
   doc.setTextColor(110, 110, 110);
-  doc.text(CONTACT, w / 2, y, { align: 'center' });
+  doc.text(CONTACT, w / 2, 100, { align: 'center' });
 
   doc.setDrawColor(...BRAND_RGB);
   doc.setLineWidth(1.2);
-  doc.line(40, y + 8, w - 40, y + 8);
+  doc.line(40, 110, w - 40, 110);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
   doc.setTextColor(40, 40, 40);
-  doc.text(title, w / 2, y + 28, { align: 'center' });
-  return y + 42;
+  doc.text(title, w / 2, 130, { align: 'center' });
+  return 144;
 }
 
 /** RECEIVED BY / SCHOOL STAMP / ID NO / DESIGNATION block. */
