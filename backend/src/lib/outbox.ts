@@ -1,4 +1,4 @@
-import type { Prisma, PrismaClient } from '@prisma/client';
+import type { Prisma, PrismaClient, StockMoveType } from '@prisma/client';
 
 /**
  * Sync role of this runtime.
@@ -22,4 +22,44 @@ export async function enqueueOutbox(
   await tx.outbox.create({
     data: { entity, entityUuid, op, payload: JSON.stringify(payload) },
   });
+}
+
+/**
+ * Create a stock movement and queue it for the cloud in one step. Every stock
+ * change must go through here — a movement written directly would never reach
+ * the cloud from a branch install.
+ */
+export async function recordMovement(
+  tx: Prisma.TransactionClient,
+  data: {
+    branchId: number;
+    bookId: number;
+    delta: number;
+    type: StockMoveType;
+    note?: string | null;
+    userId?: number | null;
+    originBranchId?: number | null;
+  },
+) {
+  const move = await tx.stockMovement.create({
+    data: {
+      branchId: data.branchId,
+      bookId: data.bookId,
+      delta: data.delta,
+      type: data.type,
+      note: data.note ?? null,
+      userId: data.userId ?? null,
+      originBranchId: data.originBranchId ?? data.branchId,
+    },
+    include: { branch: { select: { uuid: true } }, book: { select: { uuid: true } } },
+  });
+  await enqueueOutbox(tx, 'stockMovement', move.uuid, {
+    branchUuid: move.branch.uuid,
+    bookUuid: move.book.uuid,
+    delta: move.delta,
+    type: move.type,
+    note: move.note,
+    createdAt: move.createdAt,
+  });
+  return move;
 }

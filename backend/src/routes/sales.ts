@@ -126,8 +126,12 @@ export async function saleRoutes(app: FastifyInstance) {
         await enqueueOutbox(tx, 'sale', created.uuid, {
           branchUuid: branch?.uuid,
           userUuid: user?.uuid,
+          subtotal,
+          discount,
+          discountReason: created.discountReason,
           total,
           paymentMethod: created.paymentMethod,
+          priceTier: created.priceTier,
           mpesaRef: created.mpesaRef,
           createdAt: created.createdAt,
           items: created.items.map((i) => ({

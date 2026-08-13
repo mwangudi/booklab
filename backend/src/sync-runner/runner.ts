@@ -40,7 +40,12 @@ export async function pushOutbox(branch: PrismaClient, cloudBase: string, token:
 
 const toDate = (v: unknown): Date | null => (v ? new Date(v as string) : null);
 
-export async function pullMaster(branch: PrismaClient, cloudBase: string, token: string) {
+/**
+ * `applyStock` writes the cloud's on-hand figures down onto the branch. Only safe
+ * once the outbox has drained — until the cloud has seen this branch's sales, its
+ * numbers are stale and would silently undo them.
+ */
+export async function pullMaster(branch: PrismaClient, cloudBase: string, token: string, applyStock = false) {
   const state = await branch.syncState.findUnique({ where: { entity: 'master' } });
   const since = state?.lastPulledAt?.toISOString();
   const url = new URL(`${cloudBase}/api/sync/pull`);
@@ -60,10 +65,17 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
   counts.branch = (data.entities.branch ?? []).length;
 
   for (const b of data.entities.book ?? []) {
+    const fields = {
+      title: b.title, author: b.author, isbn: b.isbn, sku: b.sku, category: b.category,
+      unit: b.unit ?? 'Piece', vatRate: b.vatRate ?? 16,
+      unitPrice: b.unitPrice, priceWholesale: b.priceWholesale ?? null, priceSchool: b.priceSchool ?? null,
+      costPrice: b.costPrice,
+      updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt),
+    };
     await branch.book.upsert({
       where: { uuid: b.uuid },
-      create: { uuid: b.uuid, title: b.title, author: b.author, isbn: b.isbn, sku: b.sku, category: b.category, unitPrice: b.unitPrice, costPrice: b.costPrice, createdAt: toDate(b.createdAt)!, updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt) },
-      update: { title: b.title, author: b.author, isbn: b.isbn, sku: b.sku, category: b.category, unitPrice: b.unitPrice, costPrice: b.costPrice, updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt) },
+      create: { uuid: b.uuid, createdAt: toDate(b.createdAt)!, ...fields },
+      update: fields,
     });
   }
   counts.book = (data.entities.book ?? []).length;
@@ -77,6 +89,23 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
     });
   }
   counts.user = (data.entities.user ?? []).length;
+
+  counts.stock = 0;
+  for (const s of data.entities.stock ?? []) {
+    const [b, bk] = await Promise.all([
+      branch.branch.findUnique({ where: { uuid: s.branchUuid }, select: { id: true } }),
+      branch.book.findUnique({ where: { uuid: s.bookUuid }, select: { id: true } }),
+    ]);
+    if (!b || !bk) continue;
+    const existing = await branch.stock.findUnique({ where: { branchId_bookId: { branchId: b.id, bookId: bk.id } }, select: { id: true } });
+    if (!existing) {
+      await branch.stock.create({ data: { branchId: b.id, bookId: bk.id, quantity: s.quantity, price: s.price ?? null } });
+      counts.stock += 1;
+    } else if (applyStock) {
+      await branch.stock.update({ where: { id: existing.id }, data: { quantity: s.quantity, price: s.price ?? null } });
+      counts.stock += 1;
+    }
+  }
 
   await branch.syncState.upsert({
     where: { entity: 'master' },

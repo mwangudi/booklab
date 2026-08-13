@@ -75,19 +75,41 @@ export async function syncRoutes(app: FastifyInstance) {
     const take = Math.min(Number(limit) || 500, 1000);
     const where = sinceDate ? { updatedAt: { gt: sinceDate } } : {};
     const serverTime = new Date().toISOString();
+    const branchId = tokenBranchId(req);
 
-    const [branches, books, users] = await Promise.all([
+    const [branches, books, users, stock] = await Promise.all([
       app.prisma.branch.findMany({ where, take, orderBy: { updatedAt: 'asc' } }),
       app.prisma.book.findMany({ where, take, orderBy: { updatedAt: 'asc' } }),
       app.prisma.user.findMany({ where, take, orderBy: { updatedAt: 'asc' }, include: { branch: { select: { uuid: true } } } }),
+      // Stock carries no `updatedAt` — it is derived from movements — so the
+      // branch gets a full snapshot of its own shelves, never another branch's.
+      branchId == null
+        ? Promise.resolve([])
+        : app.prisma.stock.findMany({
+            where: { branchId },
+            orderBy: { id: 'asc' },
+            include: { branch: { select: { uuid: true } }, book: { select: { uuid: true } } },
+          }),
     ]);
 
     return {
       serverTime,
       entities: {
         branch: branches.map((b) => ({ uuid: b.uuid, name: b.name, location: b.location, createdAt: b.createdAt, updatedAt: b.updatedAt, deletedAt: b.deletedAt })),
-        book: books.map((b) => ({ uuid: b.uuid, title: b.title, author: b.author, isbn: b.isbn, sku: b.sku, category: b.category, unitPrice: String(b.unitPrice), costPrice: String(b.costPrice), createdAt: b.createdAt, updatedAt: b.updatedAt, deletedAt: b.deletedAt })),
+        book: books.map((b) => ({
+          uuid: b.uuid, title: b.title, author: b.author, isbn: b.isbn, sku: b.sku, category: b.category,
+          unit: b.unit, vatRate: String(b.vatRate),
+          unitPrice: String(b.unitPrice),
+          priceWholesale: b.priceWholesale == null ? null : String(b.priceWholesale),
+          priceSchool: b.priceSchool == null ? null : String(b.priceSchool),
+          costPrice: String(b.costPrice),
+          createdAt: b.createdAt, updatedAt: b.updatedAt, deletedAt: b.deletedAt,
+        })),
         user: users.map((u) => ({ uuid: u.uuid, email: u.email, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchUuid: u.branch?.uuid ?? null, createdAt: u.createdAt, updatedAt: u.updatedAt, deletedAt: u.deletedAt })),
+        stock: stock.map((s) => ({
+          branchUuid: s.branch.uuid, bookUuid: s.book.uuid, quantity: s.quantity,
+          price: s.price == null ? null : String(s.price),
+        })),
       },
     };
   });
@@ -128,7 +150,14 @@ async function ingestSale(tx: Tx, uuid: string, data: Record<string, any>, allow
 
   await tx.sale.create({
     data: {
-      uuid, branchId, userId, originBranchId: branchId, total: data.total, paymentMethod: data.paymentMethod ?? 'CASH', mpesaRef: data.mpesaRef ?? null,
+      uuid, branchId, userId, originBranchId: branchId,
+      subtotal: data.subtotal ?? data.total,
+      discount: data.discount ?? 0,
+      discountReason: data.discountReason ?? null,
+      total: data.total,
+      paymentMethod: data.paymentMethod ?? 'CASH',
+      priceTier: data.priceTier ?? 'RETAIL',
+      mpesaRef: data.mpesaRef ?? null,
       createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
       items: { create: items.map((r) => ({ uuid: r.uuid, bookId: r.bookId, quantity: r.quantity, unitPrice: r.unitPrice, costPrice: r.costPrice })) },
     },

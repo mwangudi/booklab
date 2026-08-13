@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
-import { SYNC_ROLE, enqueueOutbox } from '../lib/outbox.js';
+import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
 import { actor, auditRequest, writeAudit } from '../lib/audit.js';
 
 const stockSetSchema = z.object({ branchId: z.number().int(), bookId: z.number().int(), quantity: z.number().int(), note: z.string().max(200).optional() });
@@ -99,16 +99,13 @@ export async function stockRoutes(app: FastifyInstance) {
         update: { quantity: body.quantity },
       });
       if (delta !== 0) {
-        await tx.stockMovement.create({
-          data: {
-            branchId,
-            bookId: body.bookId,
-            delta,
-            type: 'ADJUST',
-            note: body.note?.trim() || `Stock take: ${before} -> ${body.quantity}`,
-            userId: req.user.id,
-            originBranchId: branchId,
-          },
+        await recordMovement(tx, {
+          branchId,
+          bookId: body.bookId,
+          delta,
+          type: 'ADJUST',
+          note: body.note?.trim() || `Stock take: ${before} -> ${body.quantity}`,
+          userId: req.user.id,
         });
         await writeAudit(tx, {
           ...actor(req),
@@ -149,25 +146,12 @@ export async function stockRoutes(app: FastifyInstance) {
     const body = intakeSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
     const result = await app.prisma.$transaction(async (tx) => {
-      const move = await tx.stockMovement.create({
-        data: { branchId, bookId: body.bookId, delta: body.quantity, type: 'INTAKE', originBranchId: branchId, userId: req.user.id },
-        include: { book: { select: { uuid: true } }, branch: { select: { uuid: true } } },
-      });
+      await recordMovement(tx, { branchId, bookId: body.bookId, delta: body.quantity, type: 'INTAKE', userId: req.user.id });
       const stock = await tx.stock.upsert({
         where: { branchId_bookId: { branchId, bookId: body.bookId } },
         create: { branchId, bookId: body.bookId, quantity: body.quantity },
         update: { quantity: { increment: body.quantity } },
       });
-      if (SYNC_ROLE === 'branch') {
-        await enqueueOutbox(tx, 'stockMovement', move.uuid, {
-          branchUuid: move.branch.uuid,
-          bookUuid: move.book.uuid,
-          delta: move.delta,
-          type: move.type,
-          note: move.note,
-          createdAt: move.createdAt,
-        });
-      }
       return stock;
     });
     await auditRequest(app.prisma, req, {
@@ -235,16 +219,13 @@ export async function stockRoutes(app: FastifyInstance) {
           create: { branchId, bookId, quantity: item.counted },
           update: { quantity: item.counted },
         });
-        await tx.stockMovement.create({
-          data: {
-            branchId,
-            bookId,
-            delta,
-            type: 'ADJUST',
-            note: `${note}: ${before} -> ${item.counted}`,
-            userId: req.user.id,
-            originBranchId: branchId,
-          },
+        await recordMovement(tx, {
+          branchId,
+          bookId,
+          delta,
+          type: 'ADJUST',
+          note: `${note}: ${before} -> ${item.counted}`,
+          userId: req.user.id,
         });
       });
       results.adjusted += 1;
@@ -319,11 +300,11 @@ export async function stockRoutes(app: FastifyInstance) {
         update: { quantity: { increment: body.quantity } },
       });
       const note = body.note?.trim() || 'Branch transfer';
-      await tx.stockMovement.create({
-        data: { branchId: fromBranchId, bookId: body.bookId, delta: -body.quantity, type: 'TRANSFER_OUT', note, userId: req.user.id, originBranchId: fromBranchId },
+      await recordMovement(tx, {
+        branchId: fromBranchId, bookId: body.bookId, delta: -body.quantity, type: 'TRANSFER_OUT', note, userId: req.user.id, originBranchId: fromBranchId,
       });
-      await tx.stockMovement.create({
-        data: { branchId: body.toBranchId, bookId: body.bookId, delta: body.quantity, type: 'TRANSFER_IN', note, userId: req.user.id, originBranchId: fromBranchId },
+      await recordMovement(tx, {
+        branchId: body.toBranchId, bookId: body.bookId, delta: body.quantity, type: 'TRANSFER_IN', note, userId: req.user.id, originBranchId: fromBranchId,
       });
       await writeAudit(tx, {
         ...actor(req),

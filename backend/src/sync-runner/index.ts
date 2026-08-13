@@ -10,9 +10,12 @@ const LOOP = process.env.SYNC_LOOP === '1';
 const INTERVAL = Number(process.env.SYNC_INTERVAL_MS ?? 60000);
 
 async function cycle(branch: PrismaClient) {
-  const pull = await pullMaster(branch, CLOUD, TOKEN);
+  // Push first: the cloud's stock figures are only trustworthy once it has seen
+  // everything this branch sold offline.
   const push = await pushOutbox(branch, CLOUD, TOKEN);
-  return { pull, push };
+  const pending = await branch.outbox.count({ where: { syncedAt: null } });
+  const pull = await pullMaster(branch, CLOUD, TOKEN, pending === 0);
+  return { push, pull, pending };
 }
 
 async function main() {

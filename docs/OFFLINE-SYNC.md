@@ -32,7 +32,54 @@ Branch desktop (offline)                     Cloud (master)
 |--------|-----------|-----|
 | Sale, StockMovement, Expense | branch → cloud | outbox → `POST /api/sync/push`, idempotent by uuid |
 | Book, Branch, User | cloud → branch | `GET /api/sync/pull?since=`, upsert by uuid |
-| Stock on-hand | derived both sides | recomputed from movement/sale events |
+| Stock on-hand | cloud → branch (snapshot) | full snapshot of **that branch only**; see below |
+
+### Why stock is a snapshot, not a cursor
+`Stock` is a derived table with no `uuid` or `updatedAt`, so it cannot be pulled
+incrementally. The cloud sends the branch its complete on-hand list every pull.
+
+The runner **pushes before it pulls**, and only writes cloud quantities down when
+the outbox has fully drained. Until the cloud has seen the sales a branch made
+offline, its numbers are stale, and applying them would silently undo those
+sales. Rows the branch has never seen are always created, so a fresh install
+seeds correctly.
+
+## What is verified
+Exercised end to end against production on 2026-08-13:
+
+- minting a branch token, and `pull` returning branches, books (including `unit`,
+  `vatRate` and the wholesale/school tier prices), users and that branch's stock
+- offline login against the pulled bcrypt hash
+- a sale **and** a stock intake recorded offline, then pushed on reconnect, with
+  the discount, price tier, cost snapshot and timestamps intact
+- pushing the same batch twice — the second is reported `duplicate` and creates
+  nothing
+- stock arithmetic across the boundary: 142 on hand − 3 sold + 5 received = 144
+  on both sides
+- a branch token cannot read or write another branch's data, and an ordinary
+  staff token cannot reach the sync endpoints at all (403 / 401)
+
+Two helper scripts keep this honest:
+`node scripts/branch-query-test.mjs` checks every query shape the routes rely on
+against SQLite, and `CLOUD_URL=… node scripts/branch-cycle-test.mjs <token>`
+replays the whole offline→online cycle. The cycle test writes a real sale to the
+cloud you point it at and prints the uuids to remove afterwards.
+
+## Not yet syncing
+`node scripts/sync-readiness.mjs` lists which models carry the sync columns.
+These have **no `uuid`**, so they cannot travel between branch and cloud yet:
+
+> Stock*, AuditLog, MpesaPayment, PayrollRun, Payslip, PayrollSetting,
+> CustomerPayment, **Invoice**, **InvoiceItem**, SupplierPayment,
+> **GoodsReceipt**, GoodsReceiptItem
+
+\* Stock is deliberate — it is derived, and is snapshotted instead.
+
+Invoices, delivery notes and goods received therefore still need a connection.
+Giving them offline support means adding `uuid` (plus `updatedAt`) to those
+models and extending `push`/`pull`. Document numbering also needs attention:
+`INV-0007` is derived from the cloud autoincrement, so two offline branches would
+mint the same number — branches need their own prefix or range.
 
 ## Branch runtime
 1. `SYNC_ROLE=branch` makes every write also append a portable event to the **Outbox**.
