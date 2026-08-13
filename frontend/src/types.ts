@@ -325,6 +325,8 @@ export interface Stock {
   price: Money | null;
   /** Units sold at this branch in the recent window; used to rank the till catalogue. */
   sold?: number;
+  /** Quantity corrections the signed-in user has already made to this product today. */
+  adjustedToday?: number;
   book: Book;
 }
 

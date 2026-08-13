@@ -1,4 +1,4 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
 import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
@@ -25,9 +25,36 @@ const stockTakeSchema = z.object({
 const LOW = 5;
 /// Window used to rank best sellers at the till.
 const POPULAR_DAYS = 60;
+/**
+ * How many times a cashier may correct one product's quantity in a day.
+ * Repeatedly adjusting the same line is how stock loss gets papered over, so
+ * past this they have to involve a manager. Managers and admins are exempt.
+ */
+const CASHIER_ADJUST_LIMIT = 3;
 
 export async function stockRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
+
+  const startOfToday = () => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  /** How many quantity corrections this user has already made to a product today. */
+  async function adjustmentsToday(userId: number, branchId: number, bookId: number): Promise<number> {
+    return app.prisma.stockMovement.count({
+      where: { userId, branchId, bookId, type: 'ADJUST', createdAt: { gte: startOfToday() } },
+    });
+  }
+
+  /** Null when the change is allowed, otherwise the reason to refuse it. */
+  async function adjustBlockedReason(req: FastifyRequest, branchId: number, bookId: number): Promise<string | null> {
+    if (req.user.role !== 'CASHIER') return null;
+    const used = await adjustmentsToday(req.user.id, branchId, bookId);
+    if (used < CASHIER_ADJUST_LIMIT) return null;
+    return `You have already corrected this product ${used} times today. Ask a manager to make any further change.`;
+  }
 
   // Full catalogue for a branch: every product is returned, merged with this
   // branch's stock rows. Items not yet stocked here come back with quantity 0
@@ -37,7 +64,7 @@ export async function stockRoutes(app: FastifyInstance) {
     const scoped = branchScope(req, reply, Number(branchId));
     const since = new Date();
     since.setDate(since.getDate() - POPULAR_DAYS);
-    const [books, stock, sold] = await Promise.all([
+    const [books, stock, sold, adjusted] = await Promise.all([
       app.prisma.book.findMany({ where: { deletedAt: null }, orderBy: { title: 'asc' } }),
       app.prisma.stock.findMany({ where: { branchId: scoped } }),
       // Units moved at this branch recently — drives the "top sellers first"
@@ -47,15 +74,23 @@ export async function stockRoutes(app: FastifyInstance) {
         where: { sale: { branchId: scoped, voidedAt: null, createdAt: { gte: since } } },
         _sum: { quantity: true },
       }),
+      // Corrections this user has already made today, so the till can show what
+      // is left of their allowance before they hit the limit.
+      app.prisma.stockMovement.groupBy({
+        by: ['bookId'],
+        where: { branchId: scoped, userId: req.user.id, type: 'ADJUST', createdAt: { gte: startOfToday() } },
+        _count: true,
+      }),
     ]);
     const byBook = new Map(stock.map((s) => [s.bookId, s]));
     const soldBy = new Map(sold.map((r) => [r.bookId, r._sum.quantity ?? 0]));
+    const adjustedBy = new Map(adjusted.map((r) => [r.bookId, r._count]));
     return books.map((book) => {
       const existing = byBook.get(book.id);
       const base = existing
         ? { ...existing, book }
         : { id: -book.id, branchId: scoped, bookId: book.id, quantity: 0, price: null, book };
-      return { ...base, sold: soldBy.get(book.id) ?? 0 };
+      return { ...base, sold: soldBy.get(book.id) ?? 0, adjustedToday: adjustedBy.get(book.id) ?? 0 };
     });
   });
 
@@ -86,9 +121,19 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   // Set absolute quantity (stock take). Logs the difference as an attributable ADJUST movement.
-  app.put('/', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.put('/', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
     const body = stockSetSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
+
+    const blocked = await adjustBlockedReason(req, branchId, body.bookId);
+    if (blocked) {
+      await auditRequest(app.prisma, req, {
+        branchId, entity: 'stock.quantity', entityId: body.bookId, action: 'ADJUST_BLOCKED',
+        details: { attempted: body.quantity, limit: CASHIER_ADJUST_LIMIT },
+      });
+      return reply.code(403).send({ error: blocked });
+    }
+
     return app.prisma.$transaction(async (tx) => {
       const existing = await tx.stock.findUnique({ where: { branchId_bookId: { branchId, bookId: body.bookId } } });
       const before = existing?.quantity ?? 0;
@@ -121,9 +166,27 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   // Set a per-branch selling price override. Pass price=null to clear it (falls back to the catalogue price).
-  app.put('/price', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.put('/price', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
     const body = priceSetSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
+    const book = await app.prisma.book.findUnique({ where: { id: body.bookId }, select: { unitPrice: true, title: true } });
+    if (!book) return reply.code(404).send({ error: 'Product not found' });
+
+    // The branch price is what the till's floor is measured against, so a cashier
+    // who could lower it could also sell below the price the admin set.
+    if (req.user.role === 'CASHIER' && body.price != null && body.price < Number(book.unitPrice) - 0.01) {
+      await auditRequest(app.prisma, req, {
+        branchId, entity: 'stock.price', entityId: body.bookId, action: 'SET_PRICE_BLOCKED',
+        details: { attempted: body.price, catalogue: Number(book.unitPrice) },
+      });
+      return reply.code(403).send({
+        error: `${book.title} cannot be priced below the catalogue price of ${Number(book.unitPrice).toFixed(2)}. Ask a manager.`,
+      });
+    }
+    if (req.user.role === 'CASHIER' && body.price == null) {
+      return reply.code(403).send({ error: 'Only a manager can clear a branch price.' });
+    }
+
     const existing = await app.prisma.stock.findUnique({ where: { branchId_bookId: { branchId, bookId: body.bookId } } });
     const updated = await app.prisma.stock.upsert({
       where: { branchId_bookId: { branchId, bookId: body.bookId } },
@@ -187,7 +250,7 @@ export async function stockRoutes(app: FastifyInstance) {
    * Apply a counted stock take. Each difference becomes an attributable ADJUST
    * movement, so the count is fully explained in the stock history.
    */
-  app.post('/take', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/take', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
     const body = stockTakeSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
 
@@ -196,7 +259,7 @@ export async function stockRoutes(app: FastifyInstance) {
     const bookBySku = new Map(books.map((b) => [b.sku, b.id]));
 
     const note = body.note?.trim() || `Stock take ${new Date().toISOString().slice(0, 10)}`;
-    const results = { counted: 0, adjusted: 0, unchanged: 0, unknown: [] as string[], netUnits: 0 };
+    const results = { counted: 0, adjusted: 0, unchanged: 0, unknown: [] as string[], blocked: [] as string[], netUnits: 0 };
 
     for (const item of body.items) {
       const sku = item.sku.trim();
@@ -211,6 +274,12 @@ export async function stockRoutes(app: FastifyInstance) {
       const delta = item.counted - before;
       if (delta === 0) {
         results.unchanged += 1;
+        continue;
+      }
+      // A take is the legitimate periodic correction, but it must not be a way
+      // around the daily limit on a product a cashier keeps revisiting.
+      if (await adjustBlockedReason(req, branchId, bookId)) {
+        results.blocked.push(sku);
         continue;
       }
       await app.prisma.$transaction(async (tx) => {
@@ -237,7 +306,7 @@ export async function stockRoutes(app: FastifyInstance) {
       branchId,
       entity: 'stock.quantity',
       action: 'STOCK_TAKE_BULK',
-      details: { note, counted: results.counted, adjusted: results.adjusted, netUnits: results.netUnits, unknown: results.unknown.length },
+      details: { note, counted: results.counted, adjusted: results.adjusted, netUnits: results.netUnits, unknown: results.unknown.length, blocked: results.blocked.length },
     });
     return results;
   });

@@ -12,10 +12,14 @@ import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHea
 import { Select2 } from '../components/Select2';
 
 const LOW = 5;
+/// Mirrors CASHIER_ADJUST_LIMIT on the server; shown so a cashier is not
+/// surprised by a refusal halfway through a count.
+const CASHIER_ADJUST_LIMIT = 3;
 const statusOf = (q: number) => (q <= 0 ? { label: 'Out of stock', tone: 'red' as const } : q < LOW ? { label: 'Low stock', tone: 'amber' as const } : { label: 'OK', tone: 'green' as const });
 
 export default function StockPage() {
-  const { isAdmin, canManage, branchId: myBranch } = useAuth();
+  const { isAdmin, canManage, role, branchId: myBranch } = useAuth();
+  const isCashier = role === 'CASHIER';
   const { data: branches } = useBranches();
   const [branchId, setBranchId] = useState<number | null>(myBranch);
   const [editRow, setEditRow] = useState<Stock | null>(null);
@@ -189,6 +193,27 @@ export default function StockPage() {
           )}
         </RowActions>
       ),
+    });
+  } else if (isCashier) {
+    columns.push({
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (r) => {
+        const used = r.adjustedToday ?? 0;
+        const spent = used >= CASHIER_ADJUST_LIMIT;
+        return (
+          <RowActions>
+            <RowAction
+              onClick={() => openEdit(r)}
+              icon={<SlidersHorizontal className="h-4 w-4" />}
+              label={spent ? `Corrected ${used} times today — ask a manager` : `Set quantity (${CASHIER_ADJUST_LIMIT - used} of ${CASHIER_ADJUST_LIMIT} left today)`}
+              disabled={spent}
+            />
+            <RowAction onClick={() => openPrice(r)} icon={<Tag className="h-4 w-4" />} label="Set branch price" />
+          </RowActions>
+        );
+      },
     });
   }
 

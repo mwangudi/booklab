@@ -75,7 +75,7 @@ export const router = createBrowserRouter([
 
           { path: 'stock', element: <StockPage /> },
           { path: 'stock/intake', element: <StockIntakePage /> },
-          { path: 'stock/take', element: <ManagerOnly><StockTakePage /></ManagerOnly> },
+          { path: 'stock/take', element: <StockTakePage /> },
           { path: 'stock/movements', element: <ManagerOnly><StockMovementsPage /></ManagerOnly> },
 
           { path: 'customers', element: <ManagerOnly><CustomersPage /></ManagerOnly> },

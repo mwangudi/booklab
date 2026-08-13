@@ -26,6 +26,8 @@ interface TakeResult {
   adjusted: number;
   unchanged: number;
   unknown: string[];
+  /** Skipped because the daily correction limit for that product was reached. */
+  blocked: string[];
   netUnits: number;
 }
 
@@ -242,6 +244,14 @@ export default function StockTakePage() {
               {fmt(result.netUnits)} units.
               {result.unknown.length > 0 && ` ${result.unknown.length} SKU(s) were not recognised and were skipped.`} Every
               change is recorded in the stock history against your name.
+            </Alert>
+          )}
+
+          {result && result.blocked?.length > 0 && (
+            <Alert tone="amber">
+              {fmt(result.blocked.length)} product(s) were left unchanged because you have already corrected them the
+              maximum number of times today: {result.blocked.slice(0, 8).join(', ')}
+              {result.blocked.length > 8 && ` and ${result.blocked.length - 8} more`}. A manager can apply those.
             </Alert>
           )}
         </>

@@ -3,6 +3,40 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-08-14
+
+### Receipts match the letterhead
+
+The receipt header now mirrors the invoice: the logo sits to the left with the
+shop name centred beside it, followed by the phone number and the branch.
+
+Thermal printers cannot render colour, so receipts use a hard black-and-white
+copy of the logo rather than the colour one, which dithered into grey. Both
+print variants are derived from the source artwork by
+`frontend/scripts/make-print-logos.ps1`, so they can be regenerated if the
+branding ever changes.
+
+### Cashiers can correct stock and prices, within limits
+
+Waiting for a manager to fix an obvious miscount slows the shop down, so
+cashiers can now do it themselves — with the controls that makes necessary.
+
+- A cashier can **set a quantity**, **run a stock take** and **receive stock in
+  bulk**, all recorded against their name in the stock history exactly as a
+  manager's changes are.
+- **Three corrections per product per day.** Repeatedly adjusting the same line
+  is how stock loss gets papered over, so the fourth is refused and the attempt
+  is written to the audit trail for a manager to see. A stock take counts
+  towards the same limit and reports which lines it had to skip, so it cannot be
+  used to go around it. Managers and admins are not limited.
+- The stock screen shows a cashier how many corrections they have left on each
+  product, so a refusal never comes as a surprise mid-count.
+- A cashier can **raise** a branch price but **not drop it below the catalogue
+  price**, and cannot clear one. The branch price is what the till's floor is
+  measured against, so a cashier who could lower it could also sell below the
+  price the shop set — which would have undone the price floor added on
+  2026-08-11. Blocked attempts are audited.
+
 ## 2026-08-13
 
 A branch can now trade through an internet outage. Two rounds of work: making the

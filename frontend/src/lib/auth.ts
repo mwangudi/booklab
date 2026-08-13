@@ -50,6 +50,7 @@ export const useAuth = () => {
   return {
     user,
     isAuthenticated: user !== null,
+    role: user?.role ?? null,
     isAdmin: user?.role === 'ADMIN',
     isManager: user?.role === 'MANAGER',
     /** Admin or Manager — the roles allowed to manage catalogue/stock/expenses. */

@@ -6,7 +6,7 @@
 // pass as an original receipt.
 
 import { getReceiptSettings } from './receiptSettings';
-import { PRINT_LOGO_URL } from './printLogo';
+import { PRINT_LOGO_BW_URL } from './printLogo';
 
 export interface ReceiptItem {
   title: string;
@@ -44,12 +44,15 @@ const esc = (s: unknown) =>
 
 const money = (n: number) => 'KES ' + Math.round(n).toLocaleString('en-KE');
 
+const SHOP_TEL = 'Tel: 0728 492 372';
+
 function buildHtml(d: ReceiptData): string {
   const cfg = getReceiptSettings();
   const paper = cfg.paperWidth;
   const body = paper - 6; // allow for the @page margins
   // 58mm rolls fit noticeably fewer characters per line.
   const baseFont = paper === 58 ? 10 : 12;
+  const logoW = Math.round(body * 0.28);
 
   const rows = d.items
     .map(
@@ -91,9 +94,13 @@ function buildHtml(d: ReceiptData): string {
     @page { size: ${paper}mm auto; margin: 3mm; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
-    body { width: ${body}mm; font-family: 'Courier New', ui-monospace, monospace; font-size: ${baseFont}px; color: #000; }
+    body { width: ${body}mm; font-family: 'Courier New', ui-monospace, monospace; font-size: ${baseFont}px; color: #000; background: #fff; }
     .center { text-align: center; }
-    .logo { display: block; margin: 0 auto 4px; width: 62%; max-width: ${body}mm; font-weight: 700; }
+    /* Logo to the left of a centred title, as on the invoice letterhead. */
+    .head { display: flex; align-items: center; gap: 2mm; margin-bottom: 3px; }
+    .logo { flex: 0 0 ${logoW}mm; width: ${logoW}mm; }
+    .headtext { flex: 1 1 auto; min-width: 0; text-align: center; }
+    .brand { font-weight: 700; font-size: ${baseFont + 1}px; letter-spacing: 0.3px; }
     .muted { font-size: ${baseFont - 1}px; }
     .hr { border-top: 1px dashed #000; margin: 6px 0; }
     .row { display: flex; justify-content: space-between; gap: 8px; }
@@ -105,8 +112,14 @@ function buildHtml(d: ReceiptData): string {
     .void { border-style: double; }
   </style></head>
   <body>
-    <img class="logo" src="${PRINT_LOGO_URL}" alt="BOOKLAB BOOKSHOP">
-    <div class="center muted">${esc(d.branchName ?? '')}${d.branchName && d.branchLocation ? ` &middot; ${esc(d.branchLocation)}` : ''}</div>
+    <div class="head">
+      <img class="logo" src="${PRINT_LOGO_BW_URL}" alt="">
+      <div class="headtext">
+        <div class="brand">BOOKLAB BOOKSHOP</div>
+        <div class="muted">${esc(SHOP_TEL)}</div>
+        ${d.branchName ? `<div class="muted">${esc(d.branchName)}${d.branchLocation ? ` &middot; ${esc(d.branchLocation)}` : ''}</div>` : ''}
+      </div>
+    </div>
     <div class="hr"></div>
     ${voidBanner}
     ${dupBanner}

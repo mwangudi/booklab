@@ -68,7 +68,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: '/products', label: 'Products', icon: <BookOpen className={ic} /> },
       { to: '/stock', label: 'Stock levels', icon: <Boxes className={ic} />, end: true },
-      { to: '/stock/take', label: 'Stock take', icon: <ClipboardList className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/stock/take', label: 'Stock take', icon: <ClipboardList className={ic} /> },
       { to: '/stock/movements', label: 'Stock history', icon: <History className={ic} />, roles: ['ADMIN', 'MANAGER'] },
       { to: '/expenses', label: 'Expenses', icon: <Wallet className={ic} />, roles: ['ADMIN', 'MANAGER'] },
     ],

@@ -3,6 +3,8 @@
 // can embed it synchronously.
 
 export const PRINT_LOGO_URL = '/logo-print.png';
+/** Hard black-and-white copy for thermal receipts, which cannot render colour. */
+export const PRINT_LOGO_BW_URL = '/logo-bw.png';
 /** height / width of logo-print.png */
 export const PRINT_LOGO_RATIO = 414 / 600;
 
