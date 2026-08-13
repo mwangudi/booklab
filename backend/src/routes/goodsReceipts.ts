@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import type { GoodsReceiptStatus } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
+import type { GoodsReceiptStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
-import { recordMovement } from '../lib/outbox.js';
+import { recordMovement, queueGoodsReceipt, queueSupplierPayment } from '../lib/outbox.js';
 import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const supplierSchema = z.object({
@@ -190,6 +190,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
       },
       include: withItems,
     });
+    await queueGoodsReceipt(app.prisma, created.id);
     await auditRequest(app.prisma, req, {
       entity: 'goods.receipt', entityId: created.id, branchId, action: 'CREATE',
       details: { number: created.number, supplier: supplier.name, deliveryNote: body.deliveryNoteNo, lines: lines.length },
@@ -241,6 +242,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
       },
       include: withItems,
     });
+    await queueGoodsReceipt(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'goods.receipt', entityId: id, branchId: updated.branchId, action: 'UPDATE',
       details: { number: updated.number, totalCost: n(updated.totalCost) },
@@ -278,11 +280,13 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
           await tx.book.update({ where: { id: it.bookId }, data: { costPrice: it.unitCost } });
         }
       }
-      return tx.goodsReceipt.update({
+      const done = await tx.goodsReceipt.update({
         where: { id },
         data: { status: 'POSTED', postedAt: new Date(), postedById: req.user.id },
         include: withItems,
       });
+      await queueGoodsReceipt(tx, id);
+      return done;
     });
 
     await auditRequest(app.prisma, req, {
@@ -304,6 +308,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
     if (grn.status === 'POSTED') return reply.code(409).send({ error: 'A posted goods receipt cannot be deleted.' });
     await app.prisma.goodsReceipt.update({ where: { id }, data: { deletedAt: new Date() } });
+    await queueGoodsReceipt(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'goods.receipt', entityId: id, branchId: grn.branchId, action: 'DELETE_DRAFT', details: { number: grn.number },
     });
@@ -353,6 +358,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
         createdById: req.user.id,
       },
     });
+    await queueSupplierPayment(app.prisma, created.id);
     await auditRequest(app.prisma, req, {
       entity: 'supplier.payment', entityId: created.id, action: 'CREATE',
       details: { supplier: supplier.name, amount: body.amount, method: body.method, reference: body.reference ?? null },
@@ -365,6 +371,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     const pay = await app.prisma.supplierPayment.findUnique({ where: { id } });
     if (!pay || pay.deletedAt) return reply.code(404).send({ error: 'Payment not found' });
     await app.prisma.supplierPayment.update({ where: { id }, data: { deletedAt: new Date() } });
+    await queueSupplierPayment(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'supplier.payment', entityId: id, action: 'REVERSE', details: { amount: n(pay.amount) },
     });

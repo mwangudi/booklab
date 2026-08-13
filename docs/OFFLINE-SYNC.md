@@ -67,25 +67,39 @@ sales. Rows the branch has never seen are always created, so a fresh install
 seeds correctly.
 
 ## What is verified
-Exercised end to end against production on 2026-08-13:
+A complete branch install was built and run against production on 2026-08-13:
+SQLite database, the real Fastify API, the real web app, and the sync runner.
 
-- minting a branch token, and `pull` returning branches, books (including `unit`,
-  `vatRate` and the wholesale/school tier prices), users and that branch's stock
-- offline login against the pulled bcrypt hash
-- a sale **and** a stock intake recorded offline, then pushed on reconnect, with
-  the discount, price tier, cost snapshot and timestamps intact
-- pushing the same batch twice — the second is reported `duplicate` and creates
-  nothing
-- stock arithmetic across the boundary: 142 on hand − 3 sold + 5 received = 144
-  on both sides
-- a branch token cannot read or write another branch's data, and an ordinary
-  staff token cannot reach the sync endpoints at all (403 / 401)
+- **The app runs on SQLite.** 22 checks covering the till, back office and
+  reports all pass: offline login against the pulled bcrypt hash, a wrong
+  password still refused, the POS catalogue, a sale with a discount, stock
+  intake and history, an invoice raised and issued, a goods receipt raised and
+  posted, the Z-report, P&L, re-order report, audit log, an expense and a
+  customer statement.
+- **Roles still hold offline** — a cashier is refused the P&L with a 403.
+- **A day's trading pushed cleanly on reconnect**: 8 events, 4 new and 4
+  updates, no errors, and the outbox drained to nothing. Pushing again sent
+  nothing.
+- **Stock agreed exactly.** The branch started at 283, sold 2, received 7 and
+  posted a receipt for 5; the cloud landed on 293. Nothing was double-counted,
+  because a sale's own movement is deliberately not queued — the cloud's sale
+  ingest already decrements — while a receipt's movement is.
+- Documents arrived intact: `INV-KAP-0001` with its delivery note `DN-KAP-0001`
+  and its line, and `GRN-KAP-0001` posted, neither duplicated.
+- Earlier probes confirmed a branch token cannot read or write another branch's
+  data, and an ordinary staff token cannot reach the sync endpoints at all.
 
-Two helper scripts keep this honest:
-`node scripts/branch-query-test.mjs` checks every query shape the routes rely on
-against SQLite, and `CLOUD_URL=… node scripts/branch-cycle-test.mjs <token>`
-replays the whole offline→online cycle. The cycle test writes a real sale to the
-cloud you point it at and prints the uuids to remove afterwards.
+Three scripts keep this testable:
+
+| Script | What it does |
+|---|---|
+| `node scripts/sync-readiness.mjs` | which models carry the sync columns |
+| `node scripts/branch-query-test.mjs` | every query shape the routes use, against SQLite |
+| `node scripts/branch-outbox.mjs` | what a branch is holding for the cloud |
+
+`CLOUD_URL=… node scripts/branch-cycle-test.mjs <token>` replays the whole
+offline→online cycle. It writes a real sale to whichever cloud you point it at
+and prints the uuids to remove afterwards.
 
 ## Not yet syncing
 `node scripts/sync-readiness.mjs` lists which models carry the sync columns.
@@ -103,9 +117,19 @@ needs Safaricom.
 ## Branch runtime
 1. `SYNC_ROLE=branch` makes every write also append a portable event to the **Outbox**.
 2. The **sync runner** (`npm run sync`, or the `PharmaBranch*`-style services) loops:
-   `pullMaster()` then `pushOutbox()`.
+   `pushOutbox()` then `pullMaster()`.
 3. **Offline auth**: pulled users include their bcrypt `passwordHash`, so the existing
    login flow authenticates locally with no internet.
+4. **The branch serves the web app itself.** There is no nginx on a branch laptop,
+   so set `SERVE_WEB` to the built frontend and the API serves it, falling back to
+   `index.html` for client-side routes. In the cloud, nginx does this instead and
+   `SERVE_WEB` is left unset.
+
+### Enums and the branch build
+SQLite has no enums, so the generated branch client exports none. Anything that
+imported an enum type from `@prisma/client` compiled in the cloud but broke the
+branch build. The domain enums live in `src/lib/enums.ts` as plain unions and
+work against either client — import them from there, never from Prisma.
 
 ## Building a branch
 See [../branch/](../branch/):

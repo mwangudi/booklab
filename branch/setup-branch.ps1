@@ -20,9 +20,20 @@ try {
     npx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
     Write-Host "Building the backend..." -ForegroundColor Cyan
     npm run build
-    Write-Host "Branch setup complete. Ensure backend/.env has a valid SYNC_TOKEN, then run branch/run-branch.ps1" -ForegroundColor Green
 }
 finally {
     Remove-Item Env:\BRANCH_BUILD -ErrorAction SilentlyContinue
     Pop-Location
 }
+
+# The branch serves the web app itself, so it has to be built too.
+$frontend = (Resolve-Path "$PSScriptRoot/../frontend").Path
+Push-Location $frontend
+try {
+    Write-Host "Building the web app..." -ForegroundColor Cyan
+    npm ci
+    npm run build
+}
+finally { Pop-Location }
+
+Write-Host "Branch setup complete. Ensure backend/.env has a valid SYNC_TOKEN, then run branch/run-branch.ps1" -ForegroundColor Green

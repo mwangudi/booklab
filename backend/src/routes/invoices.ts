@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import type { InvoiceStatus } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope } from '../middleware/authGuard.js';
+import { asVatMode, type InvoiceStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
-import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
+import { SYNC_ROLE, enqueueOutbox, recordMovement, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
 import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const customerSchema = z.object({
@@ -220,7 +220,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
     // VAT settings default to the customer's, but the invoice can override them.
     const chargeVat = body.chargeVat ?? customer.chargeVat;
-    const vatMode = body.vatMode ?? customer.vatMode;
+    const vatMode = asVatMode(body.vatMode ?? customer.vatMode);
     const priced = priceLines(body.items, vatMode, chargeVat);
     const branchId = body.branchId ?? req.user.branchId ?? null;
 
@@ -244,6 +244,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       },
       include: withItems,
     });
+    await queueInvoice(app.prisma, created.id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: created.id, branchId: created.branchId, action: 'CREATE',
       details: { number: created.number, customer: customer.name, total: priced.total, vat: priced.vatTotal, lines: priced.lines.length },
@@ -264,7 +265,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
     // Re-price whenever the lines or the VAT settings change.
     const chargeVat = body.chargeVat ?? before.chargeVat;
-    const vatMode = body.vatMode ?? before.vatMode;
+    const vatMode = asVatMode(body.vatMode ?? before.vatMode);
     let totals: { subtotal: number; vatTotal: number; total: number } | undefined;
     if (body.items || body.chargeVat !== undefined || body.vatMode !== undefined) {
       const source =
@@ -306,6 +307,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       },
       include: withItems,
     });
+    await queueInvoice(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId: updated.branchId, action: 'UPDATE',
       details: { number: updated.number, total: n(updated.total) },
@@ -321,6 +323,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       return reply.code(409).send({ error: 'A delivered or paid invoice cannot be deleted. Cancel it instead.' });
     }
     await app.prisma.invoice.update({ where: { id }, data: { deletedAt: new Date(), status: 'CANCELLED' } });
+    await queueInvoice(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId: inv.branchId, action: 'CANCEL', details: { number: inv.number },
     });
@@ -340,6 +343,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       data: { status: 'ISSUED', deliveryNoteNo: inv.deliveryNoteNo ?? (await nextNumber('DN', inv.branchId)) },
       include: withItems,
     });
+    await queueInvoice(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId: inv.branchId, action: 'ISSUE',
       details: { number: inv.number, deliveryNote: updated.deliveryNoteNo, total: n(inv.total) },
@@ -434,7 +438,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
           });
         }
       }
-      return tx.invoice.update({
+      const delivered = await tx.invoice.update({
         where: { id },
         data: {
           status: 'DELIVERED',
@@ -448,6 +452,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
         },
         include: withItems,
       });
+      await queueInvoice(tx, id);
+      return delivered;
     });
 
     await auditRequest(app.prisma, req, {
@@ -463,6 +469,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status === 'PAID') return reply.code(409).send({ error: 'This invoice is already marked paid.' });
     const updated = await app.prisma.invoice.update({ where: { id }, data: { status: 'PAID' }, include: withItems });
+    await queueInvoice(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId: inv.branchId, action: 'MARK_PAID',
       details: { number: inv.number, total: n(inv.total) },
@@ -513,6 +520,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
         createdById: req.user.id,
       },
     });
+    await queueCustomerPayment(app.prisma, created.id);
 
     // Settle the invoice automatically once it is fully covered.
     if (body.invoiceId) {
@@ -521,6 +529,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
         const paid = inv.payments.filter((p) => !p.deletedAt).reduce((s, p) => s + n(p.amount), 0);
         if (paid + 0.01 >= n(inv.total) && inv.status !== 'PAID' && inv.status !== 'CANCELLED') {
           await app.prisma.invoice.update({ where: { id: inv.id }, data: { status: 'PAID' } });
+          await queueInvoice(app.prisma, inv.id);
         }
       }
     }
@@ -537,6 +546,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const pay = await app.prisma.customerPayment.findUnique({ where: { id } });
     if (!pay || pay.deletedAt) return reply.code(404).send({ error: 'Payment not found' });
     await app.prisma.customerPayment.update({ where: { id }, data: { deletedAt: new Date() } });
+    await queueCustomerPayment(app.prisma, id);
+    if (pay.invoiceId) await queueInvoice(app.prisma, pay.invoiceId);
     await auditRequest(app.prisma, req, {
       entity: 'customer.payment', entityId: id, action: 'REVERSE', details: { amount: n(pay.amount) },
     });
