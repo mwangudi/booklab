@@ -29,7 +29,7 @@ bookshop/
 │     └─ sync-runner/  branch daemon that pushes the outbox + pulls master data
 ├─ frontend/           React + Vite + TS SPA (see docs/ROADMAP.md for status)
 ├─ branch/             Windows branch-runtime config + service scripts
-└─ docs/               ARCHITECTURE, SETUP, DEPLOY, OFFLINE-SYNC, ROADMAP
+└─ docs/               ARCHITECTURE, SETUP, DEPLOY, GO-LIVE, OFFLINE-SYNC, ROADMAP
 ```
 
 ## Quickstart (local)
@@ -58,6 +58,6 @@ The web app serves the **public site** at `/` and the **staff portal** at `/logi
 **Branding on printed documents:** receipts and the invoice, delivery note and statement PDFs carry the shop logo. Printing uses `frontend/public/logo-print.png` — the logo with its black background knocked out to white, since the original would print as a solid black block on paper. `frontend/public/logo.jpeg` remains the on-screen version.
 
 ## Status
-In production at `https://booklab.localinvestors.co.ke`, **running on demonstration data**. Before the shop trades on it for real, work through *Going live* in [docs/DEPLOY.md](docs/DEPLOY.md) — clear the demo data, import the 166 real schools in [docs/booklab-clients.csv](docs/booklab-clients.csv), and take M-Pesa out of test mode.
+In production at `https://booklab.localinvestors.co.ke`, **running on demonstration data**. Before the shop trades on it for real, work through [docs/GO-LIVE.md](docs/GO-LIVE.md) — domain, printers, opening stock, the 166 real schools in [docs/booklab-clients.csv](docs/booklab-clients.csv), and a database backup, which is not yet scheduled.
 
 Backend (Fastify + Prisma + MySQL) and frontend (React + Vite + TypeScript) both typecheck and build cleanly. Covers catalogue, stock, POS, sales with void/reprint/discounts, expenses, credit trading (customers, invoices, suppliers, goods received), payroll, reporting, auditing and the offline branch runtime. See [CHANGELOG.md](CHANGELOG.md) for what shipped when and [docs/ROADMAP.md](docs/ROADMAP.md) for what remains.
