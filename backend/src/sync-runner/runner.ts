@@ -6,7 +6,7 @@ import type { PrismaClient } from '@prisma/client';
 type Json = Record<string, any>;
 
 export async function pushOutbox(branch: PrismaClient, cloudBase: string, token: string, batchSize = 200) {
-  let pushed = 0, applied = 0, duplicates = 0, errors = 0;
+  let pushed = 0, applied = 0, updated = 0, duplicates = 0, errors = 0;
   for (;;) {
     const pending = await branch.outbox.findMany({ where: { syncedAt: null }, orderBy: { id: 'asc' }, take: batchSize });
     if (pending.length === 0) break;
@@ -23,10 +23,12 @@ export async function pushOutbox(branch: PrismaClient, cloudBase: string, token:
     let progressed = 0;
     for (const o of pending) {
       const r = byUuid.get(o.entityUuid);
-      if (r && (r.status === 'applied' || r.status === 'duplicate')) {
+      if (r && (r.status === 'applied' || r.status === 'updated' || r.status === 'duplicate')) {
         await branch.outbox.update({ where: { id: o.id }, data: { syncedAt: now } });
         progressed += 1;
-        if (r.status === 'applied') applied += 1; else duplicates += 1;
+        if (r.status === 'applied') applied += 1;
+        else if (r.status === 'updated') updated += 1;
+        else duplicates += 1;
       } else {
         errors += 1;
         await branch.outbox.update({ where: { id: o.id }, data: { attempts: { increment: 1 }, lastError: r?.error ?? 'unknown error' } });
@@ -35,7 +37,7 @@ export async function pushOutbox(branch: PrismaClient, cloudBase: string, token:
     pushed += pending.length;
     if (progressed === 0 || pending.length < batchSize) break;
   }
-  return { pushed, applied, duplicates, errors };
+  return { pushed, applied, updated, duplicates, errors };
 }
 
 const toDate = (v: unknown): Date | null => (v ? new Date(v as string) : null);
@@ -58,8 +60,8 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
   for (const b of data.entities.branch ?? []) {
     await branch.branch.upsert({
       where: { uuid: b.uuid },
-      create: { uuid: b.uuid, name: b.name, location: b.location, createdAt: toDate(b.createdAt)!, updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt) },
-      update: { name: b.name, location: b.location, updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt) },
+      create: { uuid: b.uuid, name: b.name, code: b.code, location: b.location, createdAt: toDate(b.createdAt)!, updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt) },
+      update: { name: b.name, code: b.code, location: b.location, updatedAt: toDate(b.updatedAt)!, deletedAt: toDate(b.deletedAt) },
     });
   }
   counts.branch = (data.entities.branch ?? []).length;
@@ -89,6 +91,35 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
     });
   }
   counts.user = (data.entities.user ?? []).length;
+
+  for (const c of data.entities.customer ?? []) {
+    const fields = {
+      name: c.name, type: c.type, contactPerson: c.contactPerson, phone: c.phone, email: c.email,
+      address: c.address, kraPin: c.kraPin, paymentTermsDays: c.paymentTermsDays, openingBalance: c.openingBalance,
+      chargeVat: c.chargeVat, vatMode: c.vatMode,
+      updatedAt: toDate(c.updatedAt)!, deletedAt: toDate(c.deletedAt),
+    };
+    await branch.customer.upsert({
+      where: { uuid: c.uuid },
+      create: { uuid: c.uuid, createdAt: toDate(c.createdAt)!, ...fields },
+      update: fields,
+    });
+  }
+  counts.customer = (data.entities.customer ?? []).length;
+
+  for (const s of data.entities.supplier ?? []) {
+    const fields = {
+      name: s.name, contactPerson: s.contactPerson, phone: s.phone, email: s.email,
+      address: s.address, kraPin: s.kraPin, paymentTermsDays: s.paymentTermsDays, openingBalance: s.openingBalance,
+      updatedAt: toDate(s.updatedAt)!, deletedAt: toDate(s.deletedAt),
+    };
+    await branch.supplier.upsert({
+      where: { uuid: s.uuid },
+      create: { uuid: s.uuid, createdAt: toDate(s.createdAt)!, ...fields },
+      update: fields,
+    });
+  }
+  counts.supplier = (data.entities.supplier ?? []).length;
 
   counts.stock = 0;
   for (const s of data.entities.stock ?? []) {

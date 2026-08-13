@@ -3,6 +3,8 @@ import type { GoodsReceiptStatus } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
 import { auditRequest, diff } from '../lib/audit.js';
+import { recordMovement } from '../lib/outbox.js';
+import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const supplierSchema = z.object({
   name: z.string().min(1).max(160),
@@ -116,9 +118,12 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
 
   /* ---------------------------------------------------- goods receipts */
 
-  async function nextNumber(): Promise<string> {
-    const last = await app.prisma.goodsReceipt.findFirst({ orderBy: { id: 'desc' }, select: { id: true } });
-    return `GRN-${String((last?.id ?? 0) + 1).padStart(4, '0')}`;
+  async function nextNumber(branchId: number | null): Promise<string> {
+    const b = branchId == null ? null : await app.prisma.branch.findUnique({ where: { id: branchId }, select: { code: true } });
+    const code = b?.code ?? HEAD_OFFICE_CODE;
+    const stem = seriesStem('GRN', code);
+    const rows = await app.prisma.goodsReceipt.findMany({ where: { number: { startsWith: stem } }, select: { number: true } });
+    return nextInSeries('GRN', code, rows.map((r) => r.number));
   }
 
   app.get('/', async (req, reply) => {
@@ -172,7 +177,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
 
     const created = await app.prisma.goodsReceipt.create({
       data: {
-        number: await nextNumber(),
+        number: await nextNumber(branchId),
         supplierId: body.supplierId,
         branchId,
         deliveryNoteNo: body.deliveryNoteNo ?? null,
@@ -260,16 +265,13 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
           create: { branchId: grn.branchId, bookId: it.bookId, quantity: it.quantity },
           update: { quantity: { increment: it.quantity } },
         });
-        await tx.stockMovement.create({
-          data: {
-            branchId: grn.branchId,
-            bookId: it.bookId,
-            delta: it.quantity,
-            type: 'INTAKE',
-            note: `${grn.number}${grn.deliveryNoteNo ? ` · DN ${grn.deliveryNoteNo}` : ''} · ${grn.supplier.name}`,
-            userId: req.user.id,
-            originBranchId: grn.branchId,
-          },
+        await recordMovement(tx, {
+          branchId: grn.branchId,
+          bookId: it.bookId,
+          delta: it.quantity,
+          type: 'INTAKE',
+          note: `${grn.number}${grn.deliveryNoteNo ? ` · DN ${grn.deliveryNoteNo}` : ''} · ${grn.supplier.name}`,
+          userId: req.user.id,
         });
         // Keep costing current so margins reflect the latest buying price.
         if (updateCost && n(it.unitCost) > 0) {

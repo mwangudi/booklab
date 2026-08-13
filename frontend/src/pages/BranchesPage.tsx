@@ -12,6 +12,7 @@ export default function BranchesPage() {
 
   const columns: Column<Branch>[] = [
     { key: 'name', header: 'Branch', accessor: (b) => b.name, sortable: true, render: (b) => <span className="font-medium text-foreground">{b.name}</span> },
+    { key: 'code', header: 'Code', accessor: (b) => b.code ?? '', sortable: true, render: (b) => <span className="font-mono text-xs">{b.code}</span> },
     { key: 'location', header: 'Location', accessor: (b) => b.location, sortable: true },
     { key: 'created', header: 'Created', accessor: (b) => b.createdAt ?? '', render: (b) => dateShort(b.createdAt) },
     {

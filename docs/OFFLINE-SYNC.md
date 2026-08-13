@@ -31,8 +31,30 @@ Branch desktop (offline)                     Cloud (master)
 | Entity | Direction | How |
 |--------|-----------|-----|
 | Sale, StockMovement, Expense | branch → cloud | outbox → `POST /api/sync/push`, idempotent by uuid |
-| Book, Branch, User | cloud → branch | `GET /api/sync/pull?since=`, upsert by uuid |
+| Invoice (+ items), GoodsReceipt (+ items) | branch → cloud | upserted by uuid; lines replaced wholesale |
+| CustomerPayment, SupplierPayment | branch → cloud | idempotent by uuid |
+| Book, Branch, User, Customer, Supplier | cloud → branch | `GET /api/sync/pull?since=`, upsert by uuid |
 | Stock on-hand | cloud → branch (snapshot) | full snapshot of **that branch only**; see below |
+
+### Why documents are upserted, not append-only
+A sale is final the moment it is rung up, so it is written once and any repeat is
+a duplicate. An invoice is not: it is edited as a draft, then issued, then
+delivered. The same uuid therefore arrives repeatedly and the branch that raised
+it is the authority, so documents are upserted and their lines replaced. Push
+reports `applied` for a new document and `updated` for one that was overwritten,
+so a branch log distinguishes the two.
+
+Ingesting a document deliberately **does not touch stock**. Posting a receipt or
+delivering an invoice writes its own `StockMovement` and `Sale` events, which
+travel separately — applying stock here as well would count the goods twice.
+
+### Document numbering
+Documents are numbered per branch — `INV-KAP-0007`, `DN-KAP-0007`, `GRN-KAP-0007`
+— using `Branch.code`. The old scheme derived the number from the cloud
+autoincrement, so two branches working offline would both have minted `INV-0007`.
+The sequence is read back from the numbers already issued for that branch, which
+is exactly what a branch database holds. Documents raised centrally, with no
+branch, use the `HQ` code.
 
 ### Why stock is a snapshot, not a cursor
 `Stock` is a derived table with no `uuid` or `updatedAt`, so it cannot be pulled
@@ -67,19 +89,16 @@ cloud you point it at and prints the uuids to remove afterwards.
 
 ## Not yet syncing
 `node scripts/sync-readiness.mjs` lists which models carry the sync columns.
-These have **no `uuid`**, so they cannot travel between branch and cloud yet:
+These have **no `uuid`**, so they cannot travel between branch and cloud:
 
-> Stock*, AuditLog, MpesaPayment, PayrollRun, Payslip, PayrollSetting,
-> CustomerPayment, **Invoice**, **InvoiceItem**, SupplierPayment,
-> **GoodsReceipt**, GoodsReceiptItem
+> Stock*, AuditLog, MpesaPayment, PayrollRun, Payslip, PayrollSetting
 
 \* Stock is deliberate — it is derived, and is snapshotted instead.
 
-Invoices, delivery notes and goods received therefore still need a connection.
-Giving them offline support means adding `uuid` (plus `updatedAt`) to those
-models and extending `push`/`pull`. Document numbering also needs attention:
-`INV-0007` is derived from the cloud autoincrement, so two offline branches would
-mint the same number — branches need their own prefix or range.
+Payroll is head-office work and does not need to run at a branch. The gaps that
+still matter are **AuditLog**, so actions taken offline are not yet attributable
+centrally, and **MpesaPayment**, which cannot work offline anyway because it
+needs Safaricom.
 
 ## Branch runtime
 1. `SYNC_ROLE=branch` makes every write also append a portable event to the **Outbox**.

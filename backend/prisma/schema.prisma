@@ -122,6 +122,9 @@ model User {
 model Branch {
   id        Int       @id @default(autoincrement())
   name      String    @unique
+  /// Short code that prefixes documents raised here, e.g. KAP-0007. Two branches
+  /// working offline must never mint the same invoice number.
+  code      String    @unique
   location  String
   createdAt DateTime  @default(now())
   uuid      String    @unique @default(uuid())
@@ -477,6 +480,7 @@ model Customer {
 /// Money received from a credit customer. Appears as a PMT credit on the statement.
 model CustomerPayment {
   id          Int            @id @default(autoincrement())
+  uuid        String         @unique @default(uuid())
   customerId  Int
   invoiceId   Int?
   amount      Decimal        @db.Decimal(12, 2)
@@ -486,6 +490,7 @@ model CustomerPayment {
   note        String?
   createdById Int?
   createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?
   customer    Customer       @relation(fields: [customerId], references: [id])
   invoice     Invoice?       @relation(fields: [invoiceId], references: [id])
@@ -498,6 +503,7 @@ model CustomerPayment {
 /// the same lines. Editable while it is still a draft.
 model Invoice {
   id                  Int           @id @default(autoincrement())
+  uuid                String        @unique @default(uuid())
   number              String        @unique
   deliveryNoteNo      String?
   customerId          Int
@@ -538,6 +544,7 @@ model Invoice {
 /// document never changes when the catalogue does.
 model InvoiceItem {
   id          Int     @id @default(autoincrement())
+  uuid        String  @unique @default(uuid())
   invoiceId   Int
   bookId      Int?
   description String
@@ -587,6 +594,7 @@ model Supplier {
 /// Money paid out to a supplier. Appears as a credit on their statement.
 model SupplierPayment {
   id          Int            @id @default(autoincrement())
+  uuid        String         @unique @default(uuid())
   supplierId  Int
   receiptId   Int?
   amount      Decimal        @db.Decimal(12, 2)
@@ -596,6 +604,7 @@ model SupplierPayment {
   note        String?
   createdById Int?
   createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
   deletedAt   DateTime?
   supplier    Supplier       @relation(fields: [supplierId], references: [id])
   receipt     GoodsReceipt?  @relation(fields: [receiptId], references: [id])
@@ -608,6 +617,7 @@ model SupplierPayment {
 /// adds the quantities to branch stock as attributable intake movements.
 model GoodsReceipt {
   id             Int                @id @default(autoincrement())
+  uuid           String             @unique @default(uuid())
   number         String             @unique
   supplierId     Int
   branchId       Int
@@ -635,6 +645,7 @@ model GoodsReceipt {
 
 model GoodsReceiptItem {
   id          Int          @id @default(autoincrement())
+  uuid        String       @unique @default(uuid())
   receiptId   Int
   bookId      Int
   description String

@@ -3,6 +3,66 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-08-13
+
+Groundwork for branches trading through an internet outage.
+
+### Offline sync
+
+The engine had been written but never actually run — production held no outbox
+or sync-state rows at all — and it predated price tiers, VAT, units and
+discounts. Exercised end to end against production and repaired:
+
+- **A fresh branch showed nothing in stock.** On-hand was never sent, and a new
+  branch database has no movement history to derive it from. A branch now
+  receives a snapshot of its own shelves, and only its own.
+- Books reached a branch without their **unit, VAT rate or wholesale/school
+  prices**, so a branch would have priced goods differently from the shop.
+- Sale **discounts and price tier** were dropped in transit.
+- **Stock takes, adjustments, transfers, and the stock movements behind posting a
+  goods receipt or delivering an invoice** all wrote a movement without queueing
+  it, so those corrections never left the branch.
+- The runner now **pushes before it pulls** and only accepts the cloud's stock
+  once its own queue has drained — otherwise reconnecting would quietly reverse
+  sales made during the outage.
+
+### Trading documents can now sync
+
+- Invoices, delivery notes, goods received and both customer and supplier
+  payments carry a `uuid`, so they have an identity that survives the trip
+  between a branch and the cloud. Customers and suppliers are sent down to the
+  branch so documents can be raised against them offline.
+- Unlike a sale, a document is edited before it is final, so the same one
+  arrives repeatedly. Documents are **upserted** and their lines replaced, with
+  the branch that raised them treated as the authority. A push reports `applied`
+  for a new document and `updated` for one that was overwritten.
+- Ingesting a document deliberately leaves stock alone; the movements travel as
+  their own events, so goods are never counted twice.
+
+### Documents are numbered per branch
+
+Numbers came from the cloud's autoincrement, so **two branches working offline
+would both have issued `INV-0007`**. Each branch now has a short code and its own
+sequence — `INV-KAP-0007`, `DN-KAP-0007`, `GRN-KAP-0007` — read back from the
+numbers that branch has already issued. Documents raised centrally use `HQ`.
+
+Existing branches were given codes automatically (Luanda `LUA`, Kapsabet `KAP`,
+Mumias `MUM`) and the code is editable when adding or editing a branch. Numbers
+already issued are left untouched.
+
+### Database migrations
+
+| Migration | Purpose |
+|---|---|
+| `20260813090000_document_sync_identity` | `Branch.code`; `uuid` on Invoice, InvoiceItem, GoodsReceipt, GoodsReceiptItem, CustomerPayment and SupplierPayment; `updatedAt` on both payment tables |
+
+### Still needs a connection
+
+Payroll, the audit trail and M-Pesa do not sync. Payroll is head-office work and
+M-Pesa needs Safaricom, but it does mean **actions taken offline are not yet
+attributable in the audit log**. `node backend/scripts/sync-readiness.mjs` reports
+the current state.
+
 ## 2026-08-12
 
 Discounts at the till, a catalogue that puts the fast movers first, and branded

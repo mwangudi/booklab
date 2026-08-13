@@ -8,6 +8,8 @@ export type Money = number | string;
 export interface Branch {
   id: number;
   name: string;
+  /** Prefixes documents raised here, e.g. INV-KAP-0007. */
+  code: string;
   location: string;
   createdAt?: string;
   uuid?: string;

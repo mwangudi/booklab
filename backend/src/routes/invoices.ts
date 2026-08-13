@@ -3,6 +3,8 @@ import type { InvoiceStatus } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope } from '../middleware/authGuard.js';
 import { auditRequest, diff } from '../lib/audit.js';
+import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
+import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const customerSchema = z.object({
   name: z.string().min(1).max(160),
@@ -87,14 +89,22 @@ function priceLines(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', char
 export async function invoiceRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
 
-  /** Next sequential document number, e.g. INV-0007 / DN-0007. */
-  async function nextNumber(prefix: 'INV' | 'DN'): Promise<string> {
+  /** Next document number for the branch raising it, e.g. INV-KAP-0007. */
+  async function branchCode(branchId: number | null): Promise<string> {
+    if (branchId == null) return HEAD_OFFICE_CODE;
+    const b = await app.prisma.branch.findUnique({ where: { id: branchId }, select: { code: true } });
+    return b?.code ?? HEAD_OFFICE_CODE;
+  }
+
+  async function nextNumber(prefix: 'INV' | 'DN', branchId: number | null): Promise<string> {
+    const code = await branchCode(branchId);
+    const stem = seriesStem(prefix, code);
     if (prefix === 'INV') {
-      const last = await app.prisma.invoice.findFirst({ orderBy: { id: 'desc' }, select: { id: true } });
-      return `INV-${String((last?.id ?? 0) + 1).padStart(4, '0')}`;
+      const rows = await app.prisma.invoice.findMany({ where: { number: { startsWith: stem } }, select: { number: true } });
+      return nextInSeries(prefix, code, rows.map((r) => r.number));
     }
-    const count = await app.prisma.invoice.count({ where: { NOT: { deliveryNoteNo: null } } });
-    return `DN-${String(count + 1).padStart(4, '0')}`;
+    const rows = await app.prisma.invoice.findMany({ where: { deliveryNoteNo: { startsWith: stem } }, select: { deliveryNoteNo: true } });
+    return nextInSeries(prefix, code, rows.map((r) => r.deliveryNoteNo));
   }
 
   const withItems = {
@@ -212,12 +222,13 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const chargeVat = body.chargeVat ?? customer.chargeVat;
     const vatMode = body.vatMode ?? customer.vatMode;
     const priced = priceLines(body.items, vatMode, chargeVat);
+    const branchId = body.branchId ?? req.user.branchId ?? null;
 
     const created = await app.prisma.invoice.create({
       data: {
-        number: await nextNumber('INV'),
+        number: await nextNumber('INV', branchId),
         customerId: body.customerId,
-        branchId: body.branchId ?? req.user.branchId ?? null,
+        branchId,
         priceTier: body.priceTier,
         chargeVat,
         vatMode,
@@ -326,7 +337,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
     const updated = await app.prisma.invoice.update({
       where: { id },
-      data: { status: 'ISSUED', deliveryNoteNo: inv.deliveryNoteNo ?? (await nextNumber('DN')) },
+      data: { status: 'ISSUED', deliveryNoteNo: inv.deliveryNoteNo ?? (await nextNumber('DN', inv.branchId)) },
       include: withItems,
     });
     await auditRequest(app.prisma, req, {
@@ -373,6 +384,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
             originBranchId: branchId,
             paymentMethod: 'CASH',
             priceTier: inv.priceTier,
+            subtotal: n(inv.total),
             total: n(inv.total),
             items: {
               create: stockLines.map((i) => ({
@@ -383,9 +395,27 @@ export async function invoiceRoutes(app: FastifyInstance) {
               })),
             },
           },
-          select: { id: true },
+          select: { id: true, uuid: true, createdAt: true, items: { select: { uuid: true, bookId: true, quantity: true, unitPrice: true, costPrice: true } } },
         });
         saleId = sale.id;
+
+        if (SYNC_ROLE === 'branch') {
+          const [b, u, bks] = await Promise.all([
+            tx.branch.findUnique({ where: { id: branchId }, select: { uuid: true } }),
+            tx.user.findUnique({ where: { id: req.user.id }, select: { uuid: true } }),
+            tx.book.findMany({ where: { id: { in: sale.items.map((i) => i.bookId) } }, select: { id: true, uuid: true } }),
+          ]);
+          const bookUuid = new Map(bks.map((x) => [x.id, x.uuid]));
+          await enqueueOutbox(tx, 'sale', sale.uuid, {
+            branchUuid: b?.uuid, userUuid: u?.uuid,
+            subtotal: n(inv.total), discount: 0, discountReason: null, total: n(inv.total),
+            paymentMethod: 'CASH', priceTier: inv.priceTier, createdAt: sale.createdAt,
+            items: sale.items.map((i) => ({
+              uuid: i.uuid, bookUuid: bookUuid.get(i.bookId), quantity: i.quantity,
+              unitPrice: Number(i.unitPrice), costPrice: Number(i.costPrice),
+            })),
+          });
+        }
 
         for (const i of stockLines) {
           const qty = Math.round(Number(i.quantity));
@@ -394,16 +424,13 @@ export async function invoiceRoutes(app: FastifyInstance) {
             create: { branchId, bookId: i.bookId!, quantity: -qty },
             update: { quantity: { decrement: qty } },
           });
-          await tx.stockMovement.create({
-            data: {
-              branchId,
-              bookId: i.bookId!,
-              delta: -qty,
-              type: 'SALE',
-              note: `Invoice ${inv.number}`,
-              userId: req.user.id,
-              originBranchId: branchId,
-            },
+          await recordMovement(tx, {
+            branchId,
+            bookId: i.bookId!,
+            delta: -qty,
+            type: 'SALE',
+            note: `Invoice ${inv.number}`,
+            userId: req.user.id,
           });
         }
       }

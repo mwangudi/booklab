@@ -5,11 +5,11 @@ const prisma = new PrismaClient();
 
 async function main() {
   const branches = [
-    { name: 'Luanda', location: 'Near Equity Bank' },
-    { name: 'Kapsabet', location: 'Next to Bata' },
-    { name: 'Mumias', location: 'Opp Muslim Primary' },
+    { name: 'Luanda', code: 'LUA', location: 'Near Equity Bank' },
+    { name: 'Kapsabet', code: 'KAP', location: 'Next to Bata' },
+    { name: 'Mumias', code: 'MUM', location: 'Opp Muslim Primary' },
   ];
-  for (const b of branches) await prisma.branch.upsert({ where: { name: b.name }, update: {}, create: b });
+  for (const b of branches) await prisma.branch.upsert({ where: { name: b.name }, update: { code: b.code }, create: b });
   const main = await prisma.branch.findUnique({ where: { name: 'Luanda' } });
   const westlands = await prisma.branch.findUnique({ where: { name: 'Kapsabet' } });
 

@@ -15,6 +15,7 @@ export default function BranchUpsertPage() {
   const existing = useMemo(() => branches?.find((b) => String(b.id) === id) ?? null, [branches, id]);
 
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
   const [location, setLocation] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -22,6 +23,7 @@ export default function BranchUpsertPage() {
   useEffect(() => {
     if (existing) {
       setName(existing.name);
+      setCode(existing.code ?? '');
       setLocation(existing.location);
     }
   }, [existing]);
@@ -30,9 +32,10 @@ export default function BranchUpsertPage() {
     e.preventDefault();
     setError(null);
     if (!name.trim() || !location.trim()) return setError('Name and location are required.');
+    if (!/^[A-Za-z0-9]{2,6}$/.test(code.trim())) return setError('The code must be 2 to 6 letters or numbers, e.g. KAP.');
     setSaving(true);
     try {
-      const payload = { name: name.trim(), location: location.trim() };
+      const payload = { name: name.trim(), code: code.trim().toUpperCase(), location: location.trim() };
       if (isEdit) await api.patch(`/api/branches/${id}`, payload);
       else await api.post('/api/branches', payload);
       navigate('/branches');
@@ -64,6 +67,15 @@ export default function BranchUpsertPage() {
             </FormField>
             <FormField label="Location *">
               <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Westlands, Nairobi" />
+            </FormField>
+            <FormField label="Branch code *" hint="Prefixes documents raised here, e.g. INV-KAP-0007. Keep it short and never reuse one.">
+              <Input
+                value={code}
+                onChange={(e) => setCode(e.target.value.toUpperCase())}
+                placeholder="e.g. KAP"
+                maxLength={6}
+                className="font-mono uppercase"
+              />
             </FormField>
           </div>
           <div className="flex justify-end gap-2 pt-2">

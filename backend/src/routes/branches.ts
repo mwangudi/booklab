@@ -3,7 +3,12 @@ import { z } from 'zod';
 import { authGuard, requireRole, isAdmin } from '../middleware/authGuard.js';
 import { auditRequest, diff } from '../lib/audit.js';
 
-const branchSchema = z.object({ name: z.string().min(1), location: z.string().min(1) });
+const branchSchema = z.object({
+  name: z.string().min(1),
+  /// Prefixes documents raised here, so it has to stay short and stable.
+  code: z.string().trim().min(2).max(6).regex(/^[A-Za-z0-9]+$/, 'Use letters and numbers only').transform((s) => s.toUpperCase()),
+  location: z.string().min(1),
+});
 
 export async function branchRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
