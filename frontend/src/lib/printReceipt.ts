@@ -49,10 +49,14 @@ const SHOP_TEL = 'Tel: 0728 492 372';
 function buildHtml(d: ReceiptData): string {
   const cfg = getReceiptSettings();
   const paper = cfg.paperWidth;
-  const body = paper - 6; // allow for the @page margins
+  // Thermal printers cannot print to the edge of the roll. These are the usual
+  // printable widths; the rest is padding the driver will not clip. Kept as page
+  // padding rather than an @page margin so the on-screen preview matches print.
+  const content = paper === 58 ? 48 : 72;
+  const side = (paper - content) / 2;
   // 58mm rolls fit noticeably fewer characters per line.
   const baseFont = paper === 58 ? 10 : 12;
-  const logoW = Math.round(body * 0.28);
+  const logoW = Math.round(content * 0.28);
 
   const rows = d.items
     .map(
@@ -91,10 +95,10 @@ function buildHtml(d: ReceiptData): string {
 
   return `<!doctype html><html><head><meta charset="utf-8"><title>Receipt ${esc(d.receiptNo)}</title>
   <style>
-    @page { size: ${paper}mm auto; margin: 3mm; }
+    @page { size: ${paper}mm auto; margin: 0; }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
-    body { width: ${body}mm; font-family: 'Courier New', ui-monospace, monospace; font-size: ${baseFont}px; color: #000; background: #fff; }
+    body { width: ${paper}mm; padding: 3mm ${side}mm 6mm; font-family: 'Courier New', ui-monospace, monospace; font-size: ${baseFont}px; color: #000; background: #fff; }
     .center { text-align: center; }
     /* Logo to the left of a centred title, as on the invoice letterhead. */
     .head { display: flex; align-items: center; gap: 2mm; margin-bottom: 3px; }
