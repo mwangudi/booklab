@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
+import { SYNC_ROLE, enqueueOutbox } from './outbox.js';
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
@@ -24,7 +25,7 @@ export function actor(req: FastifyRequest): { userId: number | null; ip: string 
  */
 export async function writeAudit(db: Db, entry: AuditEntry): Promise<void> {
   try {
-    await db.auditLog.create({
+    const row = await db.auditLog.create({
       data: {
         userId: entry.userId ?? null,
         branchId: entry.branchId ?? null,
@@ -35,6 +36,24 @@ export async function writeAudit(db: Db, entry: AuditEntry): Promise<void> {
         ip: entry.ip ?? null,
       },
     });
+    // A branch keeps its own trail and sends a copy up, so actions taken during
+    // an outage are still attributable centrally.
+    if (SYNC_ROLE === 'branch') {
+      const [user, branch] = await Promise.all([
+        row.userId == null ? null : db.user.findUnique({ where: { id: row.userId }, select: { uuid: true } }),
+        row.branchId == null ? null : db.branch.findUnique({ where: { id: row.branchId }, select: { uuid: true } }),
+      ]);
+      await enqueueOutbox(db, 'auditLog', row.uuid, {
+        userUuid: user?.uuid ?? null,
+        branchUuid: branch?.uuid ?? null,
+        entity: row.entity,
+        entityId: row.entityId,
+        action: row.action,
+        details: row.details,
+        ip: row.ip,
+        createdAt: row.createdAt,
+      });
+    }
   } catch {
     /* auditing is best-effort */
   }

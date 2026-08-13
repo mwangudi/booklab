@@ -1,7 +1,9 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { authGuard, requireRole } from '../middleware/authGuard.js';
+import { auditRequest } from '../lib/audit.js';
 
 /**
  * Sync engine (cloud master side).
@@ -11,9 +13,14 @@ import { authGuard, requireRole } from '../middleware/authGuard.js';
  * Foreign keys travel as the related row's uuid and are resolved to local ids on ingest.
  */
 
-type SyncClaims = { id: number; role: string; branchId: number | null; type?: string };
+type SyncClaims = { id: number; role: string; branchId: number | null; type?: string; jti?: string };
 
-async function syncGuard(req: FastifyRequest, reply: FastifyReply) {
+/**
+ * A branch token is long-lived, so possession alone is not enough: the `jti` it
+ * carries must still be an active `SyncToken`. That is what makes a lost laptop
+ * revocable without rotating the server secret.
+ */
+async function syncGuard(this: FastifyInstance, req: FastifyRequest, reply: FastifyReply) {
   try {
     await req.jwtVerify();
   } catch {
@@ -21,6 +28,13 @@ async function syncGuard(req: FastifyRequest, reply: FastifyReply) {
   }
   const c = req.user as SyncClaims;
   if (c.type !== 'branch-sync' && c.role !== 'ADMIN') return reply.code(403).send({ error: 'Forbidden: sync access only' });
+  if (c.type !== 'branch-sync') return;
+
+  if (!c.jti) return reply.code(403).send({ error: 'This sync token predates revocation support. Issue a new one.' });
+  const record = await this.prisma.syncToken.findUnique({ where: { jti: c.jti }, select: { id: true, active: true, branchId: true } });
+  if (!record || !record.active) return reply.code(403).send({ error: 'This sync token has been revoked.' });
+  if (record.branchId !== c.branchId) return reply.code(403).send({ error: 'Sync token does not match its branch.' });
+  await this.prisma.syncToken.update({ where: { id: record.id }, data: { lastUsedAt: new Date() } });
 }
 
 function tokenBranchId(req: FastifyRequest): number | null {
@@ -28,7 +42,7 @@ function tokenBranchId(req: FastifyRequest): number | null {
   return c.type === 'branch-sync' ? c.branchId : null;
 }
 
-const EVENT_ENTITIES = ['sale', 'stockMovement', 'expense', 'invoice', 'goodsReceipt', 'customerPayment', 'supplierPayment'] as const;
+const EVENT_ENTITIES = ['sale', 'stockMovement', 'expense', 'invoice', 'goodsReceipt', 'customerPayment', 'supplierPayment', 'auditLog'] as const;
 const pushSchema = z.object({
   events: z
     .array(z.object({ entity: z.enum(EVENT_ENTITIES), uuid: z.string().min(1), op: z.enum(['upsert', 'delete']).default('upsert'), data: z.record(z.any()) }))
@@ -39,18 +53,52 @@ const pushSchema = z.object({
 type IngestResult = 'applied' | 'updated' | 'duplicate';
 
 export async function syncRoutes(app: FastifyInstance) {
+  const guard = syncGuard.bind(app);
+
   app.post('/token', { preHandler: [authGuard, requireRole('ADMIN')] }, async (req, reply) => {
-    const body = z.object({ branchId: z.number().int() }).parse(req.body);
+    const body = z.object({ branchId: z.number().int(), label: z.string().trim().min(1).max(80).default('Branch laptop') }).parse(req.body);
     const branch = await app.prisma.branch.findUnique({ where: { id: body.branchId }, select: { id: true, name: true } });
     if (!branch) return reply.code(404).send({ error: 'Branch not found' });
+
+    const jti = randomUUID();
+    const record = await app.prisma.syncToken.create({
+      data: { jti, branchId: branch.id, label: body.label, createdById: req.user.id },
+    });
     const token = app.jwt.sign(
       { id: -1, role: 'SYNC', branchId: branch.id, type: 'branch-sync' } as unknown as { id: number; role: string; branchId: number | null },
-      { expiresIn: '3650d' },
+      { expiresIn: '3650d', jti },
     );
-    return { branchId: branch.id, branchName: branch.name, token };
+    await auditRequest(app.prisma, req, {
+      entity: 'syncToken', entityId: record.id, branchId: branch.id, action: 'ISSUE',
+      details: { branch: branch.name, label: body.label },
+    });
+    return { id: record.id, branchId: branch.id, branchName: branch.name, label: record.label, token };
   });
 
-  app.post('/push', { preHandler: syncGuard }, async (req) => {
+  app.get('/tokens', { preHandler: [authGuard, requireRole('ADMIN')] }, async () =>
+    app.prisma.syncToken.findMany({
+      orderBy: [{ active: 'desc' }, { createdAt: 'desc' }],
+      include: { branch: { select: { name: true, code: true } } },
+    }),
+  );
+
+  app.post('/tokens/:id/revoke', { preHandler: [authGuard, requireRole('ADMIN')] }, async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const before = await app.prisma.syncToken.findUnique({ where: { id }, include: { branch: { select: { name: true } } } });
+    if (!before) return reply.code(404).send({ error: 'Sync token not found' });
+    if (!before.active) return reply.code(409).send({ error: 'That token is already revoked.' });
+    const updated = await app.prisma.syncToken.update({
+      where: { id },
+      data: { active: false, revokedAt: new Date(), revokedById: req.user.id },
+    });
+    await auditRequest(app.prisma, req, {
+      entity: 'syncToken', entityId: id, branchId: before.branchId, action: 'REVOKE',
+      details: { branch: before.branch.name, label: before.label },
+    });
+    return updated;
+  });
+
+  app.post('/push', { preHandler: guard }, async (req) => {
     const body = pushSchema.parse(req.body);
     const allowedBranch = tokenBranchId(req);
     const results: Array<{ uuid: string; status: IngestResult | 'error'; error?: string }> = [];
@@ -72,7 +120,7 @@ export async function syncRoutes(app: FastifyInstance) {
     };
   });
 
-  app.get('/pull', { preHandler: syncGuard }, async (req) => {
+  app.get('/pull', { preHandler: guard }, async (req) => {
     const { since, limit } = req.query as { since?: string; limit?: string };
     const sinceDate = since ? new Date(since) : undefined;
     const take = Math.min(Number(limit) || 500, 1000);
@@ -150,6 +198,7 @@ async function ingestEvent(tx: Tx, entity: (typeof EVENT_ENTITIES)[number], uuid
   if (entity === 'goodsReceipt') return ingestGoodsReceipt(tx, uuid, data, allowed);
   if (entity === 'customerPayment') return ingestCustomerPayment(tx, uuid, data);
   if (entity === 'supplierPayment') return ingestSupplierPayment(tx, uuid, data);
+  if (entity === 'auditLog') return ingestAuditLog(tx, uuid, data);
   return ingestExpense(tx, uuid, data, allowed);
 }
 
@@ -347,6 +396,31 @@ async function ingestSupplierPayment(tx: Tx, uuid: string, data: Record<string, 
       uuid, supplierId, receiptId, amount: data.amount, method: data.method ?? 'BANK_TRANSFER',
       reference: data.reference ?? null, note: data.note ?? null,
       paidAt: data.paidAt ? new Date(data.paidAt) : undefined,
+    },
+  });
+  return 'applied';
+}
+
+/**
+ * The trail is append-only, so an audit entry is written once and any repeat is
+ * a duplicate. `entityId` is left as the branch recorded it: local ids differ
+ * from the cloud's, and rewriting them would be a guess.
+ */
+async function ingestAuditLog(tx: Tx, uuid: string, data: Record<string, any>): Promise<IngestResult> {
+  if (await tx.auditLog.findUnique({ where: { uuid }, select: { id: true } })) return 'duplicate';
+  const [userId, branchId] = await Promise.all([
+    idByUuid(tx, 'user', data.userUuid),
+    idByUuid(tx, 'branch', data.branchUuid),
+  ]);
+  await tx.auditLog.create({
+    data: {
+      uuid, userId, branchId,
+      entity: data.entity,
+      entityId: data.entityId ?? null,
+      action: data.action,
+      details: data.details ?? null,
+      ip: data.ip ?? null,
+      createdAt: data.createdAt ? new Date(data.createdAt) : undefined,
     },
   });
   return 'applied';

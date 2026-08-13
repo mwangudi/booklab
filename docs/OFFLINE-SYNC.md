@@ -33,6 +33,7 @@ Branch desktop (offline)                     Cloud (master)
 | Sale, StockMovement, Expense | branch → cloud | outbox → `POST /api/sync/push`, idempotent by uuid |
 | Invoice (+ items), GoodsReceipt (+ items) | branch → cloud | upserted by uuid; lines replaced wholesale |
 | CustomerPayment, SupplierPayment | branch → cloud | idempotent by uuid |
+| AuditLog | branch → cloud | append-only, idempotent by uuid |
 | Book, Branch, User, Customer, Supplier | cloud → branch | `GET /api/sync/pull?since=`, upsert by uuid |
 | Stock on-hand | cloud → branch (snapshot) | full snapshot of **that branch only**; see below |
 
@@ -105,14 +106,24 @@ and prints the uuids to remove afterwards.
 `node scripts/sync-readiness.mjs` lists which models carry the sync columns.
 These have **no `uuid`**, so they cannot travel between branch and cloud:
 
-> Stock*, AuditLog, MpesaPayment, PayrollRun, Payslip, PayrollSetting
+> Stock*, MpesaPayment, PayrollRun, Payslip, PayrollSetting
 
 \* Stock is deliberate — it is derived, and is snapshotted instead.
 
-Payroll is head-office work and does not need to run at a branch. The gaps that
-still matter are **AuditLog**, so actions taken offline are not yet attributable
-centrally, and **MpesaPayment**, which cannot work offline anyway because it
-needs Safaricom.
+None of these need to run at a branch: payroll is head-office work, and M-Pesa
+cannot work offline anyway because it needs Safaricom. **During an outage a till
+takes cash only.**
+
+## Revoking a branch
+A branch token lasts ten years, so possession alone is not enough. Each one is
+backed by a `SyncToken` row and the JWT carries its `jti`; every sync request
+checks the row is still active and stamps `lastUsedAt`. Revoking it from
+**Administration → Branch sync** stops that laptop at the next request without
+rotating `JWT_SECRET`, which would sign every other user out.
+
+Revoking does not erase what the laptop is holding. Anything it has not yet sent
+stays in its outbox until a new token is put in place, so a machine that is
+coming back should be re-issued rather than left revoked.
 
 ## Branch runtime
 1. `SYNC_ROLE=branch` makes every write also append a portable event to the **Outbox**.

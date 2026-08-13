@@ -5,63 +5,77 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
 
 ## 2026-08-13
 
-Groundwork for branches trading through an internet outage.
+A branch can now trade through an internet outage. Two rounds of work: making the
+sync engine actually function, then closing the two gaps that would have made
+handing out laptops unwise.
 
-### Offline sync
+### A branch laptop can be cut off
 
-The engine had been written but never actually run — production held no outbox
-or sync-state rows at all — and it predated price tiers, VAT, units and
-discounts. Exercised end to end against production and repaired:
+A branch token lasts ten years, and each laptop holds one. Losing a laptop
+previously meant rotating the server secret and signing **everyone** out.
+
+- Each token is now backed by a record, and every sync request checks it is still
+  active. Revoking one from **Administration → Branch sync** stops that machine
+  at its next request and leaves every other branch working.
+- The screen shows which machine a token was issued for and when it last synced,
+  so a branch that has quietly stopped reconciling is visible.
+- A token is shown once, when issued. Issuing and revoking are both audited.
+
+### Actions taken offline reach the audit trail
+
+`AuditLog` had no global identity, so a void, price change or stock take made
+during an outage stayed on the laptop. Entries now carry a `uuid` and travel with
+everything else, keeping the original timestamp, user and IP. For a system where
+the audit trail is a control, that gap mattered.
+
+### The offline engine actually works now
+
+It had been written but never run — production held no outbox or sync-state rows
+at all — and it predated price tiers, VAT, units and discounts. Built a complete
+branch install against production and repaired what it turned up:
 
 - **A fresh branch showed nothing in stock.** On-hand was never sent, and a new
-  branch database has no movement history to derive it from. A branch now
-  receives a snapshot of its own shelves, and only its own.
-- Books reached a branch without their **unit, VAT rate or wholesale/school
-  prices**, so a branch would have priced goods differently from the shop.
+  branch database has no movement history to derive it from.
+- Books arrived without their **unit, VAT rate or tier prices**, so a branch
+  would have priced goods differently from the shop.
 - Sale **discounts and price tier** were dropped in transit.
-- **Stock takes, adjustments, transfers, and the stock movements behind posting a
-  goods receipt or delivering an invoice** all wrote a movement without queueing
-  it, so those corrections never left the branch.
-- The runner now **pushes before it pulls** and only accepts the cloud's stock
+- **Stock takes, adjustments, transfers and the movements behind posting a goods
+  receipt or delivering an invoice** were written without being queued, so those
+  corrections never left the branch.
+- The runner now **pushes before it pulls**, and only accepts the cloud's stock
   once its own queue has drained — otherwise reconnecting would quietly reverse
   sales made during the outage.
-
-### Trading documents can now sync
-
-- Invoices, delivery notes, goods received and both customer and supplier
-  payments carry a `uuid`, so they have an identity that survives the trip
-  between a branch and the cloud. Customers and suppliers are sent down to the
-  branch so documents can be raised against them offline.
-- Unlike a sale, a document is edited before it is final, so the same one
-  arrives repeatedly. Documents are **upserted** and their lines replaced, with
-  the branch that raised them treated as the authority. A push reports `applied`
-  for a new document and `updated` for one that was overwritten.
-- Ingesting a document deliberately leaves stock alone; the movements travel as
-  their own events, so goods are never counted twice.
+- **Trading documents could not sync at all.** Invoices, delivery notes, goods
+  received and both payment tables had no `uuid`. They now do, and are upserted
+  rather than appended, because a document is edited as a draft, issued, then
+  delivered — the same one legitimately arrives more than once.
+- **The branch had nothing to open.** A shop laptop has no nginx, so the API now
+  serves the web app itself.
+- **The branch build did not compile.** SQLite has no enums, so the branch client
+  exports none. The domain enums moved to plain unions that work either side.
 
 ### Documents are numbered per branch
 
 Numbers came from the cloud's autoincrement, so **two branches working offline
-would both have issued `INV-0007`**. Each branch now has a short code and its own
-sequence — `INV-KAP-0007`, `DN-KAP-0007`, `GRN-KAP-0007` — read back from the
-numbers that branch has already issued. Documents raised centrally use `HQ`.
-
-Existing branches were given codes automatically (Luanda `LUA`, Kapsabet `KAP`,
-Mumias `MUM`) and the code is editable when adding or editing a branch. Numbers
-already issued are left untouched.
+would both have issued `INV-0007`**. Each branch now has a code and its own
+sequence — `INV-KAP-0007` — read back from what that branch has already issued.
 
 ### Database migrations
 
 | Migration | Purpose |
 |---|---|
-| `20260813090000_document_sync_identity` | `Branch.code`; `uuid` on Invoice, InvoiceItem, GoodsReceipt, GoodsReceiptItem, CustomerPayment and SupplierPayment; `updatedAt` on both payment tables |
+| `20260813090000_document_sync_identity` | `Branch.code`; `uuid` on the invoice, goods receipt and payment tables |
+| `20260813140000_audit_sync_and_revocable_tokens` | `AuditLog.uuid`; the `SyncToken` table |
 
-### Still needs a connection
+### Verified
 
-Payroll, the audit trail and M-Pesa do not sync. Payroll is head-office work and
-M-Pesa needs Safaricom, but it does mean **actions taken offline are not yet
-attributable in the audit log**. `node backend/scripts/sync-readiness.mjs` reports
-the current state.
+A real branch install — SQLite, the real API, the real web app, the sync runner —
+run against production. 22 checks across the till, back office and reports pass,
+including offline login and a cashier still being refused the P&L. A day's
+trading pushed on reconnect as 8 events with no errors, and re-pushing sent
+nothing. Stock agreed exactly: 283 on the branch, less 2 sold, plus 7 received,
+plus 5 posted, landing at 293 in the cloud. A revoked token is refused on both
+push and pull while a replacement for the same branch keeps working.
 
 ## 2026-08-12
 

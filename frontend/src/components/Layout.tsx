@@ -17,6 +17,7 @@ import {
   Package,
   Printer,
   ReceiptText,
+  RefreshCw,
   ShieldCheck,
   ShoppingCart,
   SlidersHorizontal,
@@ -120,6 +121,7 @@ const GROUPS: NavGroup[] = [
       { to: '/branches', label: 'Branches', icon: <Building2 className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/users', label: 'Users', icon: <Users className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/audit', label: 'Audit log', icon: <ShieldCheck className={ic} />, roles: ['ADMIN'] },
+      { to: '/settings/branch-sync', label: 'Branch sync', icon: <RefreshCw className={ic} />, roles: ['ADMIN'] },
     ],
   },
 ];

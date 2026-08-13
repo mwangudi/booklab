@@ -35,6 +35,7 @@ import BranchUpsertPage from './pages/BranchUpsertPage';
 import UsersPage from './pages/UsersPage';
 import UserUpsertPage from './pages/UserUpsertPage';
 import AuditLogPage from './pages/AuditLogPage';
+import SyncTokensPage from './pages/SyncTokensPage';
 import ReceiptSettingsPage from './pages/ReceiptSettingsPage';
 import EmployeesPage from './pages/payroll/EmployeesPage';
 import EmployeeUpsertPage from './pages/payroll/EmployeeUpsertPage';
@@ -108,6 +109,7 @@ export const router = createBrowserRouter([
           { path: 'settings/users/new', element: <AdminOnly><UserUpsertPage /></AdminOnly> },
           { path: 'settings/users/:id/edit', element: <AdminOnly><UserUpsertPage /></AdminOnly> },
           { path: 'settings/audit', element: <AdminOnly><AuditLogPage /></AdminOnly> },
+          { path: 'settings/branch-sync', element: <AdminOnly><SyncTokensPage /></AdminOnly> },
 
           { path: 'people/employees', element: <AdminOnly><EmployeesPage /></AdminOnly> },
           { path: 'people/employees/new', element: <AdminOnly><EmployeeUpsertPage /></AdminOnly> },

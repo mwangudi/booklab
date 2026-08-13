@@ -138,6 +138,7 @@ model Branch {
   employees Employee[]
   invoices  Invoice[]
   receipts  GoodsReceipt[]
+  syncTokens SyncToken[]
 }
 
 /// A book is the sellable product. `sku` is the internal code; `isbn` optional.
@@ -278,6 +279,7 @@ model StockMovement {
 /// Append-only trail of sensitive changes (price overrides, voids, transfers).
 model AuditLog {
   id        Int      @id @default(autoincrement())
+  uuid      String   @unique @default(uuid())
   userId    Int?
   branchId  Int?
   entity    String
@@ -338,6 +340,27 @@ model SyncState {
   lastPushedAt DateTime?
   cursor       String?
   updatedAt    DateTime  @updatedAt
+}
+
+/// A branch laptop's sync credential. The token it holds is long-lived, so the
+/// JWT carries this row's `jti` and every sync request checks it is still
+/// active — a lost laptop can be cut off without rotating the server secret and
+/// signing everyone else out.
+model SyncToken {
+  id          Int       @id @default(autoincrement())
+  jti         String    @unique
+  branchId    Int
+  /// Which machine this was issued for, so the right one can be revoked.
+  label       String
+  active      Boolean   @default(true)
+  createdById Int?
+  createdAt   DateTime  @default(now())
+  lastUsedAt  DateTime?
+  revokedAt   DateTime?
+  revokedById Int?
+  branch      Branch    @relation(fields: [branchId], references: [id])
+
+  @@index([branchId])
 }
 
 /// A person on the payroll. Deliberately separate from `User`: staff who never
