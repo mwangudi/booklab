@@ -59,6 +59,28 @@ export default defineConfig({
             },
           },
           {
+            // Login-screen slides. The captions change rarely; the pictures are
+            // versioned in the URL, so once fetched they never need revalidating
+            // and the sign-in screen still looks right on a cold offline start.
+            urlPattern: ({ url, request }) => request.method === 'GET' && url.pathname === '/api/promo',
+            handler: 'NetworkFirst',
+            options: {
+              cacheName: 'booklab-promo',
+              networkTimeoutSeconds: 3,
+              expiration: { maxEntries: 4, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
+            urlPattern: ({ url, request }) => request.method === 'GET' && /^\/api\/promo\/\d+\/image$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'booklab-promo-images',
+              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 90 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+          {
             urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com' || url.origin === 'https://fonts.gstatic.com',
             handler: 'CacheFirst',
             options: {

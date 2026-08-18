@@ -4,11 +4,8 @@ import { Loader2, LogIn } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { setAuthUser, useAuth } from '../lib/auth';
 import { cn } from '../lib/utils';
+import { FALLBACK_SLIDE, slideImageUrl, type PromoSlide } from '../lib/promo';
 import type { LoginResponse } from '../types';
-
-// Promotional images shown on the login screen. Drop more files into
-// `public/promo/` and add their paths here — they rotate automatically.
-const PROMO_IMAGES = ['/promo/madaraka-day.jpeg'];
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -18,16 +15,33 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [slide, setSlide] = useState(0);
+  const [slides, setSlides] = useState<PromoSlide[]>([FALLBACK_SLIDE]);
 
   useEffect(() => {
     if (isAuthenticated) navigate('/dashboard', { replace: true });
   }, [isAuthenticated, navigate]);
 
+  // Sign-in has to work on a cold, offline start, so a failure here is not an
+  // error — it just leaves the built-in picture showing.
   useEffect(() => {
-    if (PROMO_IMAGES.length <= 1) return;
-    const t = setInterval(() => setSlide((s) => (s + 1) % PROMO_IMAGES.length), 5000);
-    return () => clearInterval(t);
+    let cancelled = false;
+    api
+      .get<PromoSlide[]>('/api/promo')
+      .then((rows) => {
+        if (!cancelled && rows.length) setSlides(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  useEffect(() => {
+    setSlide(0);
+    if (slides.length <= 1) return;
+    const t = setInterval(() => setSlide((s) => (s + 1) % slides.length), 6000);
+    return () => clearInterval(t);
+  }, [slides]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,15 +61,17 @@ export default function LoginPage() {
   const inputCls =
     'w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/20';
 
+  const current = slides[slide] ?? slides[0];
+
   return (
-    <div className="min-h-screen grid lg:grid-cols-2 bg-background">
+    <div className="min-h-screen grid md:grid-cols-12 bg-background">
       {/* Promo carousel */}
-      <div className="hidden lg:block relative bg-black overflow-hidden">
-        {PROMO_IMAGES.map((src, i) => (
+      <div className="hidden md:block md:col-span-7 relative bg-black overflow-hidden">
+        {slides.map((s, i) => (
           <img
-            key={src}
-            src={src}
-            alt="Booklab Bookshop promotion"
+            key={`${s.id}-${s.v}`}
+            src={slideImageUrl(s)}
+            alt={s.title ?? 'Booklab Bookshop'}
             className={cn('absolute inset-0 h-full w-full object-cover transition-opacity duration-700', i === slide ? 'opacity-100' : 'opacity-0')}
           />
         ))}
@@ -63,18 +79,17 @@ export default function LoginPage() {
         <div className="absolute top-8 left-8">
           <img src="/logo.jpeg" alt="Booklab Bookshop" className="h-14 rounded-lg ring-1 ring-white/20" />
         </div>
-        <div className="absolute bottom-12 left-8 right-8 text-white">
-          <h2 className="text-3xl font-bold leading-tight">For Quality, For You</h2>
-          <p className="mt-3 text-white/85 max-w-md">
-            Books, textbooks, exercise &amp; story books, stationery and lab equipment — across our Luanda, Kapsabet and
-            Mumias branches.
-          </p>
-        </div>
-        {PROMO_IMAGES.length > 1 && (
+        {(current?.title || current?.subtitle) && (
+          <div className="absolute bottom-12 left-8 right-8 text-white">
+            {current.title && <h2 className="text-3xl font-bold leading-tight">{current.title}</h2>}
+            {current.subtitle && <p className="mt-3 text-white/85 max-w-md">{current.subtitle}</p>}
+          </div>
+        )}
+        {slides.length > 1 && (
           <div className="absolute bottom-5 left-1/2 -translate-x-1/2 flex gap-1.5">
-            {PROMO_IMAGES.map((_, i) => (
+            {slides.map((s, i) => (
               <button
-                key={i}
+                key={s.id}
                 onClick={() => setSlide(i)}
                 aria-label={`Slide ${i + 1}`}
                 className={cn('h-1.5 rounded-full transition-all', i === slide ? 'w-6 bg-white' : 'w-1.5 bg-white/50')}
@@ -85,9 +100,9 @@ export default function LoginPage() {
       </div>
 
       {/* Sign-in form */}
-      <div className="flex items-center justify-center p-6 sm:p-12">
+      <div className="md:col-span-5 flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-sm">
-          <img src="/logo.jpeg" alt="Booklab Bookshop" className="h-16 rounded-lg mb-8 lg:hidden" />
+          <img src="/logo.jpeg" alt="Booklab Bookshop" className="h-16 rounded-lg mb-8 md:hidden" />
 
           <h1 className="text-2xl font-semibold text-foreground">Welcome back</h1>
           <p className="text-sm text-muted-foreground mt-1">Sign in to the staff portal to continue.</p>

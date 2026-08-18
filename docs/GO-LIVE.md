@@ -115,13 +115,15 @@ At 7 MB compressed this costs almost nothing and takes minutes to set up.
 
 Currently in place: `ufw` is active and allows only SSH and nginx; TLS is valid
 and renews automatically via certbot; passwords are bcrypt hashed; every
-sensitive action is audited.
+sensitive action is audited; HTTP security headers are set on every response
+(HSTS for a year, `X-Content-Type-Options`, `X-Frame-Options: DENY`,
+`frame-ancestors 'none'`, `Referrer-Policy` and a `Permissions-Policy`).
 
 Worth doing before real trading:
 
 | Gap | Why it matters |
 |---|---|
-| No security headers | No HSTS, `X-Content-Type-Options`, `X-Frame-Options` or `Referrer-Policy`. Cheap to add in nginx, and expected of a system handling money. |
+| No Content-Security-Policy beyond `frame-ancestors` | A full `script-src`/`style-src` policy is the strongest defence against injected script, but it has to be tested against the whole app first — the reports use jsPDF and the shell loads Google Fonts. Framing is already blocked. |
 | Services bind to `0.0.0.0` | Ports 4000, 4100 and 1433 listen on all interfaces. `ufw` blocks them today, so this is defence-in-depth, not an open door — but if the firewall is ever flushed they are exposed. Bind to `127.0.0.1`. |
 | SSH password login | Confirm it is key-only. |
 | `JWT_SECRET` | Must be a long random value, and different from any branch laptop's. |

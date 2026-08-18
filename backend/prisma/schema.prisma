@@ -682,3 +682,21 @@ model GoodsReceiptItem {
 
   @@index([receiptId])
 }
+
+/// Pictures shown on the login screen, managed from Administration -> Login
+/// screen. The bytes live in the database on purpose: a restored backup brings
+/// the branding back with it, and a redeploy cannot wipe them the way files
+/// under dist/ would be.
+model PromoSlide {
+  id        Int      @id @default(autoincrement())
+  title     String?  @db.VarChar(120)
+  subtitle  String?  @db.VarChar(300)
+  mimeType  String   @default("image/jpeg") @db.VarChar(60)
+  image     Bytes
+  sortOrder Int      @default(0)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active, sortOrder])
+}
