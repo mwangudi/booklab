@@ -1,49 +1,74 @@
 # Roadmap / status
 
-## Done — backend (schema-validated)
-- Prisma schema: User, Branch, Book, Stock, Sale, SaleItem, Expense, StockMovement,
-  Outbox, SyncState — with sync columns (`uuid`, `updatedAt`, `deletedAt`, `originBranchId`).
-- Auth (login/me/users) with role + branch scoping.
-- Branches, Books (catalogue), Stock (branch view, valuation, set, intake-as-movement).
-- Sales/POS (`POST /api/sales`) with stock decrement + cost snapshot + outbox on branch.
-- Expenses (list/add) with outbox on branch.
-- Reports: **P&L** (revenue/COGS/gross/expenses/net, consolidated + per-branch + by-category),
-  Sales, Stock.
-- Sync engine: `POST /api/sync/token`, `POST /api/sync/push` (idempotent ingest of sale /
-  stockMovement / expense), `GET /api/sync/pull` (book/branch/user master data).
-- Branch runtime: `scripts/gen-sqlite-schema.mjs`, `src/sync-runner/`, `branch/` scripts.
+Where the system actually stands. Everything below was checked against the live
+server and the code, not from memory.
 
-## To do — backend (nice-to-have)
-- Stock adjustment endpoint (movement `type=ADJUST`) + CSV import of books/stock.
-- Refunds, if needed.
-- A P&L CSV/PDF export endpoint parity with PharmaCare's report exports.
+For what has to happen before the shop trades on this for real, see
+[GO-LIVE.md](GO-LIVE.md). For what shipped when, see [../CHANGELOG.md](../CHANGELOG.md).
 
-## Done — migration
-- Initial Prisma migration generated at `backend/prisma/migrations/20260704000000_init`
-  (via `prisma migrate diff`, offline). Apply with `npx prisma migrate dev` (or `deploy`).
+## Built and running in production
 
-## Done — frontend
-Built as a self-contained **React + Vite + TypeScript + Tailwind** SPA in `frontend/`, reusing the
-PharmaCare patterns (`api.ts`/`auth.ts`/`useApi.ts`/`reportExport.ts`, a `DataTable`, KPI/UI kit).
-`npm run build` (tsc + vite) passes.
-- Catalogue is **product-type aware**: `category` covers Textbook / Exercise Book / Story Book /
-  Novel / Reference / Children / Stationery / Art & Craft / Office Supplies / Magazine; `author`/`isbn`
-  are optional (books only).
-- Pages: Login, Dashboard, **POS** (`/pos`), Sales (+receipt modal), **Products** (+ create/edit),
-  **Stock** (+ stock-take + intake), **Expenses** (+ record), **Reports** (P&L / Sales / Stock with
-  CSV + jsPDF export), **Branches** (+ upsert), **Users** (+ upsert).
-- JWT auth, role/branch scoping, `RequireAuth` + `AdminOnly`/`ManagerOnly` gates, Vite proxy `/api`→`:4000`.
+**Selling** — POS with price tiers, cash discounts recorded against the sale,
+M-Pesa STK push, EPOS receipts on 58/80mm thermal printers, reprints stamped as
+duplicates, and voids that return the stock and take the sale out of revenue. The
+till catalogue is ordered by what that branch actually sells.
 
-## To do — frontend (polish)
-- Optional: code-split the jsPDF report export to trim the initial bundle.
-- Optional: offline PWA shell + service worker for the branch desktop build.
-- Optional: thermal receipt printing from the POS.
+**Stock** — per-branch quantities, intake, inter-branch transfers, bulk stock
+take from a count sheet, and a full movement history behind every change. Prices
+cannot be sold below the shop's price, and cashiers are held to three quantity
+corrections per product per day.
 
-## To do — infra
-- systemd unit + Nginx vhost for the cloud (see DEPLOY.md).
-- Thermal receipt printing on the branch (optional; ESC/POS agent like PharmaCare's plan).
+**Credit trading** — customers, invoices, delivery notes, statements with ageing;
+suppliers, goods received notes that post stock and update cost, and supplier
+statements that reconcile against theirs. VAT is configurable per customer, per
+invoice and per line.
 
-## Verified
-- `schema.prisma` passes `prisma validate`.
-- Backend code mirrors the PharmaCare patterns that build + run cleanly; after `npm install`
-  + `prisma generate`, `npm run build` should pass. (Deps aren't installed in this scaffold.)
+**Money and people** — expenses, payroll with PAYE/NSSF/SHIF/Housing Levy on
+editable rates, P&L, sales, stock valuation, daily Z-report and a re-order
+report, all exportable to CSV and PDF.
+
+**Control** — role and branch scoping enforced server-side, and an audit trail
+covering sign-ins, voids, reprints, price changes, stock corrections and payroll,
+with an admin viewer.
+
+**Offline** — a branch laptop runs the whole system against a local SQLite
+database and reconciles with the cloud when it can. Phones install the app and
+keep selling for up to two hours without a connection. See
+[OFFLINE-SYNC.md](OFFLINE-SYNC.md).
+
+## Not built
+
+- **Refunds.** A sale can be voided in full; there is no partial refund or
+  return-to-stock for one line of a sale. Nobody has asked for it yet.
+- **Purchase orders.** Goods received records what arrived; there is no ordering
+  step before it.
+- **Customer-facing anything** — no online ordering, no customer login.
+- **Email.** The system sends none, so there is no password reset by mail; an
+  admin resets passwords.
+
+## Known gaps
+
+- **Branch laptops have never been deployed.** The runtime is built and proven
+  end to end against production, but `branch/install-services.ps1` has not been
+  run on real hardware.
+- **A phone must be online once** before it can sell offline, because the
+  catalogue is cached on first load.
+- **Payroll, M-Pesa and stock-on-hand do not sync** to a branch. Payroll is
+  head-office work, M-Pesa needs a connection anyway, and stock is deliberately
+  snapshotted rather than synced. `node backend/scripts/sync-readiness.mjs`
+  reports the current state.
+- **The droplet is shared** with several unrelated applications, so anyone with
+  root there can read this database.
+
+## Infrastructure still to do
+
+These are in [GO-LIVE.md](GO-LIVE.md) with the detail, but in short:
+
+| | |
+|---|---|
+| **Nightly database backup** | **not configured — blocking** |
+| Security headers in nginx | missing |
+| Services bound to `0.0.0.0` | mitigated by `ufw`, worth tightening |
+| Domain | not registered |
+| M-Pesa | still `MPESA_ENV=mock` |
+| Demo data | still live |
