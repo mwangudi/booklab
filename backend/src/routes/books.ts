@@ -127,8 +127,12 @@ export async function bookRoutes(app: FastifyInstance) {
   });
 
   // Bulk import/update the catalogue (e.g. from a CSV). Upserts by SKU when
-  // provided, otherwise matches an existing product by title. Missing prices
-  // default to 0 so partially-filled sheets still load.
+  // provided, otherwise matches an existing product by title.
+  //
+  // A new product needs a full row, so anything absent starts at 0. An UPDATE is
+  // treated as a patch: a column the sheet does not carry is left alone. Without
+  // that split, importing a supplier's cost-only price list would set the selling
+  // price of every product in it to zero.
   app.post('/import', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
     const { items } = importSchema.parse(req.body);
     let created = 0;
@@ -138,7 +142,7 @@ export async function bookRoutes(app: FastifyInstance) {
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
       try {
-        const data = {
+        const createData = {
           title: it.title.trim(),
           category: it.category?.trim() || null,
           unit: it.unit?.trim() || 'Piece',
@@ -148,27 +152,38 @@ export async function bookRoutes(app: FastifyInstance) {
           costPrice: it.costPrice ?? 0,
           priceWholesale: it.priceWholesale ?? null,
           priceSchool: it.priceSchool ?? null,
-          // Re-importing an archived product brings it back into the catalogue.
           deletedAt: null,
         };
+
+        // Only the columns the sheet actually supplied.
+        const patch: Record<string, unknown> = { title: createData.title, deletedAt: null };
+        if (it.category !== undefined) patch.category = createData.category;
+        if (it.unit !== undefined) patch.unit = createData.unit;
+        if (it.author !== undefined) patch.author = createData.author;
+        if (it.isbn !== undefined) patch.isbn = createData.isbn;
+        if (it.unitPrice !== undefined) patch.unitPrice = it.unitPrice;
+        if (it.costPrice !== undefined) patch.costPrice = it.costPrice;
+        if (it.priceWholesale !== undefined) patch.priceWholesale = it.priceWholesale;
+        if (it.priceSchool !== undefined) patch.priceSchool = it.priceSchool;
+
         const sku = it.sku?.trim();
         if (sku) {
           const existing = await app.prisma.book.findUnique({ where: { sku } });
           if (existing) {
-            await app.prisma.book.update({ where: { sku }, data });
+            await app.prisma.book.update({ where: { sku }, data: patch });
             updated += 1;
           } else {
-            await app.prisma.book.create({ data: { ...data, sku } });
+            await app.prisma.book.create({ data: { ...createData, sku } });
             created += 1;
           }
         } else {
-          const existing = await app.prisma.book.findFirst({ where: { title: data.title } });
+          const existing = await app.prisma.book.findFirst({ where: { title: createData.title } });
           if (existing) {
-            await app.prisma.book.update({ where: { id: existing.id }, data });
+            await app.prisma.book.update({ where: { id: existing.id }, data: patch });
             updated += 1;
           } else {
             const gen = `IMP-${Date.now().toString(36)}-${i}`.toUpperCase();
-            await app.prisma.book.create({ data: { ...data, sku: gen } });
+            await app.prisma.book.create({ data: { ...createData, sku: gen } });
             created += 1;
           }
         }

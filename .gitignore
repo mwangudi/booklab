@@ -14,3 +14,6 @@ backend/generated/
 backend/prisma/*.db
 backend/prisma/*.db-journal
 backend/prisma/schema.sqlite.prisma
+
+# Excel lock files created while a workbook is open
+~$*.xlsx
