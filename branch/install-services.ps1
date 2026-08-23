@@ -3,6 +3,13 @@
 
 $ErrorActionPreference = 'Stop'
 
+$admin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+         ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $admin) {
+    Write-Host "Run this from an elevated PowerShell (right-click > Run as administrator)." -ForegroundColor Red
+    exit 1
+}
+
 if (-not (Get-Command nssm -ErrorAction SilentlyContinue)) {
     Write-Host "nssm.exe not found on PATH. Install NSSM from https://nssm.cc first." -ForegroundColor Red
     exit 1
@@ -11,23 +18,57 @@ if (-not (Get-Command nssm -ErrorAction SilentlyContinue)) {
 $backend = (Resolve-Path "$PSScriptRoot/../backend").Path
 $node = (Get-Command node).Source
 
+if (-not (Test-Path "$backend\dist\server.js")) {
+    Write-Host "Backend not built. Run setup-branch.ps1 first." -ForegroundColor Red
+    exit 1
+}
+
+# nssm reports ordinary conditions on stderr, which PowerShell turns into a
+# terminating error under ErrorActionPreference=Stop. Route it away.
+function Invoke-Nssm {
+    $out = & nssm @args 2>&1
+    return ($out | Out-String).Trim()
+}
+
 function Install-BranchService($name, $script, $extraEnv) {
-    if (nssm status $name 2>$null) {
-        nssm stop $name 2>$null | Out-Null
-        nssm remove $name confirm 2>$null | Out-Null
+    # Ask Windows, not nssm: `nssm status` on a service that does not exist yet
+    # writes to stderr and would abort the script on a first install.
+    if (Get-Service -Name $name -ErrorAction SilentlyContinue) {
+        Write-Host "  replacing existing service $name" -ForegroundColor Yellow
+        Invoke-Nssm stop $name | Out-Null
+        Invoke-Nssm remove $name confirm | Out-Null
+        Start-Sleep -Seconds 2
     }
-    nssm install $name $node "$backend\$script"
-    nssm set $name AppDirectory $backend
-    nssm set $name AppStdout "$backend\logs\$name.log"
-    nssm set $name AppStderr "$backend\logs\$name.err.log"
-    nssm set $name Start SERVICE_AUTO_START
-    if ($extraEnv) { nssm set $name AppEnvironmentExtra $extraEnv }
+    Invoke-Nssm install $name $node "$backend\$script" | Out-Null
+    Invoke-Nssm set $name AppDirectory $backend | Out-Null
+    Invoke-Nssm set $name AppStdout "$backend\logs\$name.log" | Out-Null
+    Invoke-Nssm set $name AppStderr "$backend\logs\$name.err.log" | Out-Null
+    Invoke-Nssm set $name Start SERVICE_AUTO_START | Out-Null
+    if ($extraEnv) { Invoke-Nssm set $name AppEnvironmentExtra $extraEnv | Out-Null }
+    Write-Host "  installed $name" -ForegroundColor Cyan
 }
 
 New-Item -ItemType Directory -Force -Path "$backend\logs" | Out-Null
 Install-BranchService 'BookshopBranchApi'  'dist\server.js'            'SYNC_ROLE=branch'
 Install-BranchService 'BookshopBranchSync' 'dist\sync-runner\index.js' 'SYNC_LOOP=1'
-nssm start BookshopBranchApi
-nssm start BookshopBranchSync
-Write-Host "Installed and started: BookshopBranchApi, BookshopBranchSync." -ForegroundColor Green
-Write-Host "Open http://127.0.0.1:4000 in a kiosk browser for the POS." -ForegroundColor Green
+
+Invoke-Nssm start BookshopBranchApi | Out-Null
+Invoke-Nssm start BookshopBranchSync | Out-Null
+Start-Sleep -Seconds 4
+
+$bad = $false
+foreach ($n in 'BookshopBranchApi', 'BookshopBranchSync') {
+    $svc = Get-Service -Name $n -ErrorAction SilentlyContinue
+    $state = if ($svc) { $svc.Status } else { 'MISSING' }
+    $colour = if ($state -eq 'Running') { 'Green' } else { 'Red' }
+    Write-Host ("  {0,-20} {1}" -f $n, $state) -ForegroundColor $colour
+    if ($state -ne 'Running') { $bad = $true }
+}
+
+if ($bad) {
+    Write-Host "`nA service did not start. Check $backend\logs\*.err.log" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`nInstalled and started. Open http://127.0.0.1:4000 in a kiosk browser for the POS." -ForegroundColor Green
+Write-Host "Logs: $backend\logs" -ForegroundColor Green
