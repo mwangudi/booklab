@@ -1,6 +1,10 @@
 # One-time Bookshop branch setup (run on the Windows branch desktop).
 # Generates the SQLite Prisma client to the DEFAULT @prisma/client (BRANCH_BUILD=1) so the
 # shared server/route code runs against SQLite, creates the local DB, and builds.
+#
+# RUN THIS ONLY ON A BRANCH MACHINE. BRANCH_BUILD=1 overwrites @prisma/client with the
+# SQLite client, so on a development machine it breaks work against the cloud MySQL
+# database until you run `npx prisma generate` in backend/ to put it back.
 
 $ErrorActionPreference = 'Stop'
 $backend = (Resolve-Path "$PSScriptRoot/../backend").Path
