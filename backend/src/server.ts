@@ -126,7 +126,10 @@ if (webRoot) {
 }
 
 const port = Number(process.env.PORT ?? 4000);
-app.listen({ port, host: '0.0.0.0' }).catch((err) => {
+// A branch till sits on the shop's wifi with no firewall in front of it, so it
+// sets HOST=127.0.0.1 and is reachable only from the machine itself.
+const host = process.env.HOST ?? '0.0.0.0';
+app.listen({ port, host }).catch((err) => {
   app.log.error(err);
   process.exit(1);
 });
