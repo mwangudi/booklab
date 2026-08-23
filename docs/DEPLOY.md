@@ -4,7 +4,10 @@ Mirrors the PharmaCare deploy. The cloud runs with `SYNC_ROLE=cloud` (default), 
 outbox stays empty there and it simply serves the API + accepts branch sync.
 
 ## 1. Server prerequisites
-Node 20 LTS, Nginx, MySQL 8, Certbot.
+Node 24 LTS, Nginx, MySQL 8, Certbot.
+
+Node 20 went end of life on 30 April 2026. Anything still on 20.20.2 is running
+unpatched and should be moved to 24.
 
 ## 2. Database
 ```sql

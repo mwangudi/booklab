@@ -1,7 +1,11 @@
 # Local setup
 
 ## Prerequisites
-- Node 20+ (works on 24), MySQL 8 running locally.
+- Node 24 LTS, MySQL 8 running locally.
+
+  Node 20 reached end of life on 30 April 2026 and gets no further security
+  fixes. Node 24 is Active LTS until April 2028; the branch SQLite runtime is
+  verified on it (`node scripts/branch-query-test.mjs`, 9/9).
 
 ## Backend
 ```bash
