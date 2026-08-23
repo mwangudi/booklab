@@ -143,13 +143,23 @@ branch build. The domain enums live in `src/lib/enums.ts` as plain unions and
 work against either client — import them from there, never from Prisma.
 
 ## Building a branch
-See [../branch/](../branch/):
+See [../branch/](../branch/). Requires **Node 24 LTS** (Node 20 is end of life).
+
+A fresh Windows install refuses to run unsigned `.ps1` files, so the first of
+these will fail with "running scripts is disabled on this system" until you
+allow them once:
+
+```powershell
+Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+```
+
 - `.env.branch.example` — `BRANCH_DATABASE_URL=file:./branch.db`, `SYNC_ROLE=branch`,
   `CLOUD_URL`, `SYNC_TOKEN` (mint via `POST /api/sync/token`), `SYNC_LOOP=1`.
 - `setup-branch.ps1` — generates the SQLite Prisma client to the **default** `@prisma/client`
   (`BRANCH_BUILD=1 node scripts/gen-sqlite-schema.mjs` + `prisma generate/db push`), builds.
+  Branch machines only — it overwrites the MySQL client.
 - `run-branch.ps1` — foreground API + sync runner.
-- `install-services.ps1` — NSSM Windows services (API + sync loop).
+- `install-services.ps1` — NSSM Windows services (API + sync loop); run elevated.
 
 The SQLite schema is derived from `schema.prisma` automatically (enums → String, `@db.*`
 stripped); Decimal is supported on SQLite.
