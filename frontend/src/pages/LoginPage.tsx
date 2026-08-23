@@ -10,7 +10,7 @@ import type { LoginResponse } from '../types';
 export default function LoginPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
-  const [email, setEmail] = useState('admin@booklabbookshop.co.ke');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -143,10 +143,7 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-6 text-[11px] text-muted-foreground text-center">
-            Demo admin: <span className="font-mono">admin@booklabbookshop.co.ke</span> / <span className="font-mono">admin123</span>
-          </p>
-          <a href="/" className="mt-4 block text-center text-xs text-primary hover:underline">
+          <a href="/" className="mt-6 block text-center text-xs text-primary hover:underline">
             ← Back to booklabbookshop.co.ke
           </a>
         </div>

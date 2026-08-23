@@ -10,9 +10,52 @@ if (-not $admin) {
     exit 1
 }
 
+# Fetches NSSM if it is missing. Elevation is already checked above, so writing
+# to C:\tools and the machine PATH is safe here.
+function Install-Nssm {
+    $dest = 'C:\tools'
+    $exe = Join-Path $dest 'nssm.exe'
+    if (Test-Path $exe) { return $exe }
+
+    $url = 'https://nssm.cc/release/nssm-2.24.zip'
+    $zip = Join-Path $env:TEMP 'nssm-2.24.zip'
+    Write-Host "  downloading $url" -ForegroundColor Cyan
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+    Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+
+    # Printed rather than pinned: NSSM publishes no per-release checksum, so this
+    # is here for you to compare against nssm.cc if you want the assurance.
+    Write-Host "  SHA256 $((Get-FileHash $zip -Algorithm SHA256).Hash)" -ForegroundColor DarkGray
+
+    $tmp = Join-Path $env:TEMP "nssm-$(Get-Random)"
+    Expand-Archive -Path $zip -DestinationPath $tmp -Force
+    $src = Get-ChildItem $tmp -Recurse -Filter nssm.exe |
+           Where-Object { $_.FullName -match '\\win64\\' } | Select-Object -First 1
+    if (-not $src) { throw 'win64\nssm.exe was not in the download.' }
+
+    New-Item -ItemType Directory -Force -Path $dest | Out-Null
+    Copy-Item $src.FullName $exe -Force
+    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item $zip -Force -ErrorAction SilentlyContinue
+
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    if ($machine -notlike "*$dest*") {
+        [Environment]::SetEnvironmentVariable('Path', "$machine;$dest", 'Machine')
+    }
+    $env:Path = "$env:Path;$dest"   # so this run can use it without reopening
+    Write-Host "  installed $exe" -ForegroundColor Cyan
+    return $exe
+}
+
 if (-not (Get-Command nssm -ErrorAction SilentlyContinue)) {
-    Write-Host "nssm.exe not found on PATH. Install NSSM from https://nssm.cc first." -ForegroundColor Red
-    exit 1
+    Write-Host "NSSM not found." -ForegroundColor Yellow
+    try {
+        Install-Nssm | Out-Null
+    } catch {
+        Write-Host "Could not install NSSM automatically: $($_.Exception.Message)" -ForegroundColor Red
+        Write-Host "Download it from https://nssm.cc and put win64\nssm.exe on the PATH." -ForegroundColor Red
+        exit 1
+    }
 }
 
 $backend = (Resolve-Path "$PSScriptRoot/../backend").Path

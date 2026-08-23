@@ -143,7 +143,10 @@ branch build. The domain enums live in `src/lib/enums.ts` as plain unions and
 work against either client — import them from there, never from Prisma.
 
 ## Building a branch
-See [../branch/](../branch/). Requires **Node 24 LTS** (Node 20 is end of life).
+**Installing one: [BRANCH-INSTALL.md](BRANCH-INSTALL.md)** — the step-by-step
+runbook, one pass per branch. What follows is just what the pieces are.
+
+Requires **Node 24 LTS** (Node 20 is end of life).
 
 A fresh Windows install refuses to run unsigned `.ps1` files, so the first of
 these will fail with "running scripts is disabled on this system" until you
