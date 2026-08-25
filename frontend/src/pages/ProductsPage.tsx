@@ -8,16 +8,27 @@ import { fmt, money, num, pct } from '../lib/format';
 import { PRODUCT_CATEGORIES } from '../lib/categories';
 import { csvToItems, type ImportItem } from '../lib/csv';
 import { downloadCsv } from '../lib/reportExport';
-import type { Book } from '../types';
+import { useBranches, BranchSelect } from '../components/BranchSelect';
+import type { Book, Stock } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions, Td, Th } from '../components/ui';
 import { Select2 } from '../components/Select2';
 
 export default function ProductsPage() {
-  const { canManage } = useAuth();
+  const { canManage, isAdmin, branchId: myBranch } = useAuth();
   const [showArchived, setShowArchived] = useState(false);
   const { data: books, loading, refresh } = useApi<Book[]>(`/api/books${showArchived ? '?archived=only' : ''}`, [showArchived]);
   const [category, setCategory] = useState('');
+
+  // Optional branch lens: pick one and the table gains that branch's on-hand
+  // quantity and price override, so the catalogue can be read per shop.
+  const { data: branches } = useBranches();
+  const [branchId, setBranchId] = useState<number | null>(isAdmin ? null : myBranch);
+  const { data: branchStock } = useApi<Stock[]>(branchId ? `/api/stock/branch/${branchId}` : null, [branchId]);
+  const stockByBook = useMemo(
+    () => new Map((branchStock ?? []).map((s) => [s.bookId, s])),
+    [branchStock],
+  );
   const [archiveTarget, setArchiveTarget] = useState<Book | null>(null);
   const [archiving, setArchiving] = useState(false);
   const [archiveError, setArchiveError] = useState<string | null>(null);
@@ -106,7 +117,6 @@ export default function ProductsPage() {
 
   const all = books ?? [];
   const rows = useMemo(() => (category ? all.filter((b) => b.category === category) : all), [all, category]);
-
   const catalogueValue = all.reduce((s, b) => s + num(b.unitPrice), 0);
   const categoriesUsed = new Set(all.map((b) => b.category).filter(Boolean)).size;
 
@@ -146,6 +156,34 @@ export default function ProductsPage() {
     },
   ];
 
+  if (branchId) {
+    const branchName = branches?.find((b) => b.id === branchId)?.name ?? 'Branch';
+    columns.splice(4, 0, {
+      key: 'onHand',
+      header: `${branchName} qty`,
+      align: 'right',
+      accessor: (b) => stockByBook.get(b.id)?.quantity ?? 0,
+      sortable: true,
+      render: (b) => {
+        const q = stockByBook.get(b.id)?.quantity ?? 0;
+        return <Pill tone={q <= 0 ? 'red' : q < 5 ? 'amber' : 'green'}>{fmt(q)}</Pill>;
+      },
+    });
+    columns.splice(5, 0, {
+      key: 'branchPrice',
+      header: `${branchName} price`,
+      align: 'right',
+      accessor: (b) => num(stockByBook.get(b.id)?.price ?? b.unitPrice),
+      sortable: true,
+      render: (b) => {
+        const override = stockByBook.get(b.id)?.price;
+        return override == null
+          ? <span className="text-muted-foreground text-xs">retail</span>
+          : <span className="font-mono">{money(override)}</span>;
+      },
+    });
+  }
+
   if (canManage) {
     columns.push({
       key: 'actions',
@@ -184,17 +222,22 @@ export default function ProductsPage() {
             : 'Books, textbooks, exercise books, story books and stationery.'
         }
         right={
-          canManage && (
-            <>
-              <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
-                {showArchived ? <BookOpen className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
-                {showArchived ? 'Live catalogue' : 'Archived'}
-              </Button>
-              <Button variant="outline" onClick={openImport}>
-                <Upload className="h-4 w-4" /> Import CSV
-              </Button>
-            </>
-          )
+          <div className="flex items-center gap-2">
+            {isAdmin && (branches?.length ?? 0) > 0 && !showArchived && (
+              <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All branches" className="w-44" />
+            )}
+            {canManage && (
+              <>
+                <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
+                  {showArchived ? <BookOpen className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                  {showArchived ? 'Live catalogue' : 'Archived'}
+                </Button>
+                <Button variant="outline" onClick={openImport}>
+                  <Upload className="h-4 w-4" /> Import CSV
+                </Button>
+              </>
+            )}
+          </div>
         }
       />
 

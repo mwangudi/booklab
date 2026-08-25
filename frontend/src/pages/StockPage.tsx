@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeftRight, Boxes, History, PackagePlus, SlidersHorizontal, Tag } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
@@ -33,14 +33,48 @@ export default function StockPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Default admins to the first branch once the list loads.
+  // Default admins to the first branch, but only once — otherwise choosing
+  // "All branches" (which is null) would immediately snap back to a branch.
+  const defaulted = useRef(false);
   useEffect(() => {
-    if (branchId == null && branches && branches.length > 0) setBranchId(branches[0].id);
+    if (!defaulted.current && branchId == null && branches && branches.length > 0) {
+      defaulted.current = true;
+      setBranchId(branches[0].id);
+    }
   }, [branches, branchId]);
 
+  const showingAll = isAdmin && branchId == null && defaulted.current;
   const path = branchId ? `/api/stock/branch/${branchId}` : null;
   const { data: stock, loading, refresh } = useApi<Stock[]>(path, [branchId]);
-  const rows = stock ?? [];
+
+  // "All branches" has no endpoint of its own, so gather each branch and label
+  // the rows. Admin only, because everyone else is scoped to one branch anyway.
+  const [allRows, setAllRows] = useState<Stock[] | null>(null);
+  const [allLoading, setAllLoading] = useState(false);
+
+  useEffect(() => {
+    if (!showingAll || !branches?.length) {
+      setAllRows(null);
+      return;
+    }
+    let cancelled = false;
+    setAllLoading(true);
+    Promise.all(branches.map((b) => api.get<Stock[]>(`/api/stock/branch/${b.id}`)))
+      .then((lists) => {
+        if (!cancelled) setAllRows(lists.flatMap((list, i) => list.map((r) => ({ ...r, branchId: branches[i].id }))));
+      })
+      .catch(() => {
+        if (!cancelled) setAllRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAllLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showingAll, branches]);
+
+  const rows = showingAll ? allRows ?? [] : stock ?? [];
 
   const totals = useMemo(() => {
     let units = 0, retail = 0, cost = 0, low = 0, out = 0;
@@ -135,6 +169,17 @@ export default function StockPage() {
   };
 
   const columns: Column<Stock>[] = [
+    ...(showingAll
+      ? [{
+          key: 'branch',
+          header: 'Branch',
+          accessor: (r: Stock) => branches?.find((b) => b.id === r.branchId)?.name ?? '',
+          sortable: true,
+          render: (r: Stock) => (
+            <span className="text-xs text-muted-foreground">{branches?.find((b) => b.id === r.branchId)?.name ?? '—'}</span>
+          ),
+        } as Column<Stock>]
+      : []),
     {
       key: 'title',
       header: 'Product',
@@ -179,7 +224,7 @@ export default function StockPage() {
     { key: 'value', header: 'Value', align: 'right', accessor: (r) => r.quantity * num(r.price ?? r.book.unitPrice), sortable: true, render: (r) => <span className="font-mono">{money(r.quantity * num(r.price ?? r.book.unitPrice))}</span> },
   ];
 
-  if (canManage) {
+  if (canManage && !showingAll) {
     columns.push({
       key: 'actions',
       header: '',
@@ -194,7 +239,7 @@ export default function StockPage() {
         </RowActions>
       ),
     });
-  } else if (isCashier) {
+  } else if (isCashier && !showingAll) {
     columns.push({
       key: 'actions',
       header: '',
@@ -225,7 +270,7 @@ export default function StockPage() {
         right={
           <div className="flex items-center gap-2">
             {isAdmin && branches && branches.length > 0 && (
-              <BranchSelect value={branchId} onChange={setBranchId} className="w-48" />
+              <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All branches" className="w-48" />
             )}
             {canManage && (
               <Link to="/stock/movements">
@@ -246,7 +291,7 @@ export default function StockPage() {
       </div>
 
       <Card className="p-4">
-        {loading ? (
+        {loading || allLoading ? (
           <Loading />
         ) : (
           <DataTable
@@ -255,9 +300,9 @@ export default function StockPage() {
             searchable={(r) => `${r.book.title} ${r.book.sku} ${r.book.category ?? ''}`}
             searchPlaceholder="Search stock…"
             initialSort={{ key: 'qty', dir: 'asc' }}
-            emptyText="No stock recorded for this branch yet."
+            emptyText={showingAll ? 'No stock recorded yet.' : 'No stock recorded for this branch yet.'}
             pageSize={12}
-            rowKey={(r) => r.id}
+            rowKey={(r) => `${r.branchId}-${r.bookId}`}
             actionSlot={
               <Link to="/stock/intake">
                 <Button>
