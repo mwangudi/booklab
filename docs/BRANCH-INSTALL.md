@@ -206,6 +206,23 @@ $env:BRANCH_BUILD='1'; node scripts/gen-sqlite-schema.mjs
 npx prisma db push --schema prisma/schema.sqlite.prisma --skip-generate
 ```
 
+### When an update is not enough
+
+A sync only **adds and updates**. It never deletes. So if products have been
+**removed** from the cloud catalogue, they live on at the branch forever — and
+selling one fails to push, because the cloud no longer knows that product.
+
+After any central clear-out, reset the branch instead of updating it:
+
+```powershell
+cd C:\booklab\branch
+.\reset-branch-data.ps1     # elevated
+```
+
+It refuses to run if the till is holding sales it has not sent yet, keeps the
+old database as a `.bak`, rebuilds an empty one, and waits for the first pull
+before reporting how many products arrived.
+
 ---
 
 ## If a laptop is lost or replaced
