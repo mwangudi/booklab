@@ -36,7 +36,7 @@ try {
   const bcrypt = (await import('bcryptjs')).default;
   const cashier = await db.user.findFirst({ where: { email: 'cashier@booklabbookshop.co.ke' } });
   console.log('  cashier found:', !!cashier, '| password verifies offline:',
-    await bcrypt.compare('cashier123', cashier.passwordHash));
+    await bcrypt.compare(process.env.BOOKLAB_CASHIER_PASSWORD ?? '', cashier.passwordHash));
 
   const branch = await db.branch.findFirst({ where: { id: cashier.branchId } });
   const stock = await db.stock.findFirst({ where: { branchId: branch.id, bookId: book.id } });

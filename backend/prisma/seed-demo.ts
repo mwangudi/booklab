@@ -17,6 +17,13 @@ import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
+// Never hardcode a password: this repository has been public.
+const requireEnv = (name: string): string => {
+  const v = process.env[name];
+  if (!v || v.length < 8) throw new Error(`${name} must be set to at least 8 characters before seeding.`);
+  return v;
+};
+
 /* ------------------------------------------------------------- utilities */
 
 // Deterministic PRNG so re-running produces the same demo, not a new one.
@@ -72,7 +79,7 @@ async function main() {
   const [luanda, kapsabet, mumias] = branches;
 
   /* 1. A manager account so role-based access can be demonstrated. */
-  const managerHash = await bcrypt.hash('manager123', 10);
+  const managerHash = await bcrypt.hash(requireEnv('SEED_MANAGER_PASSWORD'), 10);
   const manager = await prisma.user.upsert({
     where: { email: 'manager@booklabbookshop.co.ke' },
     update: {},
@@ -84,7 +91,7 @@ async function main() {
       branchId: luanda.id,
     },
   });
-  const cashierHash = await bcrypt.hash('cashier123', 10);
+  const cashierHash = await bcrypt.hash(requireEnv('SEED_CASHIER_PASSWORD'), 10);
   const cashier2 = await prisma.user.upsert({
     where: { email: 'mumias.cashier@booklabbookshop.co.ke' },
     update: {},
@@ -665,7 +672,7 @@ async function main() {
   }
   console.log(`Added ${vendors.length} suppliers with goods receipts and payments.`);
 
-  console.log('\nDemo data ready. Extra login: manager@booklabbookshop.co.ke / manager123');
+  console.log('\nDemo data ready. Extra login: manager@booklabbookshop.co.ke (password as supplied).');
   console.log('Run a payroll for last month in the app to see it post to the P&L.');
 }
 

@@ -58,12 +58,6 @@ const QUICK: NavItem[] = [
 /** Everything else is grouped into collapsible sections. */
 const GROUPS: NavGroup[] = [
   {
-    key: 'till',
-    heading: 'Till',
-    icon: <Printer className={ic} />,
-    items: [{ to: '/settings/receipt', label: 'Receipt & printer', icon: <Printer className={ic} /> }],
-  },
-  {
     key: 'stock',
     heading: 'Catalogue & Stock',
     icon: <Boxes className={ic} />,
@@ -113,6 +107,9 @@ const GROUPS: NavGroup[] = [
       { to: '/settings/audit', label: 'Audit log', icon: <ShieldCheck className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/branch-sync', label: 'Branch sync', icon: <RefreshCw className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/login-screen', label: 'Login screen', icon: <ImageIcon className={ic} />, roles: ['ADMIN'] },
+      // Deliberately open to every role: receipt settings live on the device, so
+      // each till has to be able to set up its own printer.
+      { to: '/settings/receipt', label: 'Receipt & printer', icon: <Printer className={ic} /> },
     ],
   },
   // Reports sit last: they are read at the end of a day, not worked through.

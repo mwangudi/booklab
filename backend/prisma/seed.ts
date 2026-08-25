@@ -97,7 +97,7 @@ async function main() {
     if (!exists) await prisma.expense.create({ data: { category: e.category, description: e.description, amount: e.amount, branchId: main?.id ?? null } });
   }
 
-  console.log('Seed complete. Admin: admin@booklabbookshop.co.ke / admin123 · Cashier: cashier@booklabbookshop.co.ke / cashier123');
+  console.log('Seed complete. Sign in as "admin" or "kapsabet.cashier" with the passwords you supplied.');
 }
 
 main()
