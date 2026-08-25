@@ -13,18 +13,28 @@ async function main() {
   const main = await prisma.branch.findUnique({ where: { name: 'Luanda' } });
   const westlands = await prisma.branch.findUnique({ where: { name: 'Kapsabet' } });
 
-  const adminHash = await bcrypt.hash('admin123', 10);
+  // Never hardcode these. A committed password ends up published, and this repo
+  // was public. Set SEED_ADMIN_PASSWORD / SEED_CASHIER_PASSWORD before seeding.
+  const seedPassword = (envVar: string): string => {
+    const v = process.env[envVar];
+    if (!v || v.length < 8) {
+      throw new Error(`${envVar} must be set to at least 8 characters before seeding.`);
+    }
+    return v;
+  };
+
+  const adminHash = await bcrypt.hash(seedPassword('SEED_ADMIN_PASSWORD'), 10);
   await prisma.user.upsert({
     where: { email: 'admin@booklabbookshop.co.ke' },
     update: {},
-    create: { email: 'admin@booklabbookshop.co.ke', name: 'Booklab Admin', passwordHash: adminHash, role: Role.ADMIN, branchId: main?.id ?? null },
+    create: { email: 'admin@booklabbookshop.co.ke', username: 'admin', name: 'Booklab Admin', passwordHash: adminHash, role: Role.ADMIN, branchId: main?.id ?? null },
   });
 
-  const cashierHash = await bcrypt.hash('cashier123', 10);
+  const cashierHash = await bcrypt.hash(seedPassword('SEED_CASHIER_PASSWORD'), 10);
   await prisma.user.upsert({
     where: { email: 'cashier@booklabbookshop.co.ke' },
     update: {},
-    create: { email: 'cashier@booklabbookshop.co.ke', name: 'Kapsabet Cashier', passwordHash: cashierHash, role: Role.CASHIER, branchId: westlands?.id ?? null },
+    create: { email: 'cashier@booklabbookshop.co.ke', username: 'kapsabet.cashier', name: 'Kapsabet Cashier', passwordHash: cashierHash, role: Role.CASHIER, branchId: westlands?.id ?? null },
   });
 
   // The shop sells more than books: textbooks, exercise books, story books and

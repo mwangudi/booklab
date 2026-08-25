@@ -16,18 +16,23 @@ cp .env.example .env
 #   JWT_SECRET="<any strong string>"
 npm install
 npx prisma migrate dev --name init   # creates the DB schema + migration
-npm run seed                          # branches, admin/cashier, sample books + stock + expenses
+SEED_ADMIN_PASSWORD=... SEED_CASHIER_PASSWORD=... npm run seed
 npm run dev                           # API on http://localhost:4000
 ```
 Health check: `curl http://localhost:4000/health` → `{"ok":true,...}`.
-Seeded logins: `admin@bookshop.co.ke / admin123`, `cashier@bookshop.co.ke / cashier123`.
+
+Seeding refuses to run without those two variables. Nothing in this repository
+should ever carry a real password — it has been public.
+
+The seeded accounts sign in with the usernames `admin` and `kapsabet.cashier`;
+the email still works too.
 
 ## Verifying the API
 ```bash
-# login
+# login (username or email both work)
 curl -s -X POST http://localhost:4000/api/auth/login \
   -H 'content-type: application/json' \
-  -d '{"email":"admin@bookshop.co.ke","password":"admin123"}'
+  -d '{"email":"admin","password":"'"$SEED_ADMIN_PASSWORD"'"}'
 # use the returned token:
 curl -s http://localhost:4000/api/reports/pnl -H "authorization: Bearer <token>"
 ```

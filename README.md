@@ -48,7 +48,8 @@ cd frontend
 npm install
 npm run dev                  # SPA on http://localhost:5173 (proxies /api to :4000)
 ```
-Seeded admin: `admin@booklabbookshop.co.ke` / `admin123` · cashier: `cashier@booklabbookshop.co.ke` / `cashier123`.
+Seeded logins use the usernames `admin` and `kapsabet.cashier`. Passwords come from
+`SEED_ADMIN_PASSWORD` and `SEED_CASHIER_PASSWORD` — seeding fails if they are unset.
 The web app serves the **public site** at `/` and the **staff portal** at `/login`.
 
 **M-Pesa:** configure `MPESA_*` in `backend/.env` (Daraja consumer key/secret, shortcode, passkey, `MPESA_TX_TYPE` = Paybill/Till, and a public `MPESA_CALLBACK_URL`). Leave `MPESA_ENV=mock` to simulate payments end-to-end without credentials.
