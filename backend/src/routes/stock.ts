@@ -94,6 +94,28 @@ export async function stockRoutes(app: FastifyInstance) {
     });
   });
 
+  // Per-branch stock for ONE product, so the product editor can show and set it
+  // without pulling the whole catalogue for every branch.
+  app.get('/book/:bookId', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+    const bookId = Number((req.params as { bookId: string }).bookId);
+    if (!Number.isInteger(bookId)) return reply.code(400).send({ error: 'Invalid product id' });
+    const mine = branchScope(req, reply, undefined);
+    const branches = await app.prisma.branch.findMany({
+      where: { deletedAt: null, ...(mine ? { id: mine } : {}) },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, code: true },
+    });
+    const rows = await app.prisma.stock.findMany({ where: { bookId, branchId: mine ?? undefined } });
+    const byBranch = new Map(rows.map((s) => [s.branchId, s]));
+    return branches.map((b) => ({
+      branchId: b.id,
+      branchName: b.name,
+      branchCode: b.code,
+      quantity: byBranch.get(b.id)?.quantity ?? 0,
+      price: byBranch.get(b.id)?.price ?? null,
+    }));
+  });
+
   // Per-branch valuation summary (retail + cost value, low/out counts).
   app.get('/valuation', async (req, reply) => {
     const scoped = branchScope(req, reply, undefined);

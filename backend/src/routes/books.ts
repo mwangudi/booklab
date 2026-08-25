@@ -47,7 +47,9 @@ export async function bookRoutes(app: FastifyInstance) {
           : {}),
       },
       orderBy: { title: 'asc' },
-      take: 500,
+      // The catalogue is reference data and the Products page shows it whole; a
+      // 500 cap silently hid stock once the real price list was loaded.
+      take: 5000,
     });
   });
 

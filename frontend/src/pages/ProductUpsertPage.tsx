@@ -3,11 +3,20 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, Save } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
+import { useAuth } from '../lib/auth';
 import { BOOK_CATEGORIES, PRODUCT_CATEGORIES, PRODUCT_UNITS } from '../lib/categories';
 import { num } from '../lib/format';
 import type { Book } from '../types';
 import { Alert, Button, Card, FormField, Input, Loading, PageHeader } from '../components/ui';
 import { Select2 } from '../components/Select2';
+
+interface BranchStock {
+  branchId: number;
+  branchName: string;
+  branchCode: string;
+  quantity: number;
+  price: string | number | null;
+}
 
 interface FormState {
   title: string;
@@ -37,6 +46,20 @@ export default function ProductUpsertPage() {
   const [form, setForm] = useState<FormState>(empty);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const { canManage } = useAuth();
+  const { data: branchStock, refresh: refreshStock } = useApi<BranchStock[]>(
+    isEdit && canManage ? `/api/stock/book/${id}` : null,
+  );
+  // Keyed by branch so an untouched branch is never written back.
+  const [qty, setQty] = useState<Record<number, string>>({});
+  const [branchPrice, setBranchPrice] = useState<Record<number, string>>({});
+
+  useEffect(() => {
+    if (!branchStock) return;
+    setQty(Object.fromEntries(branchStock.map((s) => [s.branchId, String(s.quantity)])));
+    setBranchPrice(Object.fromEntries(branchStock.map((s) => [s.branchId, s.price == null ? '' : String(num(s.price))])));
+  }, [branchStock]);
 
   useEffect(() => {
     if (existing) {
@@ -92,6 +115,24 @@ export default function ProductUpsertPage() {
     try {
       if (isEdit) await api.patch(`/api/books/${id}`, payload);
       else await api.post('/api/books', payload);
+
+      // Only branches the user actually changed are written, so this never
+      // records a stock movement for a field nobody touched.
+      if (isEdit && branchStock) {
+        for (const s of branchStock) {
+          const newQty = Math.round(num(qty[s.branchId]));
+          if (String(newQty) !== String(s.quantity)) {
+            await api.put('/api/stock', { branchId: s.branchId, bookId: Number(id), quantity: newQty, note: 'Set from the product page' });
+          }
+          const raw = (branchPrice[s.branchId] ?? '').trim();
+          const wanted = raw === '' ? null : num(raw);
+          const current = s.price == null ? null : num(s.price);
+          if (wanted !== current) {
+            await api.put('/api/stock/price', { branchId: s.branchId, bookId: Number(id), price: wanted });
+          }
+        }
+        refreshStock();
+      }
       navigate('/products');
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the product.');
@@ -184,6 +225,47 @@ export default function ProductUpsertPage() {
               </FormField>
             </div>
           </div>
+
+          {isEdit && canManage && branchStock && branchStock.length > 0 && (
+            <div className="rounded-lg border border-dashed border-border p-4">
+              <p className="text-xs font-medium text-muted-foreground mb-1">Stock by branch</p>
+              <p className="text-[11px] text-muted-foreground mb-3">
+                Changing a quantity here records a stock take against your name, exactly as the stock page does.
+                Leave a branch price blank to charge the retail price above.
+              </p>
+              <div className="space-y-3">
+                {branchStock.map((s) => (
+                  <div key={s.branchId} className="grid sm:grid-cols-3 gap-3 items-end">
+                    <div className="text-sm text-foreground">
+                      <span className="font-medium">{s.branchName}</span>
+                      <span className="text-muted-foreground text-xs ml-2">{s.branchCode}</span>
+                    </div>
+                    <FormField label="Quantity on hand">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={qty[s.branchId] ?? ''}
+                        onChange={(e) => setQty((q) => ({ ...q, [s.branchId]: e.target.value }))}
+                        className="font-mono"
+                      />
+                    </FormField>
+                    <FormField label="Branch price (KES)">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={branchPrice[s.branchId] ?? ''}
+                        onChange={(e) => setBranchPrice((p) => ({ ...p, [s.branchId]: e.target.value }))}
+                        placeholder={form.unitPrice || '0'}
+                        className="font-mono"
+                      />
+                    </FormField>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={() => navigate('/products')}>

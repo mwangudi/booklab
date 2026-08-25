@@ -191,7 +191,8 @@ export async function reportRoutes(app: FastifyInstance) {
         branch: { select: { name: true } },
       },
       orderBy: [{ quantity: 'asc' }],
-      take: 2000,
+      // One row per product per branch, so this has to clear catalogue x branches.
+      take: 20000,
     });
     const mapped = rows.map((r) => ({
       branch: r.branch.name,
