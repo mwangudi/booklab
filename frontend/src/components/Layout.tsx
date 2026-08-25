@@ -94,18 +94,6 @@ const GROUPS: NavGroup[] = [
     ],
   },
   {
-    key: 'reports',
-    heading: 'Reports',
-    icon: <BarChart3 className={ic} />,
-    items: [
-      { to: '/reports/zreport', label: 'Daily Z-report', icon: <ClipboardList className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-      { to: '/reports/pnl', label: 'Profit & Loss', icon: <BarChart3 className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-      { to: '/reports/sales', label: 'Sales report', icon: <LineChart className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-      { to: '/reports/stock', label: 'Stock report', icon: <Warehouse className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-      { to: '/reports/low-stock', label: 'Re-order report', icon: <Package className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-    ],
-  },
-  {
     key: 'people',
     heading: 'People & Payroll',
     icon: <Users className={ic} />,
@@ -125,6 +113,19 @@ const GROUPS: NavGroup[] = [
       { to: '/settings/audit', label: 'Audit log', icon: <ShieldCheck className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/branch-sync', label: 'Branch sync', icon: <RefreshCw className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/login-screen', label: 'Login screen', icon: <ImageIcon className={ic} />, roles: ['ADMIN'] },
+    ],
+  },
+  // Reports sit last: they are read at the end of a day, not worked through.
+  {
+    key: 'reports',
+    heading: 'Reports',
+    icon: <BarChart3 className={ic} />,
+    items: [
+      { to: '/reports/zreport', label: 'Daily Z-report', icon: <ClipboardList className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/reports/pnl', label: 'Profit & Loss', icon: <BarChart3 className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/reports/sales', label: 'Sales report', icon: <LineChart className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/reports/stock', label: 'Stock report', icon: <Warehouse className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/reports/low-stock', label: 'Re-order report', icon: <Package className={ic} />, roles: ['ADMIN', 'MANAGER'] },
     ],
   },
 ];

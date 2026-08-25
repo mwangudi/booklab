@@ -5,7 +5,16 @@ import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
 import { actor, auditRequest, writeAudit } from '../lib/audit.js';
 
 const stockSetSchema = z.object({ branchId: z.number().int(), bookId: z.number().int(), quantity: z.number().int(), note: z.string().max(200).optional() });
-const priceSetSchema = z.object({ branchId: z.number().int(), bookId: z.number().int(), price: z.number().nonnegative().nullable() });
+// Any price omitted is left as it was; an explicit null clears it back to the
+// catalogue value. That distinction matters - the till page sends only `price`.
+const priceSetSchema = z.object({
+  branchId: z.number().int(),
+  bookId: z.number().int(),
+  price: z.number().nonnegative().nullable().optional(),
+  priceWholesale: z.number().nonnegative().nullable().optional(),
+  priceSchool: z.number().nonnegative().nullable().optional(),
+  costPrice: z.number().nonnegative().nullable().optional(),
+});
 const intakeSchema = z.object({ branchId: z.number().int(), bookId: z.number().int(), quantity: z.number().int().positive() });
 const transferSchema = z.object({
   fromBranchId: z.number().int(),
@@ -113,6 +122,9 @@ export async function stockRoutes(app: FastifyInstance) {
       branchCode: b.code,
       quantity: byBranch.get(b.id)?.quantity ?? 0,
       price: byBranch.get(b.id)?.price ?? null,
+      priceWholesale: byBranch.get(b.id)?.priceWholesale ?? null,
+      priceSchool: byBranch.get(b.id)?.priceSchool ?? null,
+      costPrice: byBranch.get(b.id)?.costPrice ?? null,
     }));
   });
 
@@ -196,32 +208,48 @@ export async function stockRoutes(app: FastifyInstance) {
 
     // The branch price is what the till's floor is measured against, so a cashier
     // who could lower it could also sell below the price the admin set.
-    if (req.user.role === 'CASHIER' && body.price != null && body.price < Number(book.unitPrice) - 0.01) {
-      await auditRequest(app.prisma, req, {
-        branchId, entity: 'stock.price', entityId: body.bookId, action: 'SET_PRICE_BLOCKED',
-        details: { attempted: body.price, catalogue: Number(book.unitPrice) },
-      });
-      return reply.code(403).send({
-        error: `${book.title} cannot be priced below the catalogue price of ${Number(book.unitPrice).toFixed(2)}. Ask a manager.`,
-      });
-    }
-    if (req.user.role === 'CASHIER' && body.price == null) {
-      return reply.code(403).send({ error: 'Only a manager can clear a branch price.' });
+    if (req.user.role === 'CASHIER') {
+      if (body.priceWholesale !== undefined || body.priceSchool !== undefined || body.costPrice !== undefined) {
+        return reply.code(403).send({ error: 'Only a manager can set wholesale, school or cost prices.' });
+      }
+      if (body.price != null && body.price < Number(book.unitPrice) - 0.01) {
+        await auditRequest(app.prisma, req, {
+          branchId, entity: 'stock.price', entityId: body.bookId, action: 'SET_PRICE_BLOCKED',
+          details: { attempted: body.price, catalogue: Number(book.unitPrice) },
+        });
+        return reply.code(403).send({
+          error: `${book.title} cannot be priced below the catalogue price of ${Number(book.unitPrice).toFixed(2)}. Ask a manager.`,
+        });
+      }
+      if (body.price === null) {
+        return reply.code(403).send({ error: 'Only a manager can clear a branch price.' });
+      }
     }
 
     const existing = await app.prisma.stock.findUnique({ where: { branchId_bookId: { branchId, bookId: body.bookId } } });
+
+    const patch: Record<string, unknown> = {};
+    if (body.price !== undefined) patch.price = body.price;
+    if (body.priceWholesale !== undefined) patch.priceWholesale = body.priceWholesale;
+    if (body.priceSchool !== undefined) patch.priceSchool = body.priceSchool;
+    if (body.costPrice !== undefined) patch.costPrice = body.costPrice;
+
     const updated = await app.prisma.stock.upsert({
       where: { branchId_bookId: { branchId, bookId: body.bookId } },
-      create: { branchId, bookId: body.bookId, quantity: 0, price: body.price },
-      update: { price: body.price },
+      create: { branchId, bookId: body.bookId, quantity: 0, ...patch },
+      update: patch,
     });
+    const money = (v: unknown) => (v == null ? null : Number(v));
     await writeAudit(app.prisma, {
       ...actor(req),
       branchId,
       entity: 'stock.price',
       entityId: body.bookId,
-      action: body.price == null ? 'CLEAR_PRICE' : 'SET_PRICE',
-      details: { from: existing?.price == null ? null : Number(existing.price), to: body.price },
+      action: body.price === null && Object.keys(patch).length === 1 ? 'CLEAR_PRICE' : 'SET_PRICE',
+      details: {
+        from: { retail: money(existing?.price), wholesale: money(existing?.priceWholesale), school: money(existing?.priceSchool), cost: money(existing?.costPrice) },
+        to: { retail: money(updated.price), wholesale: money(updated.priceWholesale), school: money(updated.priceSchool), cost: money(updated.costPrice) },
+      },
     });
     return updated;
   });

@@ -321,8 +321,11 @@ export interface Stock {
   branchId: number;
   bookId: number;
   quantity: number;
-  /** Optional per-branch selling price override; when null the catalogue price applies. */
+  /** Optional per-branch prices; when null the catalogue value on the book applies. */
   price: Money | null;
+  priceWholesale?: Money | null;
+  priceSchool?: Money | null;
+  costPrice?: Money | null;
   /** Units sold at this branch in the recent window; used to rank the till catalogue. */
   sold?: number;
   /** Quantity corrections the signed-in user has already made to this product today. */

@@ -70,18 +70,21 @@ export async function saleRoutes(app: FastifyInstance) {
     // The till may charge above the configured price but never below it.
     const overrides = await app.prisma.stock.findMany({
       where: { branchId, bookId: { in: body.items.map((i) => i.bookId) } },
-      select: { bookId: true, price: true },
+      select: { bookId: true, price: true, priceWholesale: true, priceSchool: true, costPrice: true },
     });
-    const overrideByBook = new Map(overrides.map((o) => [o.bookId, o.price]));
+    const overrideByBook = new Map(overrides.map((o) => [o.bookId, o]));
     const underpriced: string[] = [];
     const unpriced: string[] = [];
     for (const item of body.items) {
       const book = bookById.get(item.bookId);
       if (!book) return reply.code(400).send({ error: `Unknown product in the sale (id ${item.bookId}).` });
-      const retail = Number(overrideByBook.get(item.bookId) ?? book.unitPrice);
+      const branchPrices = overrideByBook.get(item.bookId);
+      // A branch price beats the catalogue at every tier; anything the branch has
+      // not set falls back to the catalogue, and the tiers fall back to retail.
+      const retail = Number(branchPrices?.price ?? book.unitPrice);
       const floor =
-        body.priceTier === 'WHOLESALE' ? Number(book.priceWholesale ?? retail)
-        : body.priceTier === 'SCHOOL' ? Number(book.priceSchool ?? retail)
+        body.priceTier === 'WHOLESALE' ? Number(branchPrices?.priceWholesale ?? book.priceWholesale ?? retail)
+        : body.priceTier === 'SCHOOL' ? Number(branchPrices?.priceSchool ?? book.priceSchool ?? retail)
         : retail;
       // A floor of zero means nobody has priced this product, and the check
       // below would wave anything through — including giving it away.
@@ -122,7 +125,8 @@ export async function saleRoutes(app: FastifyInstance) {
               bookId: i.bookId,
               quantity: i.quantity,
               unitPrice: i.unitPrice,
-              costPrice: Number(bookById.get(i.bookId)?.costPrice ?? 0),
+              // What this branch paid, when it has its own cost.
+              costPrice: Number(overrideByBook.get(i.bookId)?.costPrice ?? bookById.get(i.bookId)?.costPrice ?? 0),
             })),
           },
         },

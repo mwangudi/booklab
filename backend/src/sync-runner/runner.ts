@@ -128,12 +128,18 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
       branch.book.findUnique({ where: { uuid: s.bookUuid }, select: { id: true } }),
     ]);
     if (!b || !bk) continue;
+    const prices = {
+      price: s.price ?? null,
+      priceWholesale: s.priceWholesale ?? null,
+      priceSchool: s.priceSchool ?? null,
+      costPrice: s.costPrice ?? null,
+    };
     const existing = await branch.stock.findUnique({ where: { branchId_bookId: { branchId: b.id, bookId: bk.id } }, select: { id: true } });
     if (!existing) {
-      await branch.stock.create({ data: { branchId: b.id, bookId: bk.id, quantity: s.quantity, price: s.price ?? null } });
+      await branch.stock.create({ data: { branchId: b.id, bookId: bk.id, quantity: s.quantity, ...prices } });
       counts.stock += 1;
     } else if (applyStock) {
-      await branch.stock.update({ where: { id: existing.id }, data: { quantity: s.quantity, price: s.price ?? null } });
+      await branch.stock.update({ where: { id: existing.id }, data: { quantity: s.quantity, ...prices } });
       counts.stock += 1;
     }
   }

@@ -180,8 +180,13 @@ model Stock {
   branchId Int
   bookId   Int
   quantity Int      @default(0)
-  /// Optional per-branch selling price. When null, the catalogue `Book.unitPrice` applies.
-  price    Decimal? @db.Decimal(10, 2)
+  /// Optional per-branch prices. Any that is null falls back to the catalogue
+  /// value on Book, so a branch stores only what it genuinely differs on.
+  price          Decimal? @db.Decimal(10, 2)
+  priceWholesale Decimal? @db.Decimal(10, 2)
+  priceSchool    Decimal? @db.Decimal(10, 2)
+  /// What THIS branch paid. Drives COGS for sales rung here.
+  costPrice      Decimal? @db.Decimal(10, 2)
   branch   Branch   @relation(fields: [branchId], references: [id])
   book     Book     @relation(fields: [bookId], references: [id])
 

@@ -16,7 +16,18 @@ interface BranchStock {
   branchCode: string;
   quantity: number;
   price: string | number | null;
+  priceWholesale: string | number | null;
+  priceSchool: string | number | null;
+  costPrice: string | number | null;
 }
+
+type PriceField = 'price' | 'priceWholesale' | 'priceSchool' | 'costPrice';
+const PRICE_FIELDS: { key: PriceField; label: string }[] = [
+  { key: 'costPrice', label: 'Cost' },
+  { key: 'price', label: 'Retail' },
+  { key: 'priceWholesale', label: 'Wholesale' },
+  { key: 'priceSchool', label: 'School' },
+];
 
 interface FormState {
   title: string;
@@ -53,12 +64,20 @@ export default function ProductUpsertPage() {
   );
   // Keyed by branch so an untouched branch is never written back.
   const [qty, setQty] = useState<Record<number, string>>({});
-  const [branchPrice, setBranchPrice] = useState<Record<number, string>>({});
+  const [bPrice, setBPrice] = useState<Record<string, string>>({});
+  const pk = (branchId: number, f: PriceField) => `${branchId}:${f}`;
 
   useEffect(() => {
     if (!branchStock) return;
     setQty(Object.fromEntries(branchStock.map((s) => [s.branchId, String(s.quantity)])));
-    setBranchPrice(Object.fromEntries(branchStock.map((s) => [s.branchId, s.price == null ? '' : String(num(s.price))])));
+    const next: Record<string, string> = {};
+    for (const s of branchStock) {
+      for (const f of PRICE_FIELDS) {
+        const v = s[f.key];
+        next[pk(s.branchId, f.key)] = v == null ? '' : String(num(v));
+      }
+    }
+    setBPrice(next);
   }, [branchStock]);
 
   useEffect(() => {
@@ -124,11 +143,17 @@ export default function ProductUpsertPage() {
           if (String(newQty) !== String(s.quantity)) {
             await api.put('/api/stock', { branchId: s.branchId, bookId: Number(id), quantity: newQty, note: 'Set from the product page' });
           }
-          const raw = (branchPrice[s.branchId] ?? '').trim();
-          const wanted = raw === '' ? null : num(raw);
-          const current = s.price == null ? null : num(s.price);
-          if (wanted !== current) {
-            await api.put('/api/stock/price', { branchId: s.branchId, bookId: Number(id), price: wanted });
+          // Send only the tiers that actually moved, so an untouched column is
+          // left alone rather than being cleared back to the catalogue.
+          const patch: Record<string, number | null> = {};
+          for (const f of PRICE_FIELDS) {
+            const raw = (bPrice[pk(s.branchId, f.key)] ?? '').trim();
+            const wanted = raw === '' ? null : num(raw);
+            const current = s[f.key] == null ? null : num(s[f.key]);
+            if (wanted !== current) patch[f.key] = wanted;
+          }
+          if (Object.keys(patch).length > 0) {
+            await api.put('/api/stock/price', { branchId: s.branchId, bookId: Number(id), ...patch });
           }
         }
         refreshStock();
@@ -228,39 +253,48 @@ export default function ProductUpsertPage() {
 
           {isEdit && canManage && branchStock && branchStock.length > 0 && (
             <div className="rounded-lg border border-dashed border-border p-4">
-              <p className="text-xs font-medium text-muted-foreground mb-1">Stock by branch</p>
-              <p className="text-[11px] text-muted-foreground mb-3">
-                Changing a quantity here records a stock take against your name, exactly as the stock page does.
-                Leave a branch price blank to charge the retail price above.
+              <p className="text-xs font-medium text-muted-foreground mb-1">Stock and prices by branch</p>
+              <p className="text-[11px] text-muted-foreground mb-4">
+                A branch can buy and sell at its own prices. Leave a box blank to use the catalogue price above.
+                Changing a quantity records a stock take against your name, exactly as the stock page does.
               </p>
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {branchStock.map((s) => (
-                  <div key={s.branchId} className="grid sm:grid-cols-3 gap-3 items-end">
-                    <div className="text-sm text-foreground">
-                      <span className="font-medium">{s.branchName}</span>
-                      <span className="text-muted-foreground text-xs ml-2">{s.branchCode}</span>
+                  <div key={s.branchId} className="rounded-md border border-border/60 p-3">
+                    <div className="text-sm mb-3">
+                      <span className="font-medium text-foreground">{s.branchName}</span>
+                      <span className="text-muted-foreground text-xs ml-2 font-mono">{s.branchCode}</span>
                     </div>
-                    <FormField label="Quantity on hand">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={qty[s.branchId] ?? ''}
-                        onChange={(e) => setQty((q) => ({ ...q, [s.branchId]: e.target.value }))}
-                        className="font-mono"
-                      />
-                    </FormField>
-                    <FormField label="Branch price (KES)">
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={branchPrice[s.branchId] ?? ''}
-                        onChange={(e) => setBranchPrice((p) => ({ ...p, [s.branchId]: e.target.value }))}
-                        placeholder={form.unitPrice || '0'}
-                        className="font-mono"
-                      />
-                    </FormField>
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                      <FormField label="Quantity">
+                        <Input
+                          type="number"
+                          min="0"
+                          step="1"
+                          value={qty[s.branchId] ?? ''}
+                          onChange={(e) => setQty((q) => ({ ...q, [s.branchId]: e.target.value }))}
+                          className="font-mono"
+                        />
+                      </FormField>
+                      {PRICE_FIELDS.map((f) => (
+                        <FormField key={f.key} label={f.label}>
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={bPrice[pk(s.branchId, f.key)] ?? ''}
+                            onChange={(e) => setBPrice((p) => ({ ...p, [pk(s.branchId, f.key)]: e.target.value }))}
+                            placeholder={
+                              f.key === 'costPrice' ? form.costPrice || '0'
+                              : f.key === 'price' ? form.unitPrice || '0'
+                              : f.key === 'priceWholesale' ? form.priceWholesale || form.unitPrice || '0'
+                              : form.priceSchool || form.unitPrice || '0'
+                            }
+                            className="font-mono"
+                          />
+                        </FormField>
+                      ))}
+                    </div>
                   </div>
                 ))}
               </div>

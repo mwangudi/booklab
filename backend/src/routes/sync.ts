@@ -162,6 +162,9 @@ export async function syncRoutes(app: FastifyInstance) {
         stock: stock.map((s) => ({
           branchUuid: s.branch.uuid, bookUuid: s.book.uuid, quantity: s.quantity,
           price: s.price == null ? null : String(s.price),
+          priceWholesale: s.priceWholesale == null ? null : String(s.priceWholesale),
+          priceSchool: s.priceSchool == null ? null : String(s.priceSchool),
+          costPrice: s.costPrice == null ? null : String(s.costPrice),
         })),
         customer: customers.map((c) => ({
           uuid: c.uuid, name: c.name, type: c.type, contactPerson: c.contactPerson, phone: c.phone, email: c.email,
