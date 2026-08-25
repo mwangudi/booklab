@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
-import { dateTime, fmt, money, startOfMonth, today } from '../../lib/format';
+import { dateTime, fmt, money, num, startOfMonth, today } from '../../lib/format';
 import { downloadCsv, downloadPdfReport } from '../../lib/reportExport';
 import type { SalesReport } from '../../types';
 import { BranchSelect } from '../../components/BranchSelect';
@@ -32,7 +32,7 @@ export default function SalesReportPage() {
     downloadCsv(
       `sales-${from}-to-${to}.csv`,
       ['Sale #', 'Date', 'Branch', 'Cashier', 'Payment', 'Items', 'Total'],
-      data.rows.map((r) => [r.id, dateTime(r.date), r.branch, r.cashier, r.payment, r.items, Math.round(r.total)]),
+      data.rows.map((r) => [r.id, dateTime(r.date), r.branch, r.cashier, r.payment, r.items, num(r.total)]),
     );
   };
 

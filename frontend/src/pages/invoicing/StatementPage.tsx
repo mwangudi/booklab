@@ -4,7 +4,7 @@ import { ArrowLeft, Download, FileText, Plus, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
-import { dateShort, fmt, money, today } from '../../lib/format';
+import { dateShort, fmt, money, num, today } from '../../lib/format';
 import { PAYMENT_CHANNELS, titleCase } from '../../lib/categories';
 import { downloadCsv } from '../../lib/reportExport';
 import { printStatement } from '../../lib/documents';
@@ -63,9 +63,9 @@ export default function StatementPage() {
       `statement-${data.customer.name.replace(/\s+/g, '-').toLowerCase()}.csv`,
       ['Date', 'Transaction', 'Amount', 'Balance'],
       [
-        [dateShort(data.period.from), 'Balance forward', '', Math.round(data.openingBalance)],
-        ...data.rows.map((r) => [dateShort(r.date), r.label, Math.round(r.amount), Math.round(r.balance)]),
-        ['', 'Closing balance', '', Math.round(data.closingBalance)],
+        [dateShort(data.period.from), 'Balance forward', '', num(data.openingBalance)],
+        ...data.rows.map((r) => [dateShort(r.date), r.label, num(r.amount), num(r.balance)]),
+        ['', 'Closing balance', '', num(data.closingBalance)],
       ],
     );
 

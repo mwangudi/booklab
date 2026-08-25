@@ -13,7 +13,8 @@ const TEL = 'Tel: 0728 492 372';
 const KRA_PIN = 'KRA PIN: A003869623J';
 const CONTACT = 'Luanda · Kapsabet · Mumias | booklabbookshop.co.ke';
 
-const money = (n: unknown) => Math.round(num(n)).toLocaleString('en-KE');
+const money = (n: unknown) =>
+  num(n).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 /** A totals row whose label spans the leading columns instead of leaving them blank. */
 const totalRow = (label: string, value: string, labelSpan: number): RowInput => [

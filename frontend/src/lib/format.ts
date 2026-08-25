@@ -6,11 +6,12 @@ export const num = (v: unknown): number => {
   return Number.isFinite(n) ? n : 0;
 };
 
-/** Rounded integer with thousands separators, e.g. 1234.5 -> "1,235". */
+/** Rounded integer with thousands separators, e.g. 1234.5 -> "1,235". COUNTS, not money. */
 export const fmt = (v: unknown): string => Math.round(num(v)).toLocaleString('en-KE');
 
-/** Currency in KES, e.g. "KES 1,235". */
-export const money = (v: unknown): string => `KES ${fmt(v)}`;
+/** Money, always two decimals — a receipt has to agree with the cash drawer. */
+export const money = (v: unknown): string =>
+  `KES ${num(v).toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** Percent from a 0..1 ratio, e.g. 0.324 -> "32.4%". */
 export const pct = (ratio: unknown, digits = 1): string => `${(num(ratio) * 100).toFixed(digits)}%`;

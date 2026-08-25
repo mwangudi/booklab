@@ -42,7 +42,8 @@ export interface ReceiptData {
 const esc = (s: unknown) =>
   String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c] as string);
 
-const money = (n: number) => 'KES ' + Math.round(n).toLocaleString('en-KE');
+const money = (n: number) =>
+  'KES ' + n.toLocaleString('en-KE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const SHOP_TEL = 'Tel: 0728 492 372';
 

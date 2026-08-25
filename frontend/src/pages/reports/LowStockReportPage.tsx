@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, Download, FileText } from 'lucide-react';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
-import { fmt, money, today } from '../../lib/format';
+import { fmt, money, num, today } from '../../lib/format';
 import { downloadCsv, downloadPdfReport } from '../../lib/reportExport';
 import type { LowStockReport } from '../../types';
 import { BranchSelect } from '../../components/BranchSelect';
@@ -39,8 +39,8 @@ export default function LowStockReportPage() {
         r.category,
         r.quantity,
         r.suggestedOrder,
-        Math.round(r.costPrice),
-        Math.round(r.suggestedOrder * r.costPrice),
+        num(r.costPrice),
+        num(r.suggestedOrder * r.costPrice),
         r.status,
       ]),
     );

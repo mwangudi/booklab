@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, FileText, Wallet } from 'lucide-react';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
-import { dateTime, fmt, money, today } from '../../lib/format';
+import { dateTime, fmt, money, num, today } from '../../lib/format';
 import { downloadCsv, downloadPdfReport } from '../../lib/reportExport';
 import type { ZReport } from '../../types';
 import { BranchSelect } from '../../components/BranchSelect';
@@ -29,12 +29,12 @@ export default function ZReportPage() {
       `z-report-${date}.csv`,
       ['Section', 'Label', 'Transactions', 'Amount'],
       [
-        ...data.byMethod.map((m) => ['Payment method', m.method, m.txns, Math.round(m.amount)] as Array<string | number>),
-        ...data.byCashier.map((c) => ['Cashier', c.name, c.txns, Math.round(c.amount)] as Array<string | number>),
-        ['Totals', 'Revenue', s.txns, Math.round(s.revenue)],
-        ['Totals', 'Voided', s.voidedCount, Math.round(s.voidedAmount)],
-        ['Totals', 'Expenses paid out', '', Math.round(s.expenses)],
-        ['Totals', 'Expected cash in drawer', '', Math.round(s.expectedCash)],
+        ...data.byMethod.map((m) => ['Payment method', m.method, m.txns, num(m.amount)] as Array<string | number>),
+        ...data.byCashier.map((c) => ['Cashier', c.name, c.txns, num(c.amount)] as Array<string | number>),
+        ['Totals', 'Revenue', s.txns, num(s.revenue)],
+        ['Totals', 'Voided', s.voidedCount, num(s.voidedAmount)],
+        ['Totals', 'Expenses paid out', '', num(s.expenses)],
+        ['Totals', 'Expected cash in drawer', '', num(s.expectedCash)],
       ],
     );
   };

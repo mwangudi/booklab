@@ -58,7 +58,7 @@ export default function SalesPage() {
         r.user?.name ?? '',
         r.paymentMethod,
         r.items.reduce((a, i) => a + i.quantity, 0),
-        Math.round(num(r.total)),
+        num(r.total),
         isVoid(r) ? `VOIDED: ${r.voidReason ?? ''}` : 'Completed',
       ]),
     );

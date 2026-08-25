@@ -74,6 +74,7 @@ export async function saleRoutes(app: FastifyInstance) {
     });
     const overrideByBook = new Map(overrides.map((o) => [o.bookId, o.price]));
     const underpriced: string[] = [];
+    const unpriced: string[] = [];
     for (const item of body.items) {
       const book = bookById.get(item.bookId);
       if (!book) return reply.code(400).send({ error: `Unknown product in the sale (id ${item.bookId}).` });
@@ -82,8 +83,19 @@ export async function saleRoutes(app: FastifyInstance) {
         body.priceTier === 'WHOLESALE' ? Number(book.priceWholesale ?? retail)
         : body.priceTier === 'SCHOOL' ? Number(book.priceSchool ?? retail)
         : retail;
+      // A floor of zero means nobody has priced this product, and the check
+      // below would wave anything through — including giving it away.
+      if (floor <= 0) {
+        unpriced.push(book.title);
+        continue;
+      }
       // Tolerate rounding noise from the client, but nothing more.
       if (item.unitPrice < floor - 0.01) underpriced.push(`${book.title} (minimum ${floor.toFixed(2)})`);
+    }
+    if (unpriced.length > 0) {
+      return reply.code(400).send({
+        error: `No price is set for: ${unpriced.join('; ')}. Set a price before selling.`,
+      });
     }
     if (underpriced.length > 0) {
       return reply.code(400).send({ error: `These items are priced below the set price: ${underpriced.join('; ')}.` });

@@ -108,7 +108,7 @@ export default function SuppliersPage() {
     downloadCsv(
       'supplier-balances.csv',
       ['Supplier', 'Contact', 'Phone', 'Receipts', 'Billed', 'Paid', 'Balance owed'],
-      (balances ?? []).map((b) => [b.name, b.contactPerson ?? '', b.phone ?? '', b.receipts, Math.round(b.billed), Math.round(b.paid), Math.round(b.balance)]),
+      (balances ?? []).map((b) => [b.name, b.contactPerson ?? '', b.phone ?? '', b.receipts, num(b.billed), num(b.paid), num(b.balance)]),
     );
 
   const columns: Column<Supplier>[] = [

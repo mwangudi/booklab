@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
-import { fmt, money, today } from '../../lib/format';
+import { fmt, money, num, today } from '../../lib/format';
 import { downloadCsv, downloadPdfReport } from '../../lib/reportExport';
 import type { StockReport } from '../../types';
 import { BranchSelect } from '../../components/BranchSelect';
@@ -31,7 +31,7 @@ export default function StockReportPage() {
     downloadCsv(
       `stock-${today()}.csv`,
       ['Branch', 'Title', 'SKU', 'Quantity', 'Unit price', 'Value', 'Status'],
-      data.rows.map((r) => [r.branch, r.title, r.sku, r.quantity, Math.round(r.unitPrice), Math.round(r.value), r.status]),
+      data.rows.map((r) => [r.branch, r.title, r.sku, r.quantity, num(r.unitPrice), num(r.value), r.status]),
     );
   };
 

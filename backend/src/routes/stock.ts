@@ -228,7 +228,7 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   // Sheet for a monthly count: every stocked product with its system quantity.
-  app.get('/take-sheet', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.get('/take-sheet', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
     const { branchId } = req.query as { branchId?: string };
     const scoped = branchScope(req, reply, branchId ? Number(branchId) : undefined);
     if (scoped == null) return reply.code(400).send({ error: 'Choose a branch to count.' });

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Download, FileText } from 'lucide-react';
 import { useApi } from '../../lib/useApi';
 import { useAuth } from '../../lib/auth';
-import { fmt, money, pct, startOfMonth, today } from '../../lib/format';
+import { fmt, money, num, pct, startOfMonth, today } from '../../lib/format';
 import { titleCase } from '../../lib/categories';
 import { downloadCsv, downloadPdfReport } from '../../lib/reportExport';
 import type { PnlReport } from '../../types';
@@ -33,7 +33,7 @@ export default function PnlReportPage() {
     downloadCsv(
       `pnl-${from}-to-${to}.csv`,
       ['Branch', 'Revenue', 'COGS', 'Gross profit', 'Expenses', 'Net profit'],
-      data.byBranch.map((b) => [b.name, Math.round(b.revenue), Math.round(b.cogs), Math.round(b.grossProfit), Math.round(b.expenses), Math.round(b.netProfit)]),
+      data.byBranch.map((b) => [b.name, num(b.revenue), num(b.cogs), num(b.grossProfit), num(b.expenses), num(b.netProfit)]),
     );
   };
 

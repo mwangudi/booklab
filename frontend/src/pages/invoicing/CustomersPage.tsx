@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Archive, ArchiveRestore, FileText, Pencil, Plus, Users, Wallet } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
-import { fmt, money } from '../../lib/format';
+import { fmt, money, num } from '../../lib/format';
 import { downloadCsv } from '../../lib/reportExport';
 import type { Customer, CustomerBalance } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
@@ -37,7 +37,7 @@ export default function CustomersPage() {
     downloadCsv(
       'customer-balances.csv',
       ['Customer', 'Type', 'Contact', 'Phone', 'Invoices', 'Invoiced', 'Received', 'Balance'],
-      (balances ?? []).map((b) => [b.name, b.type, b.contactPerson ?? '', b.phone ?? '', b.invoices, Math.round(b.invoiced), Math.round(b.received), Math.round(b.balance)]),
+      (balances ?? []).map((b) => [b.name, b.type, b.contactPerson ?? '', b.phone ?? '', b.invoices, num(b.invoiced), num(b.received), num(b.balance)]),
     );
 
   const columns: Column<Customer>[] = [
