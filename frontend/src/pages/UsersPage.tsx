@@ -14,6 +14,16 @@ export default function UsersPage() {
 
   const columns: Column<User>[] = [
     { key: 'name', header: 'Name', accessor: (u) => u.name, sortable: true, render: (u) => <span className="font-medium text-foreground">{u.name}</span> },
+    {
+      key: 'username',
+      header: 'Signs in with',
+      accessor: (u) => u.username ?? u.email,
+      sortable: true,
+      render: (u) =>
+        u.username
+          ? <span className="font-mono text-xs text-foreground">{u.username}</span>
+          : <span className="text-muted-foreground text-xs">{u.email}</span>,
+    },
     { key: 'email', header: 'Email', accessor: (u) => u.email, sortable: true, render: (u) => <span className="text-muted-foreground">{u.email}</span> },
     { key: 'role', header: 'Role', accessor: (u) => u.role, render: (u) => <Pill tone={roleTone(u.role)}>{titleCase(u.role)}</Pill> },
     { key: 'branch', header: 'Branch', accessor: (u) => u.branch?.name ?? '', render: (u) => u.branch?.name ?? <span className="text-muted-foreground">—</span> },

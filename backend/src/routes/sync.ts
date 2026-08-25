@@ -158,7 +158,7 @@ export async function syncRoutes(app: FastifyInstance) {
           costPrice: String(b.costPrice),
           createdAt: b.createdAt, updatedAt: b.updatedAt, deletedAt: b.deletedAt,
         })),
-        user: users.map((u) => ({ uuid: u.uuid, email: u.email, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchUuid: u.branch?.uuid ?? null, createdAt: u.createdAt, updatedAt: u.updatedAt, deletedAt: u.deletedAt })),
+        user: users.map((u) => ({ uuid: u.uuid, email: u.email, username: u.username, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchUuid: u.branch?.uuid ?? null, createdAt: u.createdAt, updatedAt: u.updatedAt, deletedAt: u.deletedAt })),
         stock: stock.map((s) => ({
           branchUuid: s.branch.uuid, bookUuid: s.book.uuid, quantity: s.quantity,
           price: s.price == null ? null : String(s.price),

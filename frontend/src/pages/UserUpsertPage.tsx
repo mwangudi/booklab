@@ -19,6 +19,7 @@ export default function UserUpsertPage() {
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<Role>('CASHIER');
   const [branchId, setBranchId] = useState<number | null>(null);
@@ -30,6 +31,7 @@ export default function UserUpsertPage() {
     if (existing) {
       setName(existing.name);
       setEmail(existing.email);
+      setUsername(existing.username ?? '');
       setRole(existing.role);
       setBranchId(existing.branchId);
       setActive(existing.active !== false);
@@ -40,18 +42,21 @@ export default function UserUpsertPage() {
     e.preventDefault();
     setError(null);
     if (!name.trim()) return setError('Name is required.');
-    if (!isEdit && !email.trim()) return setError('Email is required.');
+    if (!email.trim()) return setError('Email is required.');
+    if (username.trim() && !/^[a-z0-9][a-z0-9._-]{2,59}$/.test(username.trim().toLowerCase()))
+      return setError('A username must be at least 3 characters: lower-case letters, numbers, dots, dashes or underscores.');
     if (!isEdit && password.length < 6) return setError('Password must be at least 6 characters.');
     if (isEdit && password && password.length < 6) return setError('Password must be at least 6 characters.');
 
     setSaving(true);
     try {
+      const uname = username.trim().toLowerCase() || null;
       if (isEdit) {
-        const payload: Record<string, unknown> = { name: name.trim(), role, branchId, active };
+        const payload: Record<string, unknown> = { name: name.trim(), email: email.trim(), username: uname, role, branchId, active };
         if (password) payload.password = password;
         await api.patch(`/api/auth/users/${id}`, payload);
       } else {
-        await api.post('/api/auth/users', { name: name.trim(), email: email.trim(), password, role, branchId });
+        await api.post('/api/auth/users', { name: name.trim(), email: email.trim(), username: uname, password, role, branchId });
       }
       navigate('/settings/users');
     } catch (err) {
@@ -83,8 +88,17 @@ export default function UserUpsertPage() {
             <FormField label="Full name *">
               <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" autoFocus />
             </FormField>
-            <FormField label="Email *" hint={isEdit ? 'Email cannot be changed.' : undefined}>
-              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@bookshop.co.ke" disabled={isEdit} />
+            <FormField label="Email *" hint={isEdit ? 'Still works for signing in.' : undefined}>
+              <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@bookshop.co.ke" />
+            </FormField>
+            <FormField label="Username" hint="Short sign-in name for the till. Leave blank to use the email.">
+              <Input
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="e.g. mumias.cashier"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
             </FormField>
             <FormField label="Role *">
               <Select2

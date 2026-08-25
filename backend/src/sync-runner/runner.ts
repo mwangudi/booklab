@@ -86,8 +86,8 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
     const branchId = u.branchUuid ? (await branch.branch.findUnique({ where: { uuid: u.branchUuid }, select: { id: true } }))?.id ?? null : null;
     await branch.user.upsert({
       where: { uuid: u.uuid },
-      create: { uuid: u.uuid, email: u.email, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchId, createdAt: toDate(u.createdAt)!, updatedAt: toDate(u.updatedAt)!, deletedAt: toDate(u.deletedAt) },
-      update: { email: u.email, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchId, updatedAt: toDate(u.updatedAt)!, deletedAt: toDate(u.deletedAt) },
+      create: { uuid: u.uuid, email: u.email, username: u.username ?? null, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchId, createdAt: toDate(u.createdAt)!, updatedAt: toDate(u.updatedAt)!, deletedAt: toDate(u.deletedAt) },
+      update: { email: u.email, username: u.username ?? null, name: u.name, role: u.role, active: u.active, passwordHash: u.passwordHash, branchId, updatedAt: toDate(u.updatedAt)!, deletedAt: toDate(u.deletedAt) },
     });
   }
   counts.user = (data.entities.user ?? []).length;

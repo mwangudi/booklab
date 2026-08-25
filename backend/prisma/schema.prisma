@@ -102,6 +102,9 @@ enum GoodsReceiptStatus {
 model User {
   id           Int       @id @default(autoincrement())
   email        String    @unique
+  /// Short sign-in name for the till, e.g. mumias.cashier. Optional: older
+  /// accounts sign in with their email until one is set.
+  username     String?   @unique @db.VarChar(60)
   passwordHash String
   name         String
   role         Role      @default(CASHIER)

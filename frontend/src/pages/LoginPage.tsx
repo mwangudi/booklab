@@ -112,14 +112,16 @@ export default function LoginPage() {
               <div className="rounded-lg border border-[#9b2626]/20 bg-[#fdf0f0] px-4 py-3 text-sm text-[#9b2626]">{error}</div>
             )}
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Email</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Username or email</label>
               <input
-                type="email"
+                type="text"
                 autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className={inputCls}
-                placeholder="you@booklabbookshop.co.ke"
+                placeholder="e.g. mumias.cashier"
               />
             </div>
             <div>
