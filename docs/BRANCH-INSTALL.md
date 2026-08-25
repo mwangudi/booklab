@@ -169,15 +169,37 @@ if it lives behind the counter.
 
 ## Updating a branch later
 
+**Data looks after itself.** New products, price changes, new staff and stock
+figures all reach the till through the sync runner without anyone touching it.
+Only a *code* change needs the steps below.
+
 ```powershell
-cd C:\booklab
-git pull
-cd backend;  npm run build
-cd ..\frontend; npm run build
-Restart-Service BookshopBranchApi, BookshopBranchSync
+cd C:\booklab\branch
+.\update-branch.ps1 -Check     # is there anything to update? changes nothing
+.\update-branch.ps1            # elevated: pull, rebuild, restart, verify
 ```
 
-If the pull brought a database change, run this in `backend\` before restarting:
+The updater stops the services so nothing writes mid-update, backs up
+`branch.db`, pulls, reinstalls dependencies only if the lock files moved,
+rebuilds the schema and both applications, restarts, and then checks the till
+actually answers on `/health`. If it does not — or a service fails to start — it
+puts the previous commit and database back and restarts. It keeps the last five
+database backups.
+
+To have it run by itself, once, elevated:
+
+```powershell
+.\update-branch.ps1 -Schedule
+```
+
+That registers a nightly task at **03:20** — after closing, well before opening,
+so a bad update rolls itself back with nobody trading. Scheduling is opt-in on
+purpose: an unattended rebuild that fails at 8am is a till that cannot sell.
+Leaving it manual and running `-Check` when you want is a perfectly reasonable
+choice for one or two branches.
+
+If a code update ever needs a database change, the updater handles it — the
+manual equivalent is:
 
 ```powershell
 $env:BRANCH_BUILD='1'; node scripts/gen-sqlite-schema.mjs
