@@ -35,7 +35,7 @@ if (Test-Path $dbPath) {
         $pending = & node -e "
 const { PrismaClient } = require('@prisma/client');
 const db = new PrismaClient();
-db.outbox.count({ where: { sentAt: null } })
+db.outbox.count({ where: { syncedAt: null } })
   .then(n => { console.log(n); return db.\$disconnect(); })
   .catch(() => { console.log('unknown'); process.exit(0); });
 " 2>$null
