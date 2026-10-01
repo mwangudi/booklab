@@ -151,18 +151,19 @@ export async function printInvoice(inv: Invoice): Promise<void> {
 
   const vatShown = inv.chargeVat && num(inv.vatTotal) > 0;
   const head = vatShown
-    ? [['ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'VAT %', 'TOTAL']]
-    : [['ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'TOTAL']];
-  const body = (inv.items ?? []).map((i) =>
+    ? [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'VAT %', 'TOTAL']]
+    : [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'TOTAL']];
+  const body = (inv.items ?? []).map((i, n) =>
     vatShown
-      ? [i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), `${num(i.vatRate)}%`, money(i.total)]
-      : [i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), money(i.total)],
+      ? [String(n + 1), i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), `${num(i.vatRate)}%`, money(i.total)]
+      : [String(n + 1), i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), money(i.total)],
   );
-  const cols: Record<number, { halign?: 'right'; cellWidth: number }> = vatShown
-    ? { 1: { halign: 'right', cellWidth: 42 }, 2: { cellWidth: 52 }, 3: { halign: 'right', cellWidth: 62 }, 4: { halign: 'right', cellWidth: 44 }, 5: { halign: 'right', cellWidth: 72 } }
-    : { 1: { halign: 'right', cellWidth: 45 }, 2: { cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 }, 4: { halign: 'right', cellWidth: 80 } };
+  const cols: Record<number, { halign?: 'right' | 'center'; cellWidth: number }> = vatShown
+    ? { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 42 }, 3: { cellWidth: 52 }, 4: { halign: 'right', cellWidth: 62 }, 5: { halign: 'right', cellWidth: 44 }, 6: { halign: 'right', cellWidth: 72 } }
+    : { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 45 }, 3: { cellWidth: 60 }, 4: { halign: 'right', cellWidth: 70 }, 5: { halign: 'right', cellWidth: 80 } };
 
-  const span = vatShown ? 5 : 4;
+  // The totals label spans every column ahead of the value.
+  const span = vatShown ? 6 : 5;
   const foot: RowInput[] = [];
   if (vatShown) {
     foot.push(totalRow('SUBTOTAL', money(inv.subtotal), span));
@@ -227,12 +228,12 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
 
   autoTable(doc, {
     startY: y + 14,
-    head: [['ITEM DESCRIPTION', 'QTTY', 'UNIT']],
-    body: (inv.items ?? []).map((i) => [i.description, String(num(i.quantity)), i.unit]),
+    head: [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT']],
+    body: (inv.items ?? []).map((i, n) => [String(n + 1), i.description, String(num(i.quantity)), i.unit]),
     margin: { left: 40, right: 40 },
     styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
-    columnStyles: { 1: { halign: 'right', cellWidth: 60 }, 2: { cellWidth: 80 } },
+    columnStyles: { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 60 }, 3: { cellWidth: 80 } },
   });
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
