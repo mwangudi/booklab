@@ -10,8 +10,8 @@ import { PRINT_LOGO_RATIO, loadPrintLogo } from './printLogo';
 const BRAND = 'BOOKLAB BOOKSHOP';
 const BRAND_RGB: [number, number, number] = [180, 83, 9];
 // Printed documents are read off a counter in poor light and photocopied, so
-// body text is set solid rather than in grey.
-const TEXT_RGB: [number, number, number] = [40, 40, 40];
+// text is set in black rather than the soft greys jsPDF and autoTable default to.
+const TEXT_RGB: [number, number, number] = [0, 0, 0];
 // Table rules pick up the brand brown instead of a neutral grey.
 const RULE_RGB: [number, number, number] = [180, 83, 9];
 const TEL = 'Tel: 0728 492 372';
@@ -176,11 +176,11 @@ export async function printInvoice(inv: Invoice): Promise<void> {
     head,
     body,
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: cols,
     foot,
-    footStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold', halign: 'right' },
+    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right' },
   });
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
@@ -231,7 +231,7 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
     head: [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT']],
     body: (inv.items ?? []).map((i, n) => [String(n + 1), i.description, String(num(i.quantity)), i.unit]),
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 60 }, 3: { cellWidth: 80 } },
   });
@@ -289,7 +289,7 @@ export async function printStatement(s: Statement): Promise<void> {
       money(s.ageing.d61_90), money(s.ageing.over90), money(s.amountDue),
     ]],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 8, cellPadding: 5, halign: 'right', lineColor: RULE_RGB, lineWidth: 0.4 },
+    styles: { fontSize: 8, cellPadding: 5, halign: 'right', textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right', fontSize: 7 },
     bodyStyles: { fontStyle: 'bold' },
   });
@@ -304,11 +304,11 @@ export async function printStatement(s: Statement): Promise<void> {
       ...s.rows.map((r) => [dmy(r.date), r.label, money(Math.abs(r.amount)) + (r.amount < 0 ? ' CR' : ''), money(r.balance)]),
     ],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: { 0: { cellWidth: 75 }, 2: { halign: 'right', cellWidth: 90 }, 3: { halign: 'right', cellWidth: 90 } },
     foot: [totalRow('CLOSING BALANCE', money(s.closingBalance), 3)],
-    footStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: 'bold', halign: 'right' },
+    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right' },
   });
 
   const pages = doc.getNumberOfPages();
@@ -368,7 +368,7 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
       money(s.ageing.d61_90), money(s.ageing.over90), money(s.amountDue),
     ]],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 8, cellPadding: 5, halign: "right", lineColor: RULE_RGB, lineWidth: 0.4 },
+    styles: { fontSize: 8, cellPadding: 5, halign: "right", textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: "bold", halign: "right", fontSize: 7 },
     bodyStyles: { fontStyle: "bold" },
   });
@@ -383,11 +383,11 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
       ...s.rows.map((r) => [dmy(r.date), r.label, money(Math.abs(r.amount)) + (r.amount < 0 ? " DR" : ""), money(r.balance)]),
     ],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: "bold" },
     columnStyles: { 0: { cellWidth: 75 }, 2: { halign: "right", cellWidth: 90 }, 3: { halign: "right", cellWidth: 90 } },
     foot: [totalRow("CLOSING BALANCE", money(s.closingBalance), 3)],
-    footStyles: { fillColor: [245, 245, 245], textColor: [20, 20, 20], fontStyle: "bold", halign: "right" },
+    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: "bold", halign: "right" },
   });
 
   const pages = doc.getNumberOfPages();
