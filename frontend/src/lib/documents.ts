@@ -42,10 +42,15 @@ function header(doc: jsPDF, title: string, logo: string | null): number {
     doc.addImage(logo, 'PNG', 40, 26, lw, lw * PRINT_LOGO_RATIO);
   }
 
+  // Helvetica offers only normal and bold, which still falls short of the heavy
+  // wordmark on the printed stationery, so the glyphs are stroked as well as
+  // filled to thicken them.
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
+  doc.setFontSize(26);
   doc.setTextColor(...BRAND_RGB);
-  doc.text(BRAND, w / 2, 52, { align: 'center' });
+  doc.setDrawColor(...BRAND_RGB);
+  doc.setLineWidth(0.7);
+  doc.text(BRAND, w / 2, 54, { align: 'center', renderingMode: 'fillThenStroke' });
 
   doc.setFontSize(14);
   doc.setTextColor(...TEXT_RGB);
