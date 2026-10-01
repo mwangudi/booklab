@@ -9,6 +9,11 @@ import { PRINT_LOGO_RATIO, loadPrintLogo } from './printLogo';
 
 const BRAND = 'BOOKLAB BOOKSHOP';
 const BRAND_RGB: [number, number, number] = [180, 83, 9];
+// Printed documents are read off a counter in poor light and photocopied, so
+// body text is set solid rather than in grey.
+const TEXT_RGB: [number, number, number] = [40, 40, 40];
+// Table rules pick up the brand brown instead of a neutral grey.
+const RULE_RGB: [number, number, number] = [180, 83, 9];
 const TEL = 'Tel: 0728 492 372';
 const KRA_PIN = 'KRA PIN: A003869623J';
 const CONTACT = 'Luanda · Kapsabet · Mumias | booklabbookshop.co.ke';
@@ -43,16 +48,16 @@ function header(doc: jsPDF, title: string, logo: string | null): number {
   doc.text(BRAND, w / 2, 52, { align: 'center' });
 
   doc.setFontSize(14);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(TEL, w / 2, 72, { align: 'center' });
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(90, 90, 90);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(KRA_PIN, w / 2, 87, { align: 'center' });
 
   doc.setFontSize(8);
-  doc.setTextColor(110, 110, 110);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(CONTACT, w / 2, 100, { align: 'center' });
 
   doc.setDrawColor(...BRAND_RGB);
@@ -61,7 +66,7 @@ function header(doc: jsPDF, title: string, logo: string | null): number {
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(title, w / 2, 130, { align: 'center' });
   return 144;
 }
@@ -77,7 +82,7 @@ function signatureBlock(doc: jsPDF, y: number, inv?: Invoice) {
   }
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text('RECEIVED BY', 40, top);
   doc.text('SCHOOL STAMP', w / 2 + 20, top);
 
@@ -87,11 +92,11 @@ function signatureBlock(doc: jsPDF, y: number, inv?: Invoice) {
   const line = (label: string, value: string | null | undefined, ly: number) => {
     doc.line(40, ly, 280, ly);
     doc.setFontSize(8);
-    doc.setTextColor(110, 110, 110);
+    doc.setTextColor(...TEXT_RGB);
     doc.text(label, 40, ly + 11);
     if (value) {
       doc.setFontSize(10);
-      doc.setTextColor(40, 40, 40);
+      doc.setTextColor(...TEXT_RGB);
       doc.text(value, 44, ly - 4);
     }
   };
@@ -113,14 +118,14 @@ export async function printInvoice(inv: Invoice): Promise<void> {
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(`INV NO: ${inv.number}`, 40, y);
   doc.text(`DATE: ${dmy(inv.issueDate)}`, w - 40, y, { align: 'right' });
   y += 16;
   if (inv.dueDate) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(110, 110, 110);
+    doc.setTextColor(...TEXT_RGB);
     doc.text(`Due: ${dmy(inv.dueDate)}`, w - 40, y, { align: 'right' });
   }
 
@@ -134,7 +139,7 @@ export async function printInvoice(inv: Invoice): Promise<void> {
   if (meta) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(110, 110, 110);
+    doc.setTextColor(...TEXT_RGB);
     doc.text(meta, 40, y + 12);
     y += 12;
   }
@@ -165,7 +170,7 @@ export async function printInvoice(inv: Invoice): Promise<void> {
     head,
     body,
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: [200, 200, 200], lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: cols,
     foot,
@@ -175,11 +180,8 @@ export async function printInvoice(inv: Invoice): Promise<void> {
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8);
-  doc.setTextColor(110, 110, 110);
-  if (!inv.chargeVat) {
-    doc.text('VAT not applicable on this account.', 40, y + 14);
-    y += 10;
-  } else if (inv.vatMode === 'INCLUSIVE') {
+  doc.setTextColor(...TEXT_RGB);
+  if (inv.chargeVat && inv.vatMode === 'INCLUSIVE') {
     doc.text('Prices shown are inclusive of VAT.', 40, y + 14);
     y += 10;
   }
@@ -200,7 +202,7 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(`NO: ${inv.deliveryNoteNo ?? inv.number}`, 40, y);
   doc.text(`DATE: ${dmy(inv.deliveredAt ?? inv.issueDate)}`, w - 40, y, { align: 'right' });
   y += 16;
@@ -213,7 +215,7 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
   if (inv.customer?.address) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(110, 110, 110);
+    doc.setTextColor(...TEXT_RGB);
     doc.text(inv.customer.address, 40, y + 12);
     y += 12;
   }
@@ -223,7 +225,7 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
     head: [['ITEM DESCRIPTION', 'QTTY', 'UNIT']],
     body: (inv.items ?? []).map((i) => [i.description, String(num(i.quantity)), i.unit]),
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: [200, 200, 200], lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: { 1: { halign: 'right', cellWidth: 60 }, 2: { cellWidth: 80 } },
   });
@@ -231,7 +233,7 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(8);
-  doc.setTextColor(110, 110, 110);
+  doc.setTextColor(...TEXT_RGB);
   doc.text('Goods received in good order and condition.', 40, y + 16);
   signatureBlock(doc, y + 10, inv);
   doc.save(`delivery-note-${inv.deliveryNoteNo ?? inv.number}.pdf`);
@@ -246,26 +248,26 @@ export async function printStatement(s: Statement): Promise<void> {
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
-  doc.setTextColor(110, 110, 110);
+  doc.setTextColor(...TEXT_RGB);
   doc.text('TO:', 40, y);
   doc.setFontSize(12);
   doc.setTextColor(...BRAND_RGB);
   doc.text(s.customer.name.toUpperCase(), 40, y + 16);
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(110, 110, 110);
+  doc.setTextColor(...TEXT_RGB);
   const lines = [s.customer.contactPerson, s.customer.address, s.customer.phone].filter(Boolean) as string[];
   lines.forEach((l, i) => doc.text(l, 40, y + 32 + i * 12));
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
-  doc.setTextColor(90, 90, 90);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(`Date: ${dmy(s.period.to)}`, w - 40, y, { align: 'right' });
   doc.text(`Period: ${dmy(s.period.from)} — ${dmy(s.period.to)}`, w - 40, y + 14, { align: 'right' });
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text('AMOUNT DUE', w - 40, y + 38, { align: 'right' });
   doc.setFontSize(16);
   doc.setTextColor(...BRAND_RGB);
@@ -281,8 +283,8 @@ export async function printStatement(s: Statement): Promise<void> {
       money(s.ageing.d61_90), money(s.ageing.over90), money(s.amountDue),
     ]],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 8, cellPadding: 5, halign: 'right', lineColor: [200, 200, 200], lineWidth: 0.4 },
-    headStyles: { fillColor: [245, 245, 245], textColor: [90, 90, 90], fontStyle: 'bold', halign: 'right', fontSize: 7 },
+    styles: { fontSize: 8, cellPadding: 5, halign: 'right', lineColor: RULE_RGB, lineWidth: 0.4 },
+    headStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right', fontSize: 7 },
     bodyStyles: { fontStyle: 'bold' },
   });
 
@@ -296,7 +298,7 @@ export async function printStatement(s: Statement): Promise<void> {
       ...s.rows.map((r) => [dmy(r.date), r.label, money(Math.abs(r.amount)) + (r.amount < 0 ? ' CR' : ''), money(r.balance)]),
     ],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: [210, 210, 210], lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
     columnStyles: { 0: { cellWidth: 75 }, 2: { halign: 'right', cellWidth: 90 }, 3: { halign: 'right', cellWidth: 90 } },
     foot: [totalRow('CLOSING BALANCE', money(s.closingBalance), 3)],
@@ -309,7 +311,7 @@ export async function printStatement(s: Statement): Promise<void> {
     doc.setPage(i);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
+    doc.setTextColor(...TEXT_RGB);
     doc.text(`${BRAND} · statement generated ${dmy(new Date())}`, 40, pageH - 24);
     doc.text(`Page ${i} / ${pages}`, w - 40, pageH - 24, { align: 'right' });
   }
@@ -326,25 +328,25 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
-  doc.setTextColor(110, 110, 110);
+  doc.setTextColor(...TEXT_RGB);
   doc.text("SUPPLIER:", 40, y);
   doc.setFontSize(12);
   doc.setTextColor(...BRAND_RGB);
   doc.text(s.supplier.name.toUpperCase(), 40, y + 16);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
-  doc.setTextColor(110, 110, 110);
+  doc.setTextColor(...TEXT_RGB);
   const lines = [s.supplier.contactPerson, s.supplier.address, s.supplier.phone].filter(Boolean) as string[];
   lines.forEach((l, i) => doc.text(l, 40, y + 32 + i * 12));
 
   doc.setFontSize(9);
-  doc.setTextColor(90, 90, 90);
+  doc.setTextColor(...TEXT_RGB);
   doc.text(`Date: ${dmy(s.period.to)}`, w - 40, y, { align: "right" });
   doc.text(`Period: ${dmy(s.period.from)} - ${dmy(s.period.to)}`, w - 40, y + 14, { align: "right" });
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
-  doc.setTextColor(40, 40, 40);
+  doc.setTextColor(...TEXT_RGB);
   doc.text("BALANCE OWED", w - 40, y + 38, { align: "right" });
   doc.setFontSize(16);
   doc.setTextColor(...BRAND_RGB);
@@ -360,8 +362,8 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
       money(s.ageing.d61_90), money(s.ageing.over90), money(s.amountDue),
     ]],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 8, cellPadding: 5, halign: "right", lineColor: [200, 200, 200], lineWidth: 0.4 },
-    headStyles: { fillColor: [245, 245, 245], textColor: [90, 90, 90], fontStyle: "bold", halign: "right", fontSize: 7 },
+    styles: { fontSize: 8, cellPadding: 5, halign: "right", lineColor: RULE_RGB, lineWidth: 0.4 },
+    headStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: "bold", halign: "right", fontSize: 7 },
     bodyStyles: { fontStyle: "bold" },
   });
 
@@ -375,7 +377,7 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
       ...s.rows.map((r) => [dmy(r.date), r.label, money(Math.abs(r.amount)) + (r.amount < 0 ? " DR" : ""), money(r.balance)]),
     ],
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, lineColor: [210, 210, 210], lineWidth: 0.4 },
+    styles: { fontSize: 9, cellPadding: 5, lineColor: RULE_RGB, lineWidth: 0.4 },
     headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: "bold" },
     columnStyles: { 0: { cellWidth: 75 }, 2: { halign: "right", cellWidth: 90 }, 3: { halign: "right", cellWidth: 90 } },
     foot: [totalRow("CLOSING BALANCE", money(s.closingBalance), 3)],
@@ -388,7 +390,7 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
     doc.setPage(i);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
+    doc.setTextColor(...TEXT_RGB);
     doc.text(`${BRAND} - supplier reconciliation ${dmy(new Date())}`, 40, pageH - 24);
     doc.text(`Page ${i} / ${pages}`, w - 40, pageH - 24, { align: "right" });
   }
