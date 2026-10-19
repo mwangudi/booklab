@@ -29,6 +29,9 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   now follow the person's switches, and the app refreshes them when opened online.
 - New table `UserPermission` (migration `20261019140000_user_permissions`).
   Exceptions sync down to branch laptops on their next pull.
+- Deployed `31fa692` 2026-10-19 17:45 EAT. Tested first on a throwaway copy of the
+  live database: earlier security suite 43/43, permissions 36/36. **Rollback point:**
+  `/root/deploy-bak-20261019-174536` (database dump, backend, frontend source and dist).
 
 ## 2026-10-19 — Install the app on a phone, as in PharmaCare
 
