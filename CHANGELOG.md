@@ -3,6 +3,15 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-19 — Audit log shows nested details instead of "[object Object]"
+
+- Entries holding a before/after record — permission changes, branch price changes,
+  stock take schedules — printed `[object Object]` on the audit log page and in its
+  CSV export. Nested values are now spelled out, booleans read yes/no, dates are
+  formatted, and a before/after pair reads as one arrow, e.g. `role default →
+  allowed until 20 Oct 2026, 23:59`. The stored records were always complete; only
+  the display was wrong, so existing entries read correctly too.
+
 ## 2026-10-19 — Cashiers see customers and raise invoices; per-person permissions
 
 ### Cashiers and invoicing

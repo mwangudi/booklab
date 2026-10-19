@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Download, ShieldCheck } from 'lucide-react';
 import { useApi } from '../lib/useApi';
-import { dateTime, fmt, isoDate, today } from '../lib/format';
+import { dateShort, dateTime, fmt, isoDate, today } from '../lib/format';
 import { downloadCsv } from '../lib/reportExport';
 import type { AuditEntry } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
@@ -18,6 +18,33 @@ const ACTION_TONE = (action: string): 'green' | 'red' | 'amber' | 'blue' | 'purp
 
 const pretty = (s: string) => s.replace(/_/g, ' ').toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+
+/**
+ * One detail value as text, however deeply it is nested. Objects become
+ * "key: value" lists in brackets — String() on them printed "[object Object]".
+ */
+const show = (v: unknown): string => {
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'boolean') return v ? 'yes' : 'no';
+  if (typeof v === 'string') {
+    if (!ISO_DATE.test(v)) return v;
+    // A date with no time of day (a due date) stored as local midnight: show just the date.
+    const d = new Date(v);
+    return d.getHours() === 0 && d.getMinutes() === 0 ? dateShort(v) : dateTime(v);
+  }
+  if (typeof v !== 'object') return String(v);
+  if (Array.isArray(v)) return v.length ? v.map(show).join('; ') : 'none';
+  const o = v as Record<string, unknown>;
+  // A permission exception: "allowed until 20 Oct 2026, 23:59" or "refused".
+  if ('allowed' in o && Object.keys(o).every((k) => k === 'allowed' || k === 'expiresAt')) {
+    if (!o.allowed) return o.expiresAt ? `refused until ${show(o.expiresAt)}` : 'refused';
+    return o.expiresAt ? `allowed until ${show(o.expiresAt)}` : 'allowed (no end date)';
+  }
+  const parts = Object.entries(o).map(([k, x]) => `${k}: ${show(x)}`);
+  return parts.length ? `(${parts.join(', ')})` : '—';
+};
+
 /** Render the stored JSON detail blob as a compact, readable summary. */
 const summarise = (details: string | null): string => {
   if (!details) return '—';
@@ -26,10 +53,15 @@ const summarise = (details: string | null): string => {
     if (d.changes && typeof d.changes === 'object') {
       const entries = Object.entries(d.changes as Record<string, { from: unknown; to: unknown }>);
       if (entries.length === 0) return 'No field changes';
-      return entries.map(([k, v]) => `${k}: ${v.from ?? '—'} → ${v.to ?? '—'}`).join(', ');
+      return entries.map(([k, v]) => `${k}: ${show(v.from)} → ${show(v.to)}`).join(', ');
+    }
+    // A before/after pair reads better as one arrow than as two separate fields.
+    if ('from' in d && 'to' in d) {
+      const rest = Object.entries(d).filter(([k]) => k !== 'from' && k !== 'to');
+      return [...rest.map(([k, v]) => `${k}: ${show(v)}`), `${show(d.from)} → ${show(d.to)}`].join(', ');
     }
     return Object.entries(d)
-      .map(([k, v]) => `${k}: ${v === null ? '—' : String(v)}`)
+      .map(([k, v]) => `${k}: ${show(v)}`)
       .join(', ');
   } catch {
     return details;
