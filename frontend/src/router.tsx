@@ -1,11 +1,13 @@
-import { createBrowserRouter, Link } from 'react-router-dom';
+import { createBrowserRouter, Link, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import { AdminOnly, ManagerOnly, RequireAuth } from './components/RequireAuth';
 import { Button } from './components/ui';
+import { useAuth } from './lib/auth';
 
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
+import InstallAppPage from './pages/InstallAppPage';
 import PosPage from './pages/PosPage';
 import SalesPage from './pages/SalesPage';
 import ProductsPage from './pages/ProductsPage';
@@ -56,6 +58,12 @@ function NotFound() {
   );
 }
 
+/** Where the installed app opens: the dashboard for admins and managers, the till for cashiers. */
+function AppHome() {
+  const { role } = useAuth();
+  return <Navigate to={role === 'CASHIER' ? '/pos' : '/dashboard'} replace />;
+}
+
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/', element: <HomePage /> },
@@ -65,7 +73,9 @@ export const router = createBrowserRouter([
       {
         element: <Layout />,
         children: [
+          { path: 'app', element: <AppHome /> },
           { path: 'dashboard', element: <DashboardPage /> },
+          { path: 'install', element: <InstallAppPage /> },
           { path: 'pos', element: <PosPage /> },
           { path: 'sales', element: <SalesPage /> },
           { path: 'settings/receipt', element: <ReceiptSettingsPage /> },

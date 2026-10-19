@@ -15,7 +15,8 @@ export default defineConfig({
         name: 'Booklab Bookshop',
         short_name: 'Booklab',
         description: 'Point of sale and stock for Booklab Bookshop.',
-        start_url: '/pos',
+        // /app sends admins and managers to the dashboard and cashiers to the till.
+        start_url: '/app',
         scope: '/',
         display: 'standalone',
         orientation: 'portrait',
@@ -27,6 +28,7 @@ export default defineConfig({
           { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
         ],
         shortcuts: [
+          { name: 'Dashboard', short_name: 'Dashboard', url: '/dashboard' },
           { name: 'Sell', short_name: 'Sell', url: '/pos' },
           { name: 'Stock', short_name: 'Stock', url: '/stock' },
         ],

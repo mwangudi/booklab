@@ -3,6 +3,21 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-19 — Install the app on a phone, as in PharmaCare
+
+- **Install the app** page (Administration → Install the app, every role): a
+  one-tap **Install now** where Chrome allows it, step-by-step instructions for the
+  browser the phone is using, and an explanation when a link was opened inside
+  WhatsApp or Facebook, whose built-in browser can never install apps.
+- The browser's install offer is caught at startup. Chrome fires it once, often on
+  the sign-in page, and the app used to listen only after sign-in, so it was missed.
+- **The installed app opens where you work:** admins and managers on the
+  dashboard, cashiers on the till (start URL `/app`). Long-press the icon for
+  Dashboard, Sell and Stock shortcuts. Signing in now returns you to the page you
+  were heading for.
+- Phones that already installed it keep the old start screen until Android
+  refreshes the app's settings; reinstalling applies it at once.
+
 ## 2026-10-19 — Scheduled stock takes
 
 - **Each branch can have a stock take schedule** — weekly, monthly or quarterly,

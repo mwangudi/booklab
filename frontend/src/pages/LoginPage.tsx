@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Loader2, LogIn } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { setAuthUser, useAuth } from '../lib/auth';
@@ -17,9 +17,15 @@ export default function LoginPage() {
   const [slide, setSlide] = useState(0);
   const [slides, setSlides] = useState<PromoSlide[]>([FALLBACK_SLIDE]);
 
+  // Return to the page that sent us here — the installed app starts at /app, which
+  // then picks the dashboard or the till for the person who signed in.
+  const location = useLocation();
+  const from = (location.state as { from?: string } | null)?.from;
+  const next = from && from !== '/login' ? from : '/dashboard';
+
   useEffect(() => {
-    if (isAuthenticated) navigate('/dashboard', { replace: true });
-  }, [isAuthenticated, navigate]);
+    if (isAuthenticated) navigate(next, { replace: true });
+  }, [isAuthenticated, navigate, next]);
 
   // Sign-in has to work on a cold, offline start, so a failure here is not an
   // error — it just leaves the built-in picture showing.
@@ -50,7 +56,7 @@ export default function LoginPage() {
     try {
       const res = await api.post<LoginResponse>('/api/auth/login', { email, password });
       setAuthUser(res.user, res.token);
-      navigate('/dashboard', { replace: true });
+      navigate(next, { replace: true });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Unable to sign in. Check your connection.');
     } finally {

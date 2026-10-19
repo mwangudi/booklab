@@ -3,6 +3,7 @@ import { CloudOff, Download, RefreshCw, UploadCloud, WifiOff } from 'lucide-reac
 import { useOffline } from '../lib/useOffline';
 import { formatRemaining } from '../lib/offlineBudget';
 import { applyPwaUpdate, PWA_UPDATE_EVENT } from '../lib/pwa';
+import { canInstall, onInstallAvailability, promptInstall } from '../lib/pwaInstall';
 import { cn } from '../lib/utils';
 
 /**
@@ -21,15 +22,11 @@ export function ConnectionBar() {
     return () => window.removeEventListener(PWA_UPDATE_EVENT, onUpdate);
   }, []);
 
-  const [installer, setInstaller] = useState<Event | null>(null);
-  useEffect(() => {
-    const onPrompt = (e: Event) => {
-      e.preventDefault();
-      setInstaller(e);
-    };
-    window.addEventListener('beforeinstallprompt', onPrompt);
-    return () => window.removeEventListener('beforeinstallprompt', onPrompt);
-  }, []);
+  // The offer is caught at startup (lib/pwaInstall), often before this bar mounts.
+  const [installable, setInstallable] = useState(canInstall());
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => onInstallAvailability(setInstallable), []);
+  const installer = installable && !dismissed;
 
   const send = async () => {
     setSending(true);
@@ -41,10 +38,7 @@ export function ConnectionBar() {
   };
 
   const install = async () => {
-    const evt = installer as (Event & { prompt?: () => Promise<void> }) | null;
-    if (!evt?.prompt) return;
-    await evt.prompt();
-    setInstaller(null);
+    await promptInstall();
   };
 
   if (online && pending === 0 && !needRefresh && !installer) return null;
@@ -120,7 +114,7 @@ export function ConnectionBar() {
             Install Booklab on this phone for offline selling.
           </span>
           <div className="flex items-center gap-2 shrink-0">
-            <button onClick={() => setInstaller(null)} className="text-xs text-muted-foreground hover:underline">
+            <button onClick={() => setDismissed(true)} className="text-xs text-muted-foreground hover:underline">
               Not now
             </button>
             <button onClick={install} className="rounded-md bg-primary px-2 py-1 text-xs font-medium text-primary-foreground">

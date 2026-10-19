@@ -27,6 +27,7 @@ import {
   Wallet,
   Warehouse,
   X,
+  Smartphone,
 } from 'lucide-react';
 import { logout, useAuth, type Role } from '../lib/auth';
 import { cn } from '../lib/utils';
@@ -110,6 +111,7 @@ const GROUPS: NavGroup[] = [
       // Deliberately open to every role: receipt settings live on the device, so
       // each till has to be able to set up its own printer.
       { to: '/settings/receipt', label: 'Receipt & printer', icon: <Printer className={ic} /> },
+      { to: '/install', label: 'Install the app', icon: <Smartphone className={ic} /> },
     ],
   },
   // Reports sit last: they are read at the end of a day, not worked through.
