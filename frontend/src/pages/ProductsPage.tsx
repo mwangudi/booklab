@@ -4,6 +4,7 @@ import { Archive, ArchiveRestore, BookOpen, CheckCircle2, Download, FileUp, Penc
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { useAuth } from '../lib/auth';
+import { useCan } from '../lib/permissions';
 import { fmt, money, num, pct } from '../lib/format';
 import { PRODUCT_CATEGORIES } from '../lib/categories';
 import { csvToItems, type ImportItem } from '../lib/csv';
@@ -16,6 +17,7 @@ import { Select2 } from '../components/Select2';
 
 export default function ProductsPage() {
   const { canManage, isAdmin, branchId: myBranch } = useAuth();
+  const canEditProducts = useCan()('product.create');
   const [showArchived, setShowArchived] = useState(false);
   const { data: books, loading, refresh } = useApi<Book[]>(`/api/books${showArchived ? '?archived=only' : ''}`, [showArchived]);
   const [category, setCategory] = useState('');
@@ -184,7 +186,7 @@ export default function ProductsPage() {
     });
   }
 
-  if (canManage) {
+  if (canEditProducts) {
     columns.push({
       key: 'actions',
       header: '',
@@ -272,7 +274,7 @@ export default function ProductsPage() {
               />
             }
             actionSlot={
-              canManage && (
+              canEditProducts && (
                 <Link to="/products/new">
                   <Button>
                     <Plus className="h-4 w-4" /> New product

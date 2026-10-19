@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Boxes, PackagePlus, Plus, ReceiptText, ShoppingCart, TrendingUp, Wallet } from 'lucide-react';
 import { useApi } from '../lib/useApi';
 import { useAuth } from '../lib/auth';
+import { useCan } from '../lib/permissions';
 import { fmt, money, startOfMonth, today } from '../lib/format';
 import type { PnlReport, StockValuation, TodayByBranch } from '../types';
 import { Button, Card, KpiCard, Loading, PageHeader, Pill, SectionTitle, Table, Td, Th } from '../components/ui';
@@ -9,6 +10,7 @@ import { DueStockTakes } from '../components/StockTakeSchedule';
 
 export default function DashboardPage() {
   const { user, canManage } = useAuth();
+  const can = useCan();
   const { data: todayRows, loading: l1 } = useApi<TodayByBranch[]>('/api/sales/today-by-branch');
   const { data: valuation, loading: l2 } = useApi<StockValuation>('/api/stock/valuation');
   const pnlPath = canManage ? `/api/reports/pnl?from=${startOfMonth()}&to=${today()}T23:59:59` : null;
@@ -162,7 +164,7 @@ export default function DashboardPage() {
               <Link to="/pos"><Button variant="outline"><ShoppingCart className="h-4 w-4" /> Sell items</Button></Link>
               <Link to="/products/new"><Button variant="outline"><Plus className="h-4 w-4" /> New product</Button></Link>
               <Link to="/stock/intake"><Button variant="outline"><PackagePlus className="h-4 w-4" /> Receive stock</Button></Link>
-              {canManage && <Link to="/expenses/new"><Button variant="outline"><Wallet className="h-4 w-4" /> Record expense</Button></Link>}
+              {can('expense.manage') && <Link to="/expenses/new"><Button variant="outline"><Wallet className="h-4 w-4" /> Record expense</Button></Link>}
             </div>
           </Card>
         </>

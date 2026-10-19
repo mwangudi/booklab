@@ -29,7 +29,8 @@ import {
   X,
   Smartphone,
 } from 'lucide-react';
-import { logout, useAuth, type Role } from '../lib/auth';
+import { logout, useAuth, type AuthUser, type Role } from '../lib/auth';
+import { useRefreshCapabilities, userCan, type Capability } from '../lib/permissions';
 import { cn } from '../lib/utils';
 import { ConnectionBar } from './ConnectionBar';
 
@@ -38,6 +39,8 @@ interface NavItem {
   label: string;
   icon: ReactNode;
   roles?: Role[];
+  /** Shown to anyone holding at least one of these (Administration → Permissions). */
+  caps?: Capability[];
   end?: boolean;
 }
 interface NavGroup {
@@ -67,7 +70,7 @@ const GROUPS: NavGroup[] = [
       { to: '/stock', label: 'Stock levels', icon: <Boxes className={ic} />, end: true },
       { to: '/stock/take', label: 'Stock take', icon: <ClipboardList className={ic} /> },
       { to: '/stock/movements', label: 'Stock history', icon: <History className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-      { to: '/expenses', label: 'Expenses', icon: <Wallet className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/expenses', label: 'Expenses', icon: <Wallet className={ic} />, caps: ['expense.manage'] },
     ],
   },
   {
@@ -75,8 +78,8 @@ const GROUPS: NavGroup[] = [
     heading: 'Customers & Invoicing',
     icon: <FileText className={ic} />,
     items: [
-      { to: '/invoices', label: 'Invoices', icon: <FileText className={ic} />, roles: ['ADMIN', 'MANAGER'] },
-      { to: '/customers', label: 'Customers', icon: <Users className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/invoices', label: 'Invoices', icon: <FileText className={ic} />, caps: ['customer.view', 'invoice.create'] },
+      { to: '/customers', label: 'Customers', icon: <Users className={ic} />, caps: ['customer.view', 'invoice.create'] },
     ],
   },
   {
@@ -84,7 +87,7 @@ const GROUPS: NavGroup[] = [
     heading: 'Suppliers & Purchasing',
     icon: <Truck className={ic} />,
     items: [
-      { to: '/goods-receipts', label: 'Goods received', icon: <Truck className={ic} />, roles: ['ADMIN', 'MANAGER'] },
+      { to: '/goods-receipts', label: 'Goods received', icon: <Truck className={ic} />, caps: ['goods.receive'] },
       { to: '/suppliers', label: 'Suppliers', icon: <Building2 className={ic} />, roles: ['ADMIN', 'MANAGER'] },
     ],
   },
@@ -105,6 +108,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: '/branches', label: 'Branches', icon: <Building2 className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/users', label: 'Users', icon: <Users className={ic} />, roles: ['ADMIN'] },
+      { to: '/settings/permissions', label: 'Permissions', icon: <ShieldCheck className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/audit', label: 'Audit log', icon: <ShieldCheck className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/branch-sync', label: 'Branch sync', icon: <RefreshCw className={ic} />, roles: ['ADMIN'] },
       { to: '/settings/login-screen', label: 'Login screen', icon: <ImageIcon className={ic} />, roles: ['ADMIN'] },
@@ -206,11 +210,13 @@ function CollapsibleGroup({
 
 function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => void }) {
   const { pathname } = useLocation();
+  const { user } = useAuth();
+  const shows = (it: NavItem, u: AuthUser | null) => (!it.roles || it.roles.includes(role)) && (!it.caps || userCan(u, ...it.caps));
 
-  const quick = useMemo(() => QUICK.filter((it) => !it.roles || it.roles.includes(role)), [role]);
+  const quick = useMemo(() => QUICK.filter((it) => shows(it, user)), [role, user]);
   const groups = useMemo(
-    () => GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => !it.roles || it.roles.includes(role)) })).filter((g) => g.items.length > 0),
-    [role],
+    () => GROUPS.map((g) => ({ ...g, items: g.items.filter((it) => shows(it, user)) })).filter((g) => g.items.length > 0),
+    [role, user],
   );
 
   // Remember which sections the user left open, and always reveal the active page.
@@ -276,6 +282,8 @@ function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => v
 
 export default function Layout() {
   const { user } = useAuth();
+  // Pick up permission changes an admin made since this person signed in.
+  useRefreshCapabilities();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);

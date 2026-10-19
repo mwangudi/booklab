@@ -6,6 +6,7 @@ import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../midd
 import { SYNC_ROLE, enqueueOutbox } from '../lib/outbox.js';
 import { actor, writeAudit } from '../lib/audit.js';
 import { CASHIER_TIERS, cashierMaxDiscountPct } from '../lib/salesPolicy.js';
+import { can } from '../middleware/permissions.js';
 
 const saleSchema = z.object({
   branchId: z.number().int().optional(),
@@ -76,15 +77,17 @@ export async function saleRoutes(app: FastifyInstance) {
     }
     const total = round2(subtotal - discount);
 
-    if (req.user.role === 'CASHIER') {
-      if (!(CASHIER_TIERS as readonly string[]).includes(body.priceTier)) {
-        await writeAudit(app.prisma, { ...actor(req), branchId, entity: 'sale', action: 'TIER_BLOCKED', details: { priceTier: body.priceTier, subtotal } });
-        return reply.code(403).send({ error: 'Wholesale and school prices need a manager. Sell at retail, or ask a manager.' });
-      }
+    // Lower price tiers and discounts past the cap are capabilities: managers hold both
+    // by default, and an admin can grant either to a person (Administration → Permissions).
+    if (!(CASHIER_TIERS as readonly string[]).includes(body.priceTier) && !(await can(app.prisma, req.user, 'sale.tierPrice'))) {
+      await writeAudit(app.prisma, { ...actor(req), branchId, entity: 'sale', action: 'TIER_BLOCKED', details: { priceTier: body.priceTier, subtotal } });
+      return reply.code(403).send({ error: 'Wholesale and school prices need permission. Sell at retail, or ask a manager.' });
+    }
+    if (discount > 0 && !(await can(app.prisma, req.user, 'sale.discount'))) {
       const maxPct = cashierMaxDiscountPct();
       if (discount > round2((subtotal * maxPct) / 100) + 0.01) {
         await writeAudit(app.prisma, { ...actor(req), branchId, entity: 'sale', action: 'DISCOUNT_BLOCKED', details: { discount, subtotal, maxPct } });
-        return reply.code(403).send({ error: `A cashier can discount at most ${maxPct}% of the sale (${round2((subtotal * maxPct) / 100).toFixed(2)}). Ask a manager for more.` });
+        return reply.code(403).send({ error: `You can discount at most ${maxPct}% of the sale (${round2((subtotal * maxPct) / 100).toFixed(2)}). Ask a manager for more.` });
       }
     }
 

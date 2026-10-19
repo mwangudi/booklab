@@ -13,6 +13,8 @@ export interface AuthUser {
   branchName?: string | null;
   /** Largest basket discount this user may give, in percent; null when not capped. */
   maxDiscountPct?: number | null;
+  /** What this person may do (Administration → Permissions); absent on older sessions. */
+  capabilities?: string[];
 }
 
 const KEY = 'bookshop_user';

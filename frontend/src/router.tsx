@@ -1,6 +1,6 @@
 import { createBrowserRouter, Link, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
-import { AdminOnly, ManagerOnly, RequireAuth } from './components/RequireAuth';
+import { AdminOnly, CapabilityOnly, ManagerOnly, RequireAuth } from './components/RequireAuth';
 import { Button } from './components/ui';
 import { useAuth } from './lib/auth';
 
@@ -8,6 +8,7 @@ import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
 import InstallAppPage from './pages/InstallAppPage';
+import PermissionsPage from './pages/PermissionsPage';
 import PosPage from './pages/PosPage';
 import SalesPage from './pages/SalesPage';
 import ProductsPage from './pages/ProductsPage';
@@ -81,30 +82,30 @@ export const router = createBrowserRouter([
           { path: 'settings/receipt', element: <ReceiptSettingsPage /> },
 
           { path: 'products', element: <ProductsPage /> },
-          { path: 'products/new', element: <ManagerOnly><ProductUpsertPage /></ManagerOnly> },
-          { path: 'products/:id/edit', element: <ManagerOnly><ProductUpsertPage /></ManagerOnly> },
+          { path: 'products/new', element: <CapabilityOnly any={['product.create']}><ProductUpsertPage /></CapabilityOnly> },
+          { path: 'products/:id/edit', element: <CapabilityOnly any={['product.create']}><ProductUpsertPage /></CapabilityOnly> },
 
           { path: 'stock', element: <StockPage /> },
           { path: 'stock/intake', element: <StockIntakePage /> },
           { path: 'stock/take', element: <StockTakePage /> },
           { path: 'stock/movements', element: <ManagerOnly><StockMovementsPage /></ManagerOnly> },
 
-          { path: 'customers', element: <ManagerOnly><CustomersPage /></ManagerOnly> },
-          { path: 'customers/new', element: <ManagerOnly><CustomerUpsertPage /></ManagerOnly> },
-          { path: 'customers/:id/edit', element: <ManagerOnly><CustomerUpsertPage /></ManagerOnly> },
-          { path: 'customers/:id/statement', element: <ManagerOnly><StatementPage /></ManagerOnly> },
-          { path: 'invoices', element: <ManagerOnly><InvoicesPage /></ManagerOnly> },
-          { path: 'invoices/new', element: <ManagerOnly><InvoiceEditorPage /></ManagerOnly> },
-          { path: 'invoices/:id', element: <ManagerOnly><InvoiceEditorPage /></ManagerOnly> },
+          { path: 'customers', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><CustomersPage /></CapabilityOnly> },
+          { path: 'customers/new', element: <CapabilityOnly any={['customer.manage']}><CustomerUpsertPage /></CapabilityOnly> },
+          { path: 'customers/:id/edit', element: <CapabilityOnly any={['customer.manage']}><CustomerUpsertPage /></CapabilityOnly> },
+          { path: 'customers/:id/statement', element: <CapabilityOnly any={['customer.view']}><StatementPage /></CapabilityOnly> },
+          { path: 'invoices', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><InvoicesPage /></CapabilityOnly> },
+          { path: 'invoices/new', element: <CapabilityOnly any={['invoice.create']}><InvoiceEditorPage /></CapabilityOnly> },
+          { path: 'invoices/:id', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><InvoiceEditorPage /></CapabilityOnly> },
 
           { path: 'suppliers', element: <ManagerOnly><SuppliersPage /></ManagerOnly> },
           { path: 'suppliers/:id/statement', element: <ManagerOnly><SupplierStatementPage /></ManagerOnly> },
-          { path: 'goods-receipts', element: <ManagerOnly><GoodsReceiptsPage /></ManagerOnly> },
-          { path: 'goods-receipts/new', element: <ManagerOnly><GoodsReceiptEditorPage /></ManagerOnly> },
-          { path: 'goods-receipts/:id', element: <ManagerOnly><GoodsReceiptEditorPage /></ManagerOnly> },
+          { path: 'goods-receipts', element: <CapabilityOnly any={['goods.receive']}><GoodsReceiptsPage /></CapabilityOnly> },
+          { path: 'goods-receipts/new', element: <CapabilityOnly any={['goods.receive']}><GoodsReceiptEditorPage /></CapabilityOnly> },
+          { path: 'goods-receipts/:id', element: <CapabilityOnly any={['goods.receive']}><GoodsReceiptEditorPage /></CapabilityOnly> },
 
-          { path: 'expenses', element: <ManagerOnly><ExpensesPage /></ManagerOnly> },
-          { path: 'expenses/new', element: <ManagerOnly><ExpenseNewPage /></ManagerOnly> },
+          { path: 'expenses', element: <CapabilityOnly any={['expense.manage']}><ExpensesPage /></CapabilityOnly> },
+          { path: 'expenses/new', element: <CapabilityOnly any={['expense.manage']}><ExpenseNewPage /></CapabilityOnly> },
 
           { path: 'reports/pnl', element: <ManagerOnly><PnlReportPage /></ManagerOnly> },
           { path: 'reports/sales', element: <ManagerOnly><SalesReportPage /></ManagerOnly> },
@@ -120,6 +121,7 @@ export const router = createBrowserRouter([
           { path: 'settings/users/new', element: <AdminOnly><UserUpsertPage /></AdminOnly> },
           { path: 'settings/users/:id/edit', element: <AdminOnly><UserUpsertPage /></AdminOnly> },
           { path: 'settings/audit', element: <AdminOnly><AuditLogPage /></AdminOnly> },
+          { path: 'settings/permissions', element: <AdminOnly><PermissionsPage /></AdminOnly> },
           { path: 'settings/branch-sync', element: <AdminOnly><SyncTokensPage /></AdminOnly> },
           { path: 'settings/login-screen', element: <AdminOnly><LoginScreenPage /></AdminOnly> },
 

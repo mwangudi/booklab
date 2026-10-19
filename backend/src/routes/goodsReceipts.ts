@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
+import { requireCapability } from '../middleware/permissions.js';
 import type { GoodsReceiptStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { recordMovement, queueGoodsReceipt, queueSupplierPayment } from '../lib/outbox.js';
@@ -42,9 +43,8 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export async function goodsReceiptRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
-  // Credit documents, customers and suppliers are management information. The pages
-  // are manager-only; the API now matches, so a cashier cannot read them either.
-  app.addHook('preHandler', requireRole('ADMIN', 'MANAGER'));
+  // Receiving goods is a capability (Administration → Permissions): managers by
+  // default, grantable to a cashier. Supplier accounts and payables stay with managers.
 
   const withItems = {
     supplier: true,
@@ -54,7 +54,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
 
   /* --------------------------------------------------------- suppliers */
 
-  app.get('/suppliers', async (req) => {
+  app.get('/suppliers', { preHandler: requireCapability('goods.receive') }, async (req) => {
     const { archived } = req.query as { archived?: string };
     const scope = archived === 'only' ? { NOT: { deletedAt: null } } : archived === 'all' ? {} : { deletedAt: null };
     return app.prisma.supplier.findMany({
@@ -65,7 +65,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/suppliers', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/suppliers', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const body = supplierSchema.parse(req.body);
     const created = await app.prisma.supplier.create({
       data: {
@@ -129,7 +129,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     return nextInSeries('GRN', code, rows.map((r) => r.number));
   }
 
-  app.get('/', async (req, reply) => {
+  app.get('/', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const { status, supplierId, branchId, from, to } = req.query as {
       status?: string; supplierId?: string; branchId?: string; from?: string; to?: string;
     };
@@ -148,7 +148,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/:id', async (req, reply) => {
+  app.get('/:id', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid receipt id' });
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id }, include: withItems });
@@ -157,7 +157,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     return grn;
   });
 
-  app.post('/', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const body = receiptSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
     const supplier = await app.prisma.supplier.findUnique({ where: { id: body.supplierId } });
@@ -202,7 +202,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     return reply.code(201).send(created);
   });
 
-  app.patch('/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.patch('/:id', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const body = receiptSchema.partial().parse(req.body);
     const before = await app.prisma.goodsReceipt.findUnique({ where: { id } });
@@ -256,7 +256,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   /** Post the receipt: stock goes up and each line becomes an intake movement. */
-  app.post('/:id/post', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/:id/post', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const { updateCost } = z.object({ updateCost: z.boolean().default(true) }).parse(req.body ?? {});
 
@@ -317,7 +317,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     return posted;
   });
 
-  app.delete('/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.delete('/:id', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id } });
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
@@ -343,7 +343,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     note: z.string().max(190).nullable().optional(),
   });
 
-  app.get('/payments', async (req) => {
+  app.get('/payments', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req) => {
     const { supplierId, from, to } = req.query as { supplierId?: string; from?: string; to?: string };
     return app.prisma.supplierPayment.findMany({
       where: {
@@ -401,7 +401,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
    * so it can be reconciled line by line against the statement they send us.
    * Only posted receipts are debts; drafts have not been accepted yet.
    */
-  app.get('/suppliers/:id/statement', async (req, reply) => {
+  app.get('/suppliers/:id/statement', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid supplier id' });
     const { from, to } = req.query as { from?: string; to?: string };
@@ -500,7 +500,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   /** Every supplier with what we owe them — the payables list. */
-  app.get('/suppliers/balances', async () => {
+  app.get('/suppliers/balances', { preHandler: requireRole('ADMIN', 'MANAGER') }, async () => {
     const suppliers = await app.prisma.supplier.findMany({
       where: { deletedAt: null },
       include: {

@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Plus, Receipt, Save, Trash2, Truck } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useCan } from '../../lib/permissions';
 import { money, num, today } from '../../lib/format';
 import { PRODUCT_UNITS } from '../../lib/categories';
 import { printDeliveryNote, printInvoice } from '../../lib/documents';
@@ -26,6 +27,7 @@ export default function InvoiceEditorPage() {
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id && id !== 'new';
   const navigate = useNavigate();
+  const can = useCan();
 
   const { data: invoice, loading, refresh } = useApi<Invoice>(isEdit ? `/api/invoices/${id}` : null, [id]);
   const { data: customers } = useApi<Customer[]>('/api/invoices/customers');
@@ -401,17 +403,17 @@ export default function InvoiceEditorPage() {
           <SectionTitle>Workflow</SectionTitle>
           <div className="flex flex-wrap items-center gap-2 mt-2">
             <Pill tone={invoice.status === 'PAID' ? 'green' : invoice.status === 'DRAFT' ? 'gray' : 'amber'}>{invoice.status.toLowerCase()}</Pill>
-            {invoice.status === 'DRAFT' && (
+            {invoice.status === 'DRAFT' && can('invoice.create') && (
               <Button variant="outline" onClick={() => act(`/api/invoices/${invoice.id}/issue`, 'Could not issue.')} loading={saving}>
                 Issue invoice
               </Button>
             )}
-            {(invoice.status === 'ISSUED' || invoice.status === 'DRAFT') && (
+            {(invoice.status === 'ISSUED' || invoice.status === 'DRAFT') && can('invoice.deliver') && (
               <Button variant="outline" onClick={() => setDeliverOpen(true)}>
                 <Truck className="h-4 w-4" /> Confirm delivery
               </Button>
             )}
-            {invoice.status === 'DELIVERED' && (
+            {invoice.status === 'DELIVERED' && can('payment.record') && (
               <Button variant="outline" onClick={() => act(`/api/invoices/${invoice.id}/paid`, 'Could not mark paid.')} loading={saving}>
                 <CheckCircle2 className="h-4 w-4" /> Mark as paid
               </Button>

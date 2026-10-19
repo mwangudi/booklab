@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
+import { requireCapability } from '../middleware/permissions.js';
 import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
 import { actor, auditRequest, writeAudit } from '../lib/audit.js';
 import { DUE_WINDOW_DAYS, FULL_COUNT_SHARE, daysUntil, nextDueAfter, scheduleStatus, startOfDay } from '../lib/stockTakeSchedule.js';
@@ -162,7 +163,7 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   // Set absolute quantity (stock take). Logs the difference as an attributable ADJUST movement.
-  app.put('/', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
+  app.put('/', { preHandler: requireCapability('stock.quantity.edit') }, async (req, reply) => {
     const body = stockSetSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
 
@@ -207,7 +208,7 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   // Set a per-branch selling price override. Pass price=null to clear it (falls back to the catalogue price).
-  app.put('/price', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
+  app.put('/price', { preHandler: requireCapability('price.edit') }, async (req, reply) => {
     const body = priceSetSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
     const book = await app.prisma.book.findUnique({ where: { id: body.bookId }, select: { unitPrice: true, title: true } });
@@ -262,7 +263,7 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   // Receive stock (increment) as a movement event. Syncs idempotently to the cloud.
-  app.post('/intake', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
+  app.post('/intake', { preHandler: requireCapability('stock.intake') }, async (req, reply) => {
     const body = intakeSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
     const result = await app.prisma.$transaction(async (tx) => {
@@ -307,7 +308,7 @@ export async function stockRoutes(app: FastifyInstance) {
    * Apply a counted stock take. Each difference becomes an attributable ADJUST
    * movement, so the count is fully explained in the stock history.
    */
-  app.post('/take', { preHandler: requireRole('ADMIN', 'MANAGER', 'CASHIER') }, async (req, reply) => {
+  app.post('/take', { preHandler: requireCapability('stock.quantity.edit') }, async (req, reply) => {
     const body = stockTakeSchema.parse(req.body);
     const branchId = enforceWriteBranch(req, reply, body.branchId);
 

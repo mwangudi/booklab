@@ -92,6 +92,18 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
   }
   counts.user = (data.entities.user ?? []).length;
 
+  // Permission exceptions arrive whole for this branch's people; replace them so a
+  // removal on the cloud is a removal here too. Older servers send none: keep ours.
+  if (Array.isArray(data.entities.permission)) {
+    const rows: Array<{ userId: number; capability: string; allowed: boolean; expiresAt: Date | null }> = [];
+    for (const p of data.entities.permission) {
+      const u = await branch.user.findUnique({ where: { uuid: p.userUuid }, select: { id: true } });
+      if (u) rows.push({ userId: u.id, capability: p.capability, allowed: p.allowed, expiresAt: toDate(p.expiresAt) });
+    }
+    await branch.$transaction([branch.userPermission.deleteMany({}), ...rows.map((r) => branch.userPermission.create({ data: r }))]);
+    counts.permission = rows.length;
+  }
+
   for (const c of data.entities.customer ?? []) {
     const fields = {
       name: c.name, type: c.type, contactPerson: c.contactPerson, phone: c.phone, email: c.email,

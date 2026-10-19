@@ -132,7 +132,7 @@ export async function syncRoutes(app: FastifyInstance) {
     const serverTime = new Date().toISOString();
     const branchId = tokenBranchId(req);
 
-    const [branches, books, users, stock, customers, suppliers] = await Promise.all([
+    const [branches, books, users, stock, customers, suppliers, permissions] = await Promise.all([
       app.prisma.branch.findMany({ where, take, orderBy: { updatedAt: 'asc' } }),
       app.prisma.book.findMany({ where, take, orderBy: { updatedAt: 'asc' } }),
       app.prisma.user.findMany({ where, take, orderBy: { updatedAt: 'asc' }, include: { branch: { select: { uuid: true } } } }),
@@ -147,6 +147,11 @@ export async function syncRoutes(app: FastifyInstance) {
           }),
       app.prisma.customer.findMany({ where, take, orderBy: { updatedAt: 'asc' } }),
       app.prisma.supplier.findMany({ where, take, orderBy: { updatedAt: 'asc' } }),
+      // Permission exceptions for this branch's people, whole every time: the table is
+      // tiny, and an expiry or a removal must reach the laptop as surely as a grant.
+      branchId == null
+        ? Promise.resolve([])
+        : app.prisma.userPermission.findMany({ where: { user: { branchId } }, include: { user: { select: { uuid: true } } } }),
     ]);
 
     return {
@@ -176,6 +181,7 @@ export async function syncRoutes(app: FastifyInstance) {
           chargeVat: c.chargeVat, vatMode: c.vatMode,
           createdAt: c.createdAt, updatedAt: c.updatedAt, deletedAt: c.deletedAt,
         })),
+        permission: permissions.map((p) => ({ userUuid: p.user.uuid, capability: p.capability, allowed: p.allowed, expiresAt: p.expiresAt })),
         supplier: suppliers.map((s) => ({
           uuid: s.uuid, name: s.name, contactPerson: s.contactPerson, phone: s.phone, email: s.email,
           address: s.address, kraPin: s.kraPin, paymentTermsDays: s.paymentTermsDays, openingBalance: String(s.openingBalance),

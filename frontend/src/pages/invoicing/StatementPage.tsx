@@ -4,6 +4,7 @@ import { ArrowLeft, Download, FileText, Plus, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useCan } from '../../lib/permissions';
 import { dateShort, fmt, money, num, today } from '../../lib/format';
 import { PAYMENT_CHANNELS, titleCase } from '../../lib/categories';
 import { downloadCsv } from '../../lib/reportExport';
@@ -16,6 +17,7 @@ const startOfYear = () => `${new Date().getFullYear()}-01-01`;
 
 export default function StatementPage() {
   const { id } = useParams<{ id: string }>();
+  const canRecordPayment = useCan()('payment.record');
   const [from, setFrom] = useState(startOfYear());
   const [to, setTo] = useState(today());
 
@@ -89,9 +91,11 @@ export default function StatementPage() {
             <Button variant="outline" onClick={() => printStatement(data)}>
               <FileText className="h-4 w-4" /> Print statement
             </Button>
-            <Button onClick={() => setPayOpen(true)}>
-              <Plus className="h-4 w-4" /> Record payment
-            </Button>
+            {canRecordPayment && (
+              <Button onClick={() => setPayOpen(true)}>
+                <Plus className="h-4 w-4" /> Record payment
+              </Button>
+            )}
           </>
         }
       />

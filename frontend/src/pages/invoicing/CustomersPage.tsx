@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Archive, ArchiveRestore, FileText, Pencil, Plus, Users, Wallet } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useCan } from '../../lib/permissions';
 import { fmt, money, num } from '../../lib/format';
 import { downloadCsv } from '../../lib/reportExport';
 import type { Customer, CustomerBalance } from '../../types';
@@ -10,6 +11,7 @@ import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 
 export default function CustomersPage() {
+  const canManageCustomers = useCan()('customer.manage');
   const [showArchived, setShowArchived] = useState(false);
   const { data: customers, loading, refresh } = useApi<Customer[]>(
     `/api/invoices/customers${showArchived ? '?archived=only' : ''}`,
@@ -82,7 +84,7 @@ export default function CustomersPage() {
       render: (c) => (
         <RowActions>
           {c.deletedAt ? (
-            <RowAction
+            canManageCustomers && <RowAction
               onClick={() => act(() => api.post(`/api/invoices/customers/${c.id}/restore`), 'Could not restore.')}
               icon={<ArchiveRestore className="h-4 w-4" />}
               label="Restore customer"
@@ -90,13 +92,17 @@ export default function CustomersPage() {
           ) : (
             <>
               <RowAction to={`/customers/${c.id}/statement`} icon={<FileText className="h-4 w-4" />} label="Statement of account" />
-              <RowAction to={`/customers/${c.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit customer" />
-              <RowAction
-                onClick={() => act(() => api.delete(`/api/invoices/customers/${c.id}`), 'Could not archive.')}
-                icon={<Archive className="h-4 w-4" />}
-                label="Archive customer"
-                tone="danger"
-              />
+              {canManageCustomers && (
+                <>
+                  <RowAction to={`/customers/${c.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit customer" />
+                  <RowAction
+                    onClick={() => act(() => api.delete(`/api/invoices/customers/${c.id}`), 'Could not archive.')}
+                    icon={<Archive className="h-4 w-4" />}
+                    label="Archive customer"
+                    tone="danger"
+                  />
+                </>
+              )}
             </>
           )}
         </RowActions>
@@ -144,11 +150,13 @@ export default function CustomersPage() {
             pageSize={12}
             rowKey={(c) => c.id}
             actionSlot={
-              <Link to="/customers/new">
-                <Button>
-                  <Plus className="h-4 w-4" /> New customer
-                </Button>
-              </Link>
+              canManageCustomers && (
+                <Link to="/customers/new">
+                  <Button>
+                    <Plus className="h-4 w-4" /> New customer
+                  </Button>
+                </Link>
+              )
             }
           />
         )}

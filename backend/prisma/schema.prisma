@@ -120,6 +120,7 @@ model User {
   movements    StockMovement[]
   auditLogs    AuditLog[]
   employee     Employee?
+  permissions  UserPermission[]
 }
 
 model Branch {
@@ -730,4 +731,19 @@ model StockTakeSchedule {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
   branch       Branch             @relation(fields: [branchId], references: [id])
+}
+
+/// A per-person exception to their role's default permissions (Administration →
+/// Permissions). `allowed` grants or refuses one capability; when `expiresAt` passes
+/// the exception lapses and the person is back on their role default.
+model UserPermission {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  capability String    @db.VarChar(60)
+  allowed    Boolean
+  expiresAt  DateTime?
+  updatedAt  DateTime  @updatedAt
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@unique([userId, capability])
 }

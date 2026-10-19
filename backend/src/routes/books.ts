@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, isAdmin } from '../middleware/authGuard.js';
+import { requireCapability } from '../middleware/permissions.js';
 import { auditRequest, diff } from '../lib/audit.js';
 
 const bookSchema = z.object({
@@ -56,7 +57,7 @@ export async function bookRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/', { preHandler: requireCapability('product.create') }, async (req, reply) => {
     const body = bookSchema.parse(req.body);
     try {
       const created = await app.prisma.book.create({ data: body });
@@ -73,7 +74,7 @@ export async function bookRoutes(app: FastifyInstance) {
     }
   });
 
-  app.patch('/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.patch('/:id', { preHandler: requireCapability('product.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid book id' });
     const body = bookUpdateSchema.parse(req.body);

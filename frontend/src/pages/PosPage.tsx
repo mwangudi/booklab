@@ -12,6 +12,7 @@ import { getReceiptSettings } from '../lib/receiptSettings';
 import { reprintSale } from '../lib/reprint';
 import { useOffline } from '../lib/useOffline';
 import { queueSale } from '../lib/offlineQueue';
+import { useCan } from '../lib/permissions';
 import type { Sale, Stock } from '../types';
 import { BranchSelect } from '../components/BranchSelect';
 import { Alert, Button, Card, EmptyState, Input, Modal, Pill } from '../components/ui';
@@ -53,10 +54,12 @@ const TIER_OPTIONS: Array<{ value: PriceTier; label: string }> = [
 ];
 
 export default function PosPage() {
-  const { isAdmin, canManage, branchId: myBranch, user } = useAuth();
-  // Cashiers sell at retail and discount within a cap; the server enforces both.
-  // A session from before the cap existed has no value stored, so assume the default.
-  const maxDiscountPct = user?.role === 'CASHIER' ? (user.maxDiscountPct ?? 10) : null;
+  const { isAdmin, branchId: myBranch, user } = useAuth();
+  const can = useCan();
+  // Lower price tiers and discounts past the cap are permissions (managers by default);
+  // the server enforces both. An older session has no cap stored, so assume the default.
+  const canUseTiers = can('sale.tierPrice');
+  const maxDiscountPct = can('sale.discount') ? null : (user?.maxDiscountPct ?? 10);
   const { data: branches } = useBranches();
   const [branchId, setBranchId] = useState<number | null>(isAdmin ? null : myBranch);
   const [search, setSearch] = useState('');
@@ -381,7 +384,7 @@ export default function PosPage() {
             </div>
 
             {/* Tier sits with the catalogue because it re-prices what is on screen. */}
-            {canManage ? (
+            {canUseTiers ? (
             <div className="mt-3 mb-4 flex items-center gap-2">
               <span className="text-xs text-muted-foreground shrink-0">Price</span>
               <div className="inline-flex flex-1 sm:flex-none rounded-lg border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Price tier">
@@ -590,7 +593,7 @@ export default function PosPage() {
                 </div>
                 {discountCapped && (
                   <p className="text-xs text-[#9b2626]">
-                    A cashier can discount at most {maxDiscountPct}% ({money(discountCap)}). Ask a manager for more.
+                    You can discount at most {maxDiscountPct}% ({money(discountCap)}). Ask a manager for more.
                   </p>
                 )}
                 {discountAmount > 0 && (

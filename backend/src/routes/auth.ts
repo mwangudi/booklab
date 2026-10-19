@@ -3,7 +3,8 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { authGuard, requireRole } from '../middleware/authGuard.js';
 import { auditRequest, diff, writeAudit } from '../lib/audit.js';
-import { maxDiscountPctFor } from '../lib/salesPolicy.js';
+import { cashierMaxDiscountPct } from '../lib/salesPolicy.js';
+import { capabilitiesFor } from '../middleware/permissions.js';
 
 // The sign-in field carries either a username or an email, so it cannot be
 // validated as an email. `username` is accepted too for newer clients.
@@ -66,13 +67,16 @@ export async function authRoutes(app: FastifyInstance) {
       await writeAudit(app.prisma, { userId: user.id, entity: 'auth', action: 'LOGIN_BLOCKED', details: { email: identifier, reason: 'deactivated' }, ip: req.ip });
       return reply.code(403).send({ error: 'Account is deactivated.' });
     }
+    // What this person may do, so the till can apply the same rules offline.
+    const capabilities = await capabilitiesFor(app.prisma, user);
     const token = app.jwt.sign({ id: user.id, role: user.role, branchId: user.branchId }, { expiresIn: '12h' });
     await writeAudit(app.prisma, { userId: user.id, branchId: user.branchId, entity: 'auth', action: 'LOGIN', details: { email: user.email, role: user.role }, ip: req.ip });
     return {
       token,
       user: {
         id: user.id, email: user.email, username: user.username, name: user.name, role: user.role,
-        branchId: user.branchId, branchName: user.branch?.name ?? null, maxDiscountPct: maxDiscountPctFor(user.role),
+        branchId: user.branchId, branchName: user.branch?.name ?? null, capabilities,
+        maxDiscountPct: capabilities.includes('sale.discount') ? null : cashierMaxDiscountPct(),
       },
     };
   });
@@ -82,7 +86,12 @@ export async function authRoutes(app: FastifyInstance) {
       where: { id: req.user.id },
       select: { id: true, email: true, username: true, name: true, role: true, branchId: true, branch: { select: { name: true } } },
     });
-    return user ? { ...user, branchName: user.branch?.name ?? null, maxDiscountPct: maxDiscountPctFor(user.role) } : null;
+    if (!user) return null;
+    const capabilities = await capabilitiesFor(app.prisma, user);
+    return {
+      ...user, branchName: user.branch?.name ?? null, capabilities,
+      maxDiscountPct: capabilities.includes('sale.discount') ? null : cashierMaxDiscountPct(),
+    };
   });
 
   app.get('/users', { preHandler: [authGuard, requireRole('ADMIN')] }, async () =>

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
+import { requireAnyCapability, requireCapability } from '../middleware/permissions.js';
 import { asVatMode, type InvoiceStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { SYNC_ROLE, enqueueOutbox, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
@@ -90,10 +91,47 @@ function priceLines(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', char
 }
 
 export async function invoiceRoutes(app: FastifyInstance) {
+  /**
+   * A cashier may raise invoices, but not below the price the shop has set for the
+   * invoice's tier. The floor is the lower of the branch's and the catalogue's tier
+   * price, so the price the editor suggests is always accepted. Lines with no
+   * catalogue product (a service, a delivery charge) move no stock and are not checked.
+   */
+  async function cashierPriceProblem(
+    branchId: number | null,
+    priceTier: string,
+    items: Array<{ bookId?: number | null; description: string; unitPrice: unknown }>,
+  ): Promise<string | null> {
+    const ids = items.map((i) => i.bookId).filter((x): x is number => x != null);
+    if (ids.length === 0) return null;
+    const [books, shelf] = await Promise.all([
+      app.prisma.book.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, unitPrice: true, priceWholesale: true, priceSchool: true } }),
+      branchId == null ? Promise.resolve([]) : app.prisma.stock.findMany({ where: { branchId, bookId: { in: ids } }, select: { bookId: true, price: true, priceWholesale: true, priceSchool: true } }),
+    ]);
+    const bookById = new Map(books.map((b) => [b.id, b]));
+    const shelfById = new Map(shelf.map((s) => [s.bookId, s]));
+    const tierOf = (retail: unknown, wholesale: unknown, school: unknown) =>
+      Number(priceTier === 'WHOLESALE' ? wholesale ?? retail : priceTier === 'SCHOOL' ? school ?? retail : retail);
+    const problems: string[] = [];
+    for (const it of items) {
+      if (it.bookId == null) continue;
+      const b = bookById.get(it.bookId);
+      if (!b) continue;
+      const sh = shelfById.get(it.bookId);
+      const catalogue = tierOf(b.unitPrice, b.priceWholesale, b.priceSchool);
+      const branch = tierOf(sh?.price ?? b.unitPrice, sh?.priceWholesale ?? b.priceWholesale, sh?.priceSchool ?? b.priceSchool);
+      const floor = Math.min(catalogue, branch);
+      const price = Number(it.unitPrice);
+      if (floor <= 0 && price <= 0) problems.push(`${b.title} (no price set)`);
+      else if (floor > 0 && price < floor - 0.01) problems.push(`${b.title} (minimum ${floor.toFixed(2)})`);
+    }
+    return problems.length ? `These lines are below the ${priceTier.toLowerCase()} price: ${problems.join('; ')}. Ask a manager.` : null;
+  }
+
   app.addHook('preHandler', authGuard);
-  // Credit documents, customers and suppliers are management information. The pages
-  // are manager-only; the API now matches, so a cashier cannot read them either.
-  app.addHook('preHandler', requireRole('ADMIN', 'MANAGER'));
+  // Each route is gated by capability (Administration → Permissions): cashiers see
+  // customers and raise invoices by default; delivery, payments and customer edits
+  // are manager defaults an admin can grant to a person.
 
   /** Next document number for the branch raising it, e.g. INV-KAP-0007. */
   async function branchCode(branchId: number | null): Promise<string> {
@@ -121,7 +159,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
   /* --------------------------------------------------------- customers */
 
-  app.get('/customers', async (req) => {
+  app.get('/customers', { preHandler: requireAnyCapability('customer.view', 'invoice.create') }, async (req) => {
     const { q, archived } = req.query as { q?: string; archived?: string };
     const scope = archived === 'only' ? { NOT: { deletedAt: null } } : archived === 'all' ? {} : { deletedAt: null };
     return app.prisma.customer.findMany({
@@ -132,7 +170,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/customers', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/customers', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
     const body = customerSchema.parse(req.body);
     const created = await app.prisma.customer.create({
       data: {
@@ -147,7 +185,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return reply.code(201).send(created);
   });
 
-  app.patch('/customers/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.patch('/customers/:id', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid customer id' });
     const body = customerUpdateSchema.parse(req.body);
@@ -170,7 +208,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.delete('/customers/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.delete('/customers/:id', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const cust = await app.prisma.customer.findUnique({ where: { id } });
     if (!cust) return reply.code(404).send({ error: 'Customer not found' });
@@ -180,7 +218,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return archived;
   });
 
-  app.post('/customers/:id/restore', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/customers/:id/restore', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const cust = await app.prisma.customer.findUnique({ where: { id } });
     if (!cust) return reply.code(404).send({ error: 'Customer not found' });
@@ -192,7 +230,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
   /* ---------------------------------------------------------- invoices */
 
-  app.get('/', async (req, reply) => {
+  app.get('/', { preHandler: requireAnyCapability('customer.view', 'invoice.create') }, async (req, reply) => {
     const { status, customerId, from, to, branchId } = req.query as {
       status?: string; customerId?: string; from?: string; to?: string; branchId?: string;
     };
@@ -211,7 +249,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     });
   });
 
-  app.get('/:id', async (req, reply) => {
+  app.get('/:id', { preHandler: requireAnyCapability('customer.view', 'invoice.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: withItems });
@@ -220,7 +258,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return inv;
   });
 
-  app.post('/', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
     const body = invoiceSchema.parse(req.body);
     const customer = await app.prisma.customer.findUnique({ where: { id: body.customerId } });
     if (!customer) return reply.code(400).send({ error: 'Choose a valid customer.' });
@@ -231,6 +269,10 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const priced = priceLines(body.items, vatMode, chargeVat);
     // A manager raises documents for their own branch; only an admin picks another.
     const branchId = isAdmin(req) ? body.branchId ?? req.user.branchId ?? null : req.user.branchId ?? null;
+    if (req.user.role === 'CASHIER') {
+      const problem = await cashierPriceProblem(branchId, body.priceTier, body.items);
+      if (problem) return reply.code(400).send({ error: problem });
+    }
 
     const created = await app.prisma.invoice.create({
       data: {
@@ -260,7 +302,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return reply.code(201).send(created);
   });
 
-  app.patch('/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.patch('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const body = invoiceUpdateSchema.parse(req.body);
@@ -270,6 +312,12 @@ export async function invoiceRoutes(app: FastifyInstance) {
     // Once goods are booked out the document is a financial record.
     if (before.status === 'DELIVERED' || before.status === 'PAID') {
       return reply.code(409).send({ error: 'A delivered or paid invoice can no longer be edited.' });
+    }
+    // Changing the lines or the tier must not take a cashier's invoice below the set price.
+    if (req.user.role === 'CASHIER' && (body.items || body.priceTier)) {
+      const lines = body.items ?? (await app.prisma.invoiceItem.findMany({ where: { invoiceId: id }, select: { bookId: true, description: true, unitPrice: true } }));
+      const problem = await cashierPriceProblem(before.branchId, body.priceTier ?? before.priceTier, lines);
+      if (problem) return reply.code(400).send({ error: problem });
     }
 
     // Re-price whenever the lines or the VAT settings change.
@@ -324,13 +372,18 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return updated;
   });
 
-  app.delete('/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.delete('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
     if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status === 'DELIVERED' || inv.status === 'PAID') {
       return reply.code(409).send({ error: 'A delivered or paid invoice cannot be deleted. Cancel it instead.' });
+    }
+    // An issued invoice is a debt the customer has been told about; cancelling it is
+    // a manager's decision. A draft can be thrown away by whoever can raise invoices.
+    if (inv.status !== 'DRAFT' && req.user.role === 'CASHIER') {
+      return reply.code(403).send({ error: 'Only a manager can cancel an issued invoice.' });
     }
     await app.prisma.invoice.update({ where: { id }, data: { deletedAt: new Date(), status: 'CANCELLED' } });
     await queueInvoice(app.prisma, id);
@@ -341,7 +394,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   /** Issue the invoice — it stops being a draft and gets a delivery note number. */
-  app.post('/:id/issue', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/:id/issue', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: { items: true } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
@@ -366,7 +419,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
    * Confirm delivery. Catalogue lines are booked out as a real sale so stock,
    * COGS and revenue all flow through the normal reporting.
    */
-  app.post('/:id/deliver', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/:id/deliver', { preHandler: requireCapability('invoice.deliver') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const body = z.object({
       receivedBy: z.string().max(120).optional(),
@@ -503,7 +556,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return result;
   });
 
-  app.post('/:id/paid', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/:id/paid', { preHandler: requireCapability('payment.record') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
@@ -530,7 +583,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     note: z.string().max(190).nullable().optional(),
   });
 
-  app.get('/payments', async (req) => {
+  app.get('/payments', { preHandler: requireCapability('customer.view') }, async (req) => {
     const { customerId, from, to } = req.query as { customerId?: string; from?: string; to?: string };
     return app.prisma.customerPayment.findMany({
       where: {
@@ -544,7 +597,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/payments', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/payments', { preHandler: requireCapability('payment.record') }, async (req, reply) => {
     const body = paymentSchema.parse(req.body);
     const customer = await app.prisma.customer.findUnique({ where: { id: body.customerId } });
     if (!customer) return reply.code(400).send({ error: 'Choose a valid customer.' });
@@ -602,7 +655,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
    * receipt with a running balance, and the outstanding amount split into
    * ageing buckets.
    */
-  app.get('/customers/:id/statement', async (req, reply) => {
+  app.get('/customers/:id/statement', { preHandler: requireCapability('customer.view') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid customer id' });
     const { from, to } = req.query as { from?: string; to?: string };
@@ -697,7 +750,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   /** Every credit customer with what they owe — the receivables list. */
-  app.get('/customers/balances', async () => {
+  app.get('/customers/balances', { preHandler: requireCapability('customer.view') }, async () => {
     const customers = await app.prisma.customer.findMany({
       where: { deletedAt: null },
       include: {

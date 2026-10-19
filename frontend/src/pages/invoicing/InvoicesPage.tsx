@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Eye, FileText, Plus, Receipt, Trash2, Truck, Wallet } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useAuth } from '../../lib/auth';
+import { useCan } from '../../lib/permissions';
 import { dateShort, fmt, money, num, today } from '../../lib/format';
 import { printDeliveryNote, printInvoice } from '../../lib/documents';
 import type { Invoice } from '../../types';
@@ -22,6 +24,8 @@ const STATUS_TONE: Record<string, 'green' | 'red' | 'amber' | 'blue' | 'purple' 
 const startOfYear = () => `${new Date().getFullYear()}-01-01`;
 
 export default function InvoicesPage() {
+  const can = useCan();
+  const { role } = useAuth();
   const [status, setStatus] = useState('');
   const [from, setFrom] = useState(startOfYear());
   const [to, setTo] = useState(today());
@@ -106,7 +110,8 @@ export default function InvoicesPage() {
           <RowAction to={`/invoices/${r.id}`} icon={<Eye className="h-4 w-4" />} label={r.status === 'DRAFT' ? 'Edit invoice' : 'View invoice'} />
           <RowAction onClick={() => printDoc(r.id, 'invoice')} disabled={busy === r.id} icon={<Receipt className="h-4 w-4" />} label="Print invoice" />
           <RowAction onClick={() => printDoc(r.id, 'delivery')} disabled={busy === r.id} icon={<Truck className="h-4 w-4" />} label="Print delivery note" />
-          {(r.status === 'DRAFT' || r.status === 'ISSUED') && (
+          {/* Drafts can be thrown away by whoever raises invoices; cancelling an issued one is a manager's call. */}
+          {can('invoice.create') && (r.status === 'DRAFT' || (r.status === 'ISSUED' && role !== 'CASHIER')) && (
             <RowAction onClick={() => remove(r.id)} disabled={busy === r.id} icon={<Trash2 className="h-4 w-4" />} label="Cancel invoice" tone="danger" />
           )}
         </RowActions>
@@ -176,11 +181,13 @@ export default function InvoicesPage() {
             pageSize={12}
             rowKey={(r) => r.id}
             actionSlot={
-              <Link to="/invoices/new">
-                <Button>
-                  <Plus className="h-4 w-4" /> New invoice
-                </Button>
-              </Link>
+              can('invoice.create') && (
+                <Link to="/invoices/new">
+                  <Button>
+                    <Plus className="h-4 w-4" /> New invoice
+                  </Button>
+                </Link>
+              )
             }
           />
         )}

@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authGuard, requireRole, branchScope, isAdmin } from '../middleware/authGuard.js';
+import { authGuard, branchScope, isAdmin } from '../middleware/authGuard.js';
+import { requireCapability } from '../middleware/permissions.js';
 import { SYNC_ROLE, enqueueOutbox } from '../lib/outbox.js';
 import { auditRequest } from '../lib/audit.js';
 
@@ -16,7 +17,7 @@ export async function expenseRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
 
   // Expense amounts (salaries, rent) are management information, not till data.
-  app.get('/', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.get('/', { preHandler: requireCapability('expense.manage') }, async (req, reply) => {
     const { branchId, from, to } = req.query as { branchId?: string; from?: string; to?: string };
     const scoped = branchScope(req, reply, branchId ? Number(branchId) : undefined);
     return app.prisma.expense.findMany({
@@ -27,7 +28,7 @@ export async function expenseRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/', { preHandler: requireCapability('expense.manage') }, async (req, reply) => {
     const body = expenseSchema.parse(req.body);
     let branchId = body.branchId ?? null;
     if (!isAdmin(req)) {

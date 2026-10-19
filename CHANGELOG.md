@@ -3,6 +3,33 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-19 — Cashiers see customers and raise invoices; per-person permissions
+
+### Cashiers and invoicing
+- **Cashiers can see customers** — list, balances, statements and their branch's
+  invoices — and **create, edit and issue invoices** for their own branch, and
+  throw away their own drafts.
+- A cashier's catalogue lines cannot go below the price for the invoice's tier: the
+  lower of the branch's and the catalogue's, so the price the editor suggests is
+  always accepted. Lines with no catalogue product are not checked.
+- Delivering an invoice (it books the stock out), recording payments, adding or
+  editing customers and cancelling an issued invoice stay with managers by default.
+
+### Permissions, ported from PharmaCare
+- **Administration → Permissions**: a searchable, paged grid of people against 13
+  switches — see customers, create invoices, add/edit customers, deliver invoices,
+  record payments, wholesale & school prices, discount past the cap, change branch
+  prices, change stock counts, record stock intake, receive supplier deliveries,
+  add/edit products, manage expenses.
+- Each role has a default (cashiers: the two invoicing rights plus what they could
+  already do; managers: everything). Tick to grant one person a switch, untick to
+  refuse it, for the rest of today, 1/3/7/30 days, a typed number of days, or until
+  turned off. An expired exception lapses on its own. Admins always have everything.
+- Enforced on the server; every change is audited. The till's tiers and discount cap
+  now follow the person's switches, and the app refreshes them when opened online.
+- New table `UserPermission` (migration `20261019140000_user_permissions`).
+  Exceptions sync down to branch laptops on their next pull.
+
 ## 2026-10-19 — Install the app on a phone, as in PharmaCare
 
 - **Install the app** page (Administration → Install the app, every role): a
