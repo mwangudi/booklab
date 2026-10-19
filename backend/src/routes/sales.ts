@@ -1,9 +1,11 @@
 import type { FastifyInstance } from 'fastify';
+import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
 import { SYNC_ROLE, enqueueOutbox } from '../lib/outbox.js';
 import { actor, writeAudit } from '../lib/audit.js';
+import { CASHIER_TIERS, cashierMaxDiscountPct } from '../lib/salesPolicy.js';
 
 const saleSchema = z.object({
   branchId: z.number().int().optional(),
@@ -21,9 +23,21 @@ const saleSchema = z.object({
    * retry on a flaky connection cannot charge the customer twice.
    */
   uuid: z.string().uuid().optional(),
+  /**
+   * Set by the till on a sale it queued while offline. The goods have already
+   * left the shop, so a stock shortfall is recorded rather than refused — the
+   * till drops a refused sale, and the takings would vanish with it.
+   */
+  recordedOffline: z.boolean().optional(),
 });
 
+/** Raised inside the sale transaction when a line's stock ran out after the pre-check. */
+class StockRaceError extends Error {}
+
 const voidSchema = z.object({ reason: z.string().trim().min(3).max(200) });
+
+/** Who rang a sale up. Never `user: true` — that would send the password hash. */
+const SALE_USER = { select: { id: true, name: true } } as const;
 
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
@@ -35,7 +49,7 @@ export async function saleRoutes(app: FastifyInstance) {
     const scoped = branchScope(req, reply, branchId ? Number(branchId) : undefined);
     return app.prisma.sale.findMany({
       where: { branchId: scoped, createdAt: { gte: from ? new Date(from) : undefined, lte: to ? new Date(to) : undefined } },
-      include: { items: { include: { book: true } }, branch: true, user: true, voidedBy: { select: { id: true, name: true } } },
+      include: { items: { include: { book: true } }, branch: true, user: SALE_USER, voidedBy: { select: { id: true, name: true } } },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
@@ -48,8 +62,10 @@ export async function saleRoutes(app: FastifyInstance) {
     if (body.uuid) {
       const already = await app.prisma.sale.findUnique({
         where: { uuid: body.uuid },
-        include: { items: { include: { book: true } }, branch: true, user: true },
+        include: { items: { include: { book: true } }, branch: true, user: SALE_USER },
       });
+      // Replay only into the same branch; a uuid must not reveal another branch's sale.
+      if (already && already.branchId !== branchId) return reply.code(409).send({ error: 'Sale id already used' });
       if (already) return reply.code(200).send(already);
     }
 
@@ -59,6 +75,18 @@ export async function saleRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: 'The discount cannot be more than the sale total.' });
     }
     const total = round2(subtotal - discount);
+
+    if (req.user.role === 'CASHIER') {
+      if (!(CASHIER_TIERS as readonly string[]).includes(body.priceTier)) {
+        await writeAudit(app.prisma, { ...actor(req), branchId, entity: 'sale', action: 'TIER_BLOCKED', details: { priceTier: body.priceTier, subtotal } });
+        return reply.code(403).send({ error: 'Wholesale and school prices need a manager. Sell at retail, or ask a manager.' });
+      }
+      const maxPct = cashierMaxDiscountPct();
+      if (discount > round2((subtotal * maxPct) / 100) + 0.01) {
+        await writeAudit(app.prisma, { ...actor(req), branchId, entity: 'sale', action: 'DISCOUNT_BLOCKED', details: { discount, subtotal, maxPct } });
+        return reply.code(403).send({ error: `A cashier can discount at most ${maxPct}% of the sale (${round2((subtotal * maxPct) / 100).toFixed(2)}). Ask a manager for more.` });
+      }
+    }
 
     // Snapshot each book's current cost for accurate historical P&L.
     const books = await app.prisma.book.findMany({
@@ -70,7 +98,7 @@ export async function saleRoutes(app: FastifyInstance) {
     // The till may charge above the configured price but never below it.
     const overrides = await app.prisma.stock.findMany({
       where: { branchId, bookId: { in: body.items.map((i) => i.bookId) } },
-      select: { bookId: true, price: true, priceWholesale: true, priceSchool: true, costPrice: true },
+      select: { bookId: true, quantity: true, price: true, priceWholesale: true, priceSchool: true, costPrice: true },
     });
     const overrideByBook = new Map(overrides.map((o) => [o.bookId, o]));
     const underpriced: string[] = [];
@@ -104,6 +132,21 @@ export async function saleRoutes(app: FastifyInstance) {
       return reply.code(400).send({ error: `These items are priced below the set price: ${underpriced.join('; ')}.` });
     }
 
+    // Never sell what the branch does not have. The till already limits the basket
+    // to what it last saw on the shelf; this catches a stale screen, and the
+    // conditional decrement below catches two tills selling the last copy at once.
+    const offline = body.recordedOffline === true;
+    const wanted = new Map<number, number>();
+    for (const i of body.items) wanted.set(i.bookId, (wanted.get(i.bookId) ?? 0) + i.quantity);
+    const short = [...wanted].filter(([bookId, qty]) => (overrideByBook.get(bookId)?.quantity ?? 0) < qty);
+    if (short.length > 0 && !offline) {
+      const detail = short
+        .map(([bookId, qty]) => `${bookById.get(bookId)?.title ?? `#${bookId}`} (asked ${qty}, on hand ${overrideByBook.get(bookId)?.quantity ?? 0})`)
+        .join('; ');
+      return reply.code(400).send({ error: `Not enough stock — ${detail}. Refresh the till.` });
+    }
+    const oversold: Array<{ bookId: number; quantity: number }> = [];
+
     let alreadyExisted = false;
     const sale = await app.prisma
       .$transaction(async (tx) => {
@@ -134,11 +177,20 @@ export async function saleRoutes(app: FastifyInstance) {
       });
 
       for (const item of body.items) {
-        await tx.stock.upsert({
-          where: { branchId_bookId: { branchId, bookId: item.bookId } },
-          create: { branchId, bookId: item.bookId, quantity: -item.quantity },
-          update: { quantity: { decrement: item.quantity } },
+        const { count } = await tx.stock.updateMany({
+          where: { branchId, bookId: item.bookId, quantity: { gte: item.quantity } },
+          data: { quantity: { decrement: item.quantity } },
         });
+        if (count === 0) {
+          if (!offline) throw new StockRaceError();
+          // Already handed over while offline: record it, and let the shortfall show.
+          await tx.stock.upsert({
+            where: { branchId_bookId: { branchId, bookId: item.bookId } },
+            create: { branchId, bookId: item.bookId, quantity: -item.quantity },
+            update: { quantity: { decrement: item.quantity } },
+          });
+          oversold.push({ bookId: item.bookId, quantity: item.quantity });
+        }
         // Audit trail: every stock change is an explicit, attributable event.
         await tx.stockMovement.create({
           data: {
@@ -187,15 +239,22 @@ export async function saleRoutes(app: FastifyInstance) {
         if (body.uuid && e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
           const existing = await app.prisma.sale.findUnique({
             where: { uuid: body.uuid },
-            include: { items: { include: { book: true } }, branch: true, user: true },
+            include: { items: { include: { book: true } }, branch: true, user: SALE_USER },
           });
-          if (existing) {
+          if (existing && existing.branchId === branchId) {
             alreadyExisted = true;
             return existing;
           }
         }
         throw e;
+      })
+      .catch((e) => {
+        if (e instanceof StockRaceError) return null;
+        throw e;
       });
+    if (!sale) {
+      return reply.code(400).send({ error: 'Not enough stock — another sale took the last units. Refresh the till.' });
+    }
 
     // A replay must not be audited or counted a second time.
     if (alreadyExisted) return reply.code(200).send(sale);
@@ -206,8 +265,11 @@ export async function saleRoutes(app: FastifyInstance) {
       entity: 'sale',
       entityId: sale.id,
       action: 'CREATE',
-      details: { total, subtotal, discount, discountReason: body.discountReason ?? null, paymentMethod: body.paymentMethod, priceTier: body.priceTier, lines: body.items.length },
+      details: { total, subtotal, discount, discountReason: body.discountReason ?? null, paymentMethod: body.paymentMethod, priceTier: body.priceTier, lines: body.items.length, ...(offline ? { recordedOffline: true } : {}) },
     });
+    if (oversold.length > 0) {
+      await writeAudit(app.prisma, { ...actor(req), branchId, entity: 'sale', entityId: sale.id, action: 'OVERSOLD_OFFLINE', details: { lines: oversold } });
+    }
     reply.code(201).send(sale);
   });
 
@@ -228,7 +290,7 @@ export async function saleRoutes(app: FastifyInstance) {
       include: {
         items: { include: { book: true } },
         branch: true,
-        user: true,
+        user: SALE_USER,
         voidedBy: { select: { id: true, name: true } },
       },
     });
@@ -258,10 +320,16 @@ export async function saleRoutes(app: FastifyInstance) {
     if (sale.voidedAt) return reply.code(409).send({ error: 'This sale has already been voided.' });
 
     const voided = await app.prisma.$transaction(async (tx) => {
-      const updated = await tx.sale.update({
-        where: { id },
+      // Claim the void inside the transaction. Two managers voiding at once would
+      // otherwise both pass the check above and return the stock twice.
+      const { count } = await tx.sale.updateMany({
+        where: { id, voidedAt: null },
         data: { voidedAt: new Date(), voidedById: req.user.id, voidReason: reason },
-        include: { items: true, branch: true, user: true, voidedBy: { select: { id: true, name: true } } },
+      });
+      if (count === 0) return null;
+      const updated = await tx.sale.findUniqueOrThrow({
+        where: { id },
+        include: { items: true, branch: true, user: SALE_USER, voidedBy: { select: { id: true, name: true } } },
       });
       for (const item of sale.items) {
         await tx.stock.upsert({
@@ -281,6 +349,19 @@ export async function saleRoutes(app: FastifyInstance) {
           },
         });
       }
+      // On a branch, tell the cloud: without this a void made on the laptop stayed
+      // there, and the cloud kept the revenue and never returned the stock. The event
+      // has its own id because the runner matches results by uuid and the sale's own
+      // event may be in the same batch.
+      if (SYNC_ROLE === 'branch') {
+        const voider = await tx.user.findUnique({ where: { id: req.user.id }, select: { uuid: true } });
+        await enqueueOutbox(tx, 'saleVoid', randomUUID(), {
+          saleUuid: sale.uuid,
+          voidedByUuid: voider?.uuid ?? null,
+          reason,
+          voidedAt: updated.voidedAt,
+        });
+      }
       await writeAudit(tx, {
         userId: req.user.id,
         branchId: sale.branchId,
@@ -291,6 +372,7 @@ export async function saleRoutes(app: FastifyInstance) {
       });
       return updated;
     });
+    if (!voided) return reply.code(409).send({ error: 'This sale has already been voided.' });
 
     return voided;
   });

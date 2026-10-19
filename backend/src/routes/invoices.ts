@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authGuard, requireRole, branchScope } from '../middleware/authGuard.js';
+import { authGuard, requireRole, branchScope, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
 import { asVatMode, type InvoiceStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
-import { SYNC_ROLE, enqueueOutbox, recordMovement, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
+import { SYNC_ROLE, enqueueOutbox, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
 import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const customerSchema = z.object({
@@ -50,6 +50,9 @@ const invoiceSchema = z.object({
 const invoiceUpdateSchema = invoiceSchema.partial();
 
 const n = (v: unknown) => Number(v ?? 0);
+
+/** Raised inside a delivery when the shelf emptied after the pre-check. */
+class DeliveryStockError extends Error {}
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 type LineInput = { bookId?: number | null; description: string; unit: string; quantity: number; unitPrice: number; vatRate: number };
@@ -88,6 +91,9 @@ function priceLines(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', char
 
 export async function invoiceRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
+  // Credit documents, customers and suppliers are management information. The pages
+  // are manager-only; the API now matches, so a cashier cannot read them either.
+  app.addHook('preHandler', requireRole('ADMIN', 'MANAGER'));
 
   /** Next document number for the branch raising it, e.g. INV-KAP-0007. */
   async function branchCode(branchId: number | null): Promise<string> {
@@ -210,6 +216,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: withItems });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
+    if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     return inv;
   });
 
@@ -222,7 +229,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const chargeVat = body.chargeVat ?? customer.chargeVat;
     const vatMode = asVatMode(body.vatMode ?? customer.vatMode);
     const priced = priceLines(body.items, vatMode, chargeVat);
-    const branchId = body.branchId ?? req.user.branchId ?? null;
+    // A manager raises documents for their own branch; only an admin picks another.
+    const branchId = isAdmin(req) ? body.branchId ?? req.user.branchId ?? null : req.user.branchId ?? null;
 
     const created = await app.prisma.invoice.create({
       data: {
@@ -258,6 +266,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const body = invoiceUpdateSchema.parse(req.body);
     const before = await app.prisma.invoice.findUnique({ where: { id } });
     if (!before || before.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
+    if (!ownsBranchRecord(req, before.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     // Once goods are booked out the document is a financial record.
     if (before.status === 'DELIVERED' || before.status === 'PAID') {
       return reply.code(409).send({ error: 'A delivered or paid invoice can no longer be edited.' });
@@ -292,7 +301,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         ...(body.customerId !== undefined ? { customerId: body.customerId } : {}),
-        ...(body.branchId !== undefined ? { branchId: body.branchId } : {}),
+        ...(body.branchId !== undefined && isAdmin(req) ? { branchId: body.branchId } : {}),
         ...(body.priceTier !== undefined ? { priceTier: body.priceTier } : {}),
         ...(body.chargeVat !== undefined ? { chargeVat } : {}),
         ...(body.vatMode !== undefined ? { vatMode } : {}),
@@ -319,6 +328,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
+    if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status === 'DELIVERED' || inv.status === 'PAID') {
       return reply.code(409).send({ error: 'A delivered or paid invoice cannot be deleted. Cancel it instead.' });
     }
@@ -335,6 +345,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: { items: true } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
+    if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status !== 'DRAFT') return reply.code(409).send({ error: 'Only a draft invoice can be issued.' });
     if (inv.items.length === 0) return reply.code(400).send({ error: 'Add at least one item before issuing.' });
 
@@ -365,6 +376,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: { items: true } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
+    if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status === 'DELIVERED' || inv.status === 'PAID') return reply.code(409).send({ error: 'This invoice has already been delivered.' });
     if (inv.status === 'CANCELLED') return reply.code(409).send({ error: 'This invoice was cancelled.' });
 
@@ -372,13 +384,38 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (branchId == null) return reply.code(400).send({ error: 'Set a branch on the invoice before delivering.' });
 
     const stockLines = inv.items.filter((i) => i.bookId != null && Number(i.quantity) > 0);
-    const books = await app.prisma.book.findMany({
-      where: { id: { in: stockLines.map((i) => i.bookId!) } },
-      select: { id: true, costPrice: true },
-    });
-    const costById = new Map(books.map((b) => [b.id, Number(b.costPrice)]));
+    const [books, shelf] = await Promise.all([
+      app.prisma.book.findMany({ where: { id: { in: stockLines.map((i) => i.bookId!) } }, select: { id: true, title: true, costPrice: true } }),
+      app.prisma.stock.findMany({ where: { branchId, bookId: { in: stockLines.map((i) => i.bookId!) } }, select: { bookId: true, quantity: true, costPrice: true } }),
+    ]);
+    const bookById = new Map(books.map((b) => [b.id, b]));
+    const shelfByBook = new Map(shelf.map((s) => [s.bookId, s]));
+    // The same cost a till sale at this branch would use, so COGS agrees either way.
+    const costOf = (bookId: number) => Number(shelfByBook.get(bookId)?.costPrice ?? bookById.get(bookId)?.costPrice ?? 0);
+
+    // Goods cannot be delivered from an empty shelf: receive them first.
+    const wanted = new Map<number, number>();
+    for (const i of stockLines) wanted.set(i.bookId!, (wanted.get(i.bookId!) ?? 0) + Math.round(Number(i.quantity)));
+    const short = [...wanted].filter(([bookId, qty]) => (shelfByBook.get(bookId)?.quantity ?? 0) < qty);
+    if (short.length > 0) {
+      const detail = short
+        .map(([bookId, qty]) => `${bookById.get(bookId)?.title ?? `#${bookId}`} (needs ${qty}, on hand ${shelfByBook.get(bookId)?.quantity ?? 0})`)
+        .join('; ');
+      return reply.code(400).send({ error: `Not enough stock to deliver — ${detail}.` });
+    }
+
+    // Revenue is the invoice net of VAT: VAT is owed to KRA, not earned. Lines with no
+    // catalogue product (e.g. a service) are revenue too, but move no stock.
+    const net = round2(inv.items.reduce((s, i) => s + n(i.netAmount), 0));
+    const netUnit = (i: { netAmount: unknown; quantity: unknown }) => round2(n(i.netAmount) / Math.max(1, Math.round(Number(i.quantity))));
 
     const result = await app.prisma.$transaction(async (tx) => {
+      // Claim the delivery first, so a double click cannot book the goods out twice.
+      const { count } = await tx.invoice.updateMany({
+        where: { id, status: { notIn: ['DELIVERED', 'PAID', 'CANCELLED'] } },
+        data: { status: 'DELIVERED' },
+      });
+      if (count === 0) return null;
       let saleId: number | null = null;
       if (stockLines.length > 0) {
         const sale = await tx.sale.create({
@@ -388,14 +425,14 @@ export async function invoiceRoutes(app: FastifyInstance) {
             originBranchId: branchId,
             paymentMethod: 'CASH',
             priceTier: inv.priceTier,
-            subtotal: n(inv.total),
-            total: n(inv.total),
+            subtotal: net,
+            total: net,
             items: {
               create: stockLines.map((i) => ({
                 bookId: i.bookId!,
                 quantity: Math.round(Number(i.quantity)),
-                unitPrice: n(i.unitPrice),
-                costPrice: costById.get(i.bookId!) ?? 0,
+                unitPrice: netUnit(i),
+                costPrice: costOf(i.bookId!),
               })),
             },
           },
@@ -412,7 +449,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
           const bookUuid = new Map(bks.map((x) => [x.id, x.uuid]));
           await enqueueOutbox(tx, 'sale', sale.uuid, {
             branchUuid: b?.uuid, userUuid: u?.uuid,
-            subtotal: n(inv.total), discount: 0, discountReason: null, total: n(inv.total),
+            subtotal: net, discount: 0, discountReason: null, total: net,
             paymentMethod: 'CASH', priceTier: inv.priceTier, createdAt: sale.createdAt,
             items: sale.items.map((i) => ({
               uuid: i.uuid, bookUuid: bookUuid.get(i.bookId), quantity: i.quantity,
@@ -423,18 +460,16 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
         for (const i of stockLines) {
           const qty = Math.round(Number(i.quantity));
-          await tx.stock.upsert({
-            where: { branchId_bookId: { branchId, bookId: i.bookId! } },
-            create: { branchId, bookId: i.bookId!, quantity: -qty },
-            update: { quantity: { decrement: qty } },
+          const { count: took } = await tx.stock.updateMany({
+            where: { branchId, bookId: i.bookId!, quantity: { gte: qty } },
+            data: { quantity: { decrement: qty } },
           });
-          await recordMovement(tx, {
-            branchId,
-            bookId: i.bookId!,
-            delta: -qty,
-            type: 'SALE',
-            note: `Invoice ${inv.number}`,
-            userId: req.user.id,
+          if (took === 0) throw new DeliveryStockError();
+          // A plain movement, not recordMovement: on a branch the sale event above
+          // already carries this stock to the cloud, and a queued movement as well
+          // would take it off there twice.
+          await tx.stockMovement.create({
+            data: { branchId, bookId: i.bookId!, delta: -qty, type: 'SALE', note: `Invoice ${inv.number}`, userId: req.user.id, originBranchId: branchId },
           });
         }
       }
@@ -454,7 +489,12 @@ export async function invoiceRoutes(app: FastifyInstance) {
       });
       await queueInvoice(tx, id);
       return delivered;
+    }).catch((e) => {
+      if (e instanceof DeliveryStockError) return 'short' as const;
+      throw e;
     });
+    if (result === 'short') return reply.code(400).send({ error: 'Not enough stock to deliver — another sale took the units. Try again.' });
+    if (!result) return reply.code(409).send({ error: 'This invoice has already been delivered.' });
 
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId, action: 'DELIVER',
@@ -467,6 +507,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
+    if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status === 'PAID') return reply.code(409).send({ error: 'This invoice is already marked paid.' });
     const updated = await app.prisma.invoice.update({ where: { id }, data: { status: 'PAID' }, include: withItems });
     await queueInvoice(app.prisma, id);

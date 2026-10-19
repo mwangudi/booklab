@@ -11,6 +11,8 @@ export interface AuthUser {
   branchId: number | null;
   /** Optional display name of the assigned branch. */
   branchName?: string | null;
+  /** Largest basket discount this user may give, in percent; null when not capped. */
+  maxDiscountPct?: number | null;
 }
 
 const KEY = 'bookshop_user';

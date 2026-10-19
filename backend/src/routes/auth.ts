@@ -3,6 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { authGuard, requireRole } from '../middleware/authGuard.js';
 import { auditRequest, diff, writeAudit } from '../lib/audit.js';
+import { maxDiscountPctFor } from '../lib/salesPolicy.js';
 
 // The sign-in field carries either a username or an email, so it cannot be
 // validated as an email. `username` is accepted too for newer clients.
@@ -26,7 +27,7 @@ const USERNAME = z
 const createUserSchema = z.object({
   email: z.string().email(),
   username: USERNAME.nullable().optional(),
-  password: z.string().min(6),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
   name: z.string().min(1),
   role: z.enum(['ADMIN', 'MANAGER', 'CASHIER']),
   branchId: z.number().int().nullable().optional(),
@@ -38,7 +39,7 @@ const updateUserSchema = z.object({
   role: z.enum(['ADMIN', 'MANAGER', 'CASHIER']).optional(),
   branchId: z.number().int().nullable().optional(),
   active: z.boolean().optional(),
-  password: z.string().min(6).optional(),
+  password: z.string().min(8, 'Password must be at least 8 characters').optional(),
 });
 
 export async function authRoutes(app: FastifyInstance) {
@@ -54,20 +55,25 @@ export async function authRoutes(app: FastifyInstance) {
       await writeAudit(app.prisma, { entity: 'auth', action: 'LOGIN_FAILED', details: { email: identifier, reason: 'unknown email' }, ip: req.ip });
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
-    if (!user.active) {
-      await writeAudit(app.prisma, { userId: user.id, entity: 'auth', action: 'LOGIN_BLOCKED', details: { email: identifier, reason: 'deactivated' }, ip: req.ip });
-      return reply.code(403).send({ error: 'Account is deactivated.' });
-    }
     const ok = await bcrypt.compare(body.password, user.passwordHash);
     if (!ok) {
       await writeAudit(app.prisma, { userId: user.id, entity: 'auth', action: 'LOGIN_FAILED', details: { email: identifier, reason: 'bad password' }, ip: req.ip });
       return reply.code(401).send({ error: 'Invalid credentials' });
     }
+    // Account state is checked only after the password, so a wrong password always
+    // gets the same flat 401 and cannot be used to learn which accounts exist.
+    if (!user.active || user.deletedAt) {
+      await writeAudit(app.prisma, { userId: user.id, entity: 'auth', action: 'LOGIN_BLOCKED', details: { email: identifier, reason: 'deactivated' }, ip: req.ip });
+      return reply.code(403).send({ error: 'Account is deactivated.' });
+    }
     const token = app.jwt.sign({ id: user.id, role: user.role, branchId: user.branchId }, { expiresIn: '12h' });
     await writeAudit(app.prisma, { userId: user.id, branchId: user.branchId, entity: 'auth', action: 'LOGIN', details: { email: user.email, role: user.role }, ip: req.ip });
     return {
       token,
-      user: { id: user.id, email: user.email, username: user.username, name: user.name, role: user.role, branchId: user.branchId, branchName: user.branch?.name ?? null },
+      user: {
+        id: user.id, email: user.email, username: user.username, name: user.name, role: user.role,
+        branchId: user.branchId, branchName: user.branch?.name ?? null, maxDiscountPct: maxDiscountPctFor(user.role),
+      },
     };
   });
 
@@ -76,7 +82,7 @@ export async function authRoutes(app: FastifyInstance) {
       where: { id: req.user.id },
       select: { id: true, email: true, username: true, name: true, role: true, branchId: true, branch: { select: { name: true } } },
     });
-    return user ? { ...user, branchName: user.branch?.name ?? null } : null;
+    return user ? { ...user, branchName: user.branch?.name ?? null, maxDiscountPct: maxDiscountPctFor(user.role) } : null;
   });
 
   app.get('/users', { preHandler: [authGuard, requireRole('ADMIN')] }, async () =>

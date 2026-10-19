@@ -4,14 +4,26 @@ export async function authGuard(req: FastifyRequest, reply: FastifyReply) {
   try {
     await req.jwtVerify();
   } catch {
-    reply.code(401).send({ error: 'Unauthorized' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
+  // The token is a snapshot from sign-in and lives 12 hours. Check the account as
+  // it is now, so a deactivation, archive, demotion or branch move takes effect on
+  // the next request rather than when the token expires.
+  const user = await req.server.prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { active: true, deletedAt: true, role: true, branchId: true },
+  });
+  if (!user || !user.active || user.deletedAt) {
+    return reply.code(401).send({ error: 'Account is deactivated. Contact an administrator.' });
+  }
+  req.user.role = user.role;
+  req.user.branchId = user.branchId;
 }
 
 export function requireRole(...roles: string[]) {
   return async (req: FastifyRequest, reply: FastifyReply) => {
     if (!req.user || !roles.includes(req.user.role)) {
-      reply.code(403).send({ error: 'Forbidden' });
+      return reply.code(403).send({ error: 'Forbidden' });
     }
   };
 }
@@ -63,4 +75,14 @@ export function enforceWriteBranch(
     throw new Error('Branch mismatch');
   }
   return req.user.branchId;
+}
+
+/**
+ * Whether the caller may open or act on a document belonging to `branchId`. Admins
+ * see everything; others see their own branch's documents and head-office ones
+ * (no branch), which every branch already sees in its lists.
+ */
+export function ownsBranchRecord(req: FastifyRequest, branchId: number | null | undefined): boolean {
+  if (isAdmin(req)) return true;
+  return branchId == null || branchId === req.user?.branchId;
 }

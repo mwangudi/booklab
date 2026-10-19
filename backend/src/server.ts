@@ -38,9 +38,17 @@ declare module '@fastify/jwt' {
   }
 }
 
-// Behind nginx, so honour X-Forwarded-For — otherwise every audited action and
-// rate-limit bucket would be attributed to 127.0.0.1.
-const app = Fastify({ logger: true, trustProxy: true });
+// Without a real secret anyone could sign their own admin token, so refuse to start.
+const jwtSecret = process.env.JWT_SECRET ?? '';
+if ((jwtSecret.length < 32 || /change[-_ ]?me/i.test(jwtSecret)) && process.env.NODE_ENV !== 'development') {
+  console.error('JWT_SECRET is missing, shorter than 32 characters, or still the example placeholder. Generate one with: openssl rand -hex 32');
+  process.exit(1);
+}
+
+// Behind nginx on loopback. Trust only that hop: `trustProxy: true` believed any
+// X-Forwarded-For a client sent, so one caller could rotate the header to dodge the
+// login rate limit and write any IP it liked into the audit trail.
+const app = Fastify({ logger: true, trustProxy: '127.0.0.1' });
 const prisma = new PrismaClient();
 
 await app.register(cors, {
@@ -56,7 +64,7 @@ await app.register(rateLimit, {
   timeWindow: '1 minute',
   allowList: (req) => req.url === '/health',
 });
-await app.register(jwt, { secret: process.env.JWT_SECRET ?? 'dev-secret-change-me' });
+await app.register(jwt, { secret: jwtSecret || 'dev-secret-change-me' });
 
 app.decorate('prisma', prisma);
 
@@ -82,9 +90,9 @@ app.setErrorHandler((err, req, reply) => {
     const detail = err.issues.map((i) => `${i.path.join('.') || 'body'}: ${i.message}`).join('; ');
     return reply.code(400).send({ error: detail || 'Invalid request' });
   }
-  const status = (err as { statusCode?: number }).statusCode;
+  const { statusCode: status, message } = err as { statusCode?: number; message?: string };
   if (status && status >= 400 && status < 500) {
-    return reply.code(status).send({ error: err.message });
+    return reply.code(status).send({ error: message });
   }
   req.log.error(err);
   return reply.code(500).send({ error: 'Something went wrong. Please try again.' });
@@ -126,9 +134,10 @@ if (webRoot) {
 }
 
 const port = Number(process.env.PORT ?? 4000);
-// A branch till sits on the shop's wifi with no firewall in front of it, so it
-// sets HOST=127.0.0.1 and is reachable only from the machine itself.
-const host = process.env.HOST ?? '0.0.0.0';
+// Loopback by default: the cloud is reached only through nginx, and a branch till
+// must not be open to the shop's wifi. Set HOST=0.0.0.0 only where other machines
+// genuinely need to reach the API directly.
+const host = process.env.HOST ?? '127.0.0.1';
 app.listen({ port, host }).catch((err) => {
   app.log.error(err);
   process.exit(1);

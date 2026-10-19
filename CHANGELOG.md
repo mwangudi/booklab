@@ -3,6 +3,61 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-19 — Security, stock and P&L audit
+
+Brought into line with the PharmaCare October audit, plus fixes found in Booklab's
+own stock and reporting.
+
+### Sign-in and accounts
+- **Sales responses no longer carry password hashes.** Every sale included the
+  cashier's full account record, hash and all, for anyone signed in to read.
+- Deactivating, archiving, demoting or moving a user takes effect on their next
+  request, not when their 12-hour token runs out.
+- The login rate limit can no longer be dodged by rotating `X-Forwarded-For`: only
+  nginx on 127.0.0.1 is trusted. Audit IPs are now the real client.
+- A wrong password is always a flat 401. Account state is checked only after the
+  password, so sign-in no longer reveals which accounts exist.
+- The API refuses to start without a real `JWT_SECRET` (32+ characters), and
+  listens on 127.0.0.1 unless `HOST` says otherwise. New passwords need 8 characters.
+- Fastify 5 and current plugins: clears the critical `fast-jwt` advisory and the
+  high ones in `@fastify/static` and `fast-uri`. `npm audit` is clean.
+
+### Selling
+- **No selling what the branch does not have.** An online sale or invoice delivery
+  larger than the shelf is refused, and stock is taken off atomically so two tills
+  cannot both sell the last copy. A sale the till recorded **offline** is still
+  accepted — the goods have gone — and the shortfall shows as negative stock and is
+  audited (`OVERSOLD_OFFLINE`).
+- **Cashiers discount at most 10%** of the basket (`CASHIER_MAX_DISCOUNT_PCT`), and
+  sell at retail only; wholesale and school prices need a manager or admin. Refused
+  attempts are audited. The till applies the same rules, offline too.
+- The till offers the branch's own wholesale and school prices, as the server checks.
+- A double click can no longer void a sale twice, post a goods receipt twice or
+  deliver an invoice twice.
+
+### Profit & loss and stock
+- **The sales report under-counted revenue** past the first 1,000 sales in a range.
+- **The Z-report counted delivered invoices as cash in the drawer**, and took the
+  month's payroll off expected cash on its last day. Invoices now show on their own
+  `INVOICE` line; payroll is excluded.
+- A delivered invoice books revenue **net of VAT**, includes non-catalogue lines,
+  and is costed at the branch's own cost.
+- Posting a goods receipt sets the receiving branch's cost; only an admin's receipt
+  also changes the catalogue cost. Valuation and re-order cost use the branch cost.
+
+### Who can see and change what
+- Invoices, customers, suppliers and goods receipts are manager/admin on the API, as
+  they already were on screen. Managers act only on their own branch's documents.
+- Catalogue prices and costs, CSV import and archiving are admin-only. Managers set
+  their own branch's prices on the stock page.
+
+### Branch laptops
+- A void made on a laptop now reaches the cloud.
+- A delivery made on a laptop no longer comes off the cloud's stock twice.
+- Synced movements are no longer floored at zero, so cloud stock equals its history.
+- A laptop's token can only change its own branch's invoices and goods receipts, and
+  its payments must match that branch's documents.
+
 ## 2026-08-14
 
 ### The app installs on a phone and keeps selling offline

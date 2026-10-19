@@ -192,11 +192,12 @@ export default function ProductsPage() {
       render: (b) => (
         <RowActions>
           {b.deletedAt ? (
-            <RowAction onClick={() => restore(b)} icon={<ArchiveRestore className="h-4 w-4" />} label="Restore product" />
+            isAdmin && <RowAction onClick={() => restore(b)} icon={<ArchiveRestore className="h-4 w-4" />} label="Restore product" />
           ) : (
             <>
               <RowAction to={`/products/${b.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit product" />
-              <RowAction
+              {/* Archiving takes a product off every branch's till, so it is an admin decision. */}
+              {isAdmin && <RowAction
                 onClick={() => {
                   setArchiveTarget(b);
                   setArchiveError(null);
@@ -204,7 +205,7 @@ export default function ProductsPage() {
                 icon={<Archive className="h-4 w-4" />}
                 label="Archive product"
                 tone="danger"
-              />
+              />}
             </>
           )}
         </RowActions>
@@ -232,9 +233,11 @@ export default function ProductsPage() {
                   {showArchived ? <BookOpen className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
                   {showArchived ? 'Live catalogue' : 'Archived'}
                 </Button>
-                <Button variant="outline" onClick={openImport}>
-                  <Upload className="h-4 w-4" /> Import CSV
-                </Button>
+                {isAdmin && (
+                  <Button variant="outline" onClick={openImport}>
+                    <Upload className="h-4 w-4" /> Import CSV
+                  </Button>
+                )}
               </>
             )}
           </div>

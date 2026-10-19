@@ -108,6 +108,10 @@ export async function mpesaRoutes(app: FastifyInstance) {
     if (!cb?.CheckoutRequestID) return reply.send({ ResultCode: 0, ResultDesc: 'Ignored' });
 
     const checkoutRequestId = String(cb.CheckoutRequestID);
+    // Settle once: a replayed or forged callback must not flip a settled payment.
+    const existing = await app.prisma.mpesaPayment.findUnique({ where: { checkoutRequestId }, select: { status: true } });
+    if (!existing) return reply.send({ ResultCode: 0, ResultDesc: 'Unknown' });
+    if (existing.status !== 'PENDING') return reply.send({ ResultCode: 0, ResultDesc: 'Already processed' });
     const resultCode = Number(cb.ResultCode);
     const resultDesc = String(cb.ResultDesc ?? '');
     const items = cb.CallbackMetadata?.Item as Array<{ Name: string; Value?: string | number }> | undefined;

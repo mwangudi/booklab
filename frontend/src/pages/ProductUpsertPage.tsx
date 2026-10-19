@@ -58,7 +58,10 @@ export default function ProductUpsertPage() {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const { canManage } = useAuth();
+  const { canManage, isAdmin } = useAuth();
+  // Catalogue prices apply to every branch, so once a product exists only an admin
+  // changes them. A manager sets their own branch's prices in the section below.
+  const lockPrices = isEdit && !isAdmin;
   const { data: branchStock, refresh: refreshStock } = useApi<BranchStock[]>(
     isEdit && canManage ? `/api/stock/book/${id}` : null,
   );
@@ -233,20 +236,22 @@ export default function ProductUpsertPage() {
 
           <div className="rounded-lg border border-dashed border-border p-4">
             <p className="text-xs font-medium text-muted-foreground mb-3">
-              Pricing — leave wholesale and school blank to charge the retail price
+              {lockPrices
+                ? 'Catalogue pricing applies to every branch and only an admin can change it. Set your branch prices below.'
+                : 'Pricing — leave wholesale and school blank to charge the retail price'}
             </p>
             <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <FormField label="Cost price (KES) *" hint="What you pay the supplier — used for profit/COGS.">
-                <Input type="number" min="0" step="0.01" value={form.costPrice} onChange={(e) => set('costPrice', e.target.value)} placeholder="0" className="font-mono" />
+                <Input type="number" min="0" step="0.01" value={form.costPrice} onChange={(e) => set('costPrice', e.target.value)} disabled={lockPrices} placeholder="0" className="font-mono" />
               </FormField>
               <FormField label="Retail price (KES) *" hint="Default walk-in selling price.">
-                <Input type="number" min="0" step="0.01" value={form.unitPrice} onChange={(e) => set('unitPrice', e.target.value)} placeholder="0" className="font-mono" />
+                <Input type="number" min="0" step="0.01" value={form.unitPrice} onChange={(e) => set('unitPrice', e.target.value)} disabled={lockPrices} placeholder="0" className="font-mono" />
               </FormField>
               <FormField label="Wholesale price (KES)">
-                <Input type="number" min="0" step="0.01" value={form.priceWholesale} onChange={(e) => set('priceWholesale', e.target.value)} placeholder={form.unitPrice || '0'} className="font-mono" />
+                <Input type="number" min="0" step="0.01" value={form.priceWholesale} onChange={(e) => set('priceWholesale', e.target.value)} disabled={lockPrices} placeholder={form.unitPrice || '0'} className="font-mono" />
               </FormField>
               <FormField label="School price (KES)">
-                <Input type="number" min="0" step="0.01" value={form.priceSchool} onChange={(e) => set('priceSchool', e.target.value)} placeholder={form.unitPrice || '0'} className="font-mono" />
+                <Input type="number" min="0" step="0.01" value={form.priceSchool} onChange={(e) => set('priceSchool', e.target.value)} disabled={lockPrices} placeholder={form.unitPrice || '0'} className="font-mono" />
               </FormField>
             </div>
           </div>

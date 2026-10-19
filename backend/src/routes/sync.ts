@@ -27,8 +27,12 @@ async function syncGuard(this: FastifyInstance, req: FastifyRequest, reply: Fast
     return reply.code(401).send({ error: 'Unauthorized' });
   }
   const c = req.user as SyncClaims;
-  if (c.type !== 'branch-sync' && c.role !== 'ADMIN') return reply.code(403).send({ error: 'Forbidden: sync access only' });
-  if (c.type !== 'branch-sync') return;
+  if (c.type !== 'branch-sync') {
+    // An admin token is only as good as the account behind it right now.
+    const user = await this.prisma.user.findUnique({ where: { id: c.id }, select: { active: true, deletedAt: true, role: true } });
+    if (!user?.active || user.deletedAt || user.role !== 'ADMIN') return reply.code(403).send({ error: 'Forbidden: sync access only' });
+    return;
+  }
 
   if (!c.jti) return reply.code(403).send({ error: 'This sync token predates revocation support. Issue a new one.' });
   const record = await this.prisma.syncToken.findUnique({ where: { jti: c.jti }, select: { id: true, active: true, branchId: true } });
@@ -42,7 +46,7 @@ function tokenBranchId(req: FastifyRequest): number | null {
   return c.type === 'branch-sync' ? c.branchId : null;
 }
 
-const EVENT_ENTITIES = ['sale', 'stockMovement', 'expense', 'invoice', 'goodsReceipt', 'customerPayment', 'supplierPayment', 'auditLog'] as const;
+const EVENT_ENTITIES = ['sale', 'saleVoid', 'stockMovement', 'expense', 'invoice', 'goodsReceipt', 'customerPayment', 'supplierPayment', 'auditLog'] as const;
 const pushSchema = z.object({
   events: z
     .array(z.object({ entity: z.enum(EVENT_ENTITIES), uuid: z.string().min(1), op: z.enum(['upsert', 'delete']).default('upsert'), data: z.record(z.any()) }))
@@ -196,12 +200,13 @@ function assertBranch(allowed: number | null, branchId: number) {
 
 async function ingestEvent(tx: Tx, entity: (typeof EVENT_ENTITIES)[number], uuid: string, data: Record<string, any>, allowed: number | null): Promise<IngestResult> {
   if (entity === 'sale') return ingestSale(tx, uuid, data, allowed);
+  if (entity === 'saleVoid') return ingestSaleVoid(tx, data, allowed);
   if (entity === 'stockMovement') return ingestMovement(tx, uuid, data, allowed);
   if (entity === 'invoice') return ingestInvoice(tx, uuid, data, allowed);
   if (entity === 'goodsReceipt') return ingestGoodsReceipt(tx, uuid, data, allowed);
-  if (entity === 'customerPayment') return ingestCustomerPayment(tx, uuid, data);
-  if (entity === 'supplierPayment') return ingestSupplierPayment(tx, uuid, data);
-  if (entity === 'auditLog') return ingestAuditLog(tx, uuid, data);
+  if (entity === 'customerPayment') return ingestCustomerPayment(tx, uuid, data, allowed);
+  if (entity === 'supplierPayment') return ingestSupplierPayment(tx, uuid, data, allowed);
+  if (entity === 'auditLog') return ingestAuditLog(tx, uuid, data, allowed);
   return ingestExpense(tx, uuid, data, allowed);
 }
 
@@ -220,7 +225,7 @@ async function ingestSale(tx: Tx, uuid: string, data: Record<string, any>, allow
     items.push({ uuid: it.uuid, bookId, quantity: it.quantity, unitPrice: it.unitPrice, costPrice: it.costPrice ?? 0 });
   }
 
-  await tx.sale.create({
+  const created = await tx.sale.create({
     data: {
       uuid, branchId, userId, originBranchId: branchId,
       subtotal: data.subtotal ?? data.total,
@@ -234,11 +239,42 @@ async function ingestSale(tx: Tx, uuid: string, data: Record<string, any>, allow
       items: { create: items.map((r) => ({ uuid: r.uuid, bookId: r.bookId, quantity: r.quantity, unitPrice: r.unitPrice, costPrice: r.costPrice })) },
     },
   });
+  // The goods have already left the branch, so a shortfall is recorded, not refused.
+  // The movement keeps the cloud's stock equal to the sum of its stock history.
   for (const r of items) {
     await tx.stock.upsert({
       where: { branchId_bookId: { branchId, bookId: r.bookId } },
       create: { branchId, bookId: r.bookId, quantity: -r.quantity },
       update: { quantity: { decrement: r.quantity } },
+    });
+    await tx.stockMovement.create({
+      data: { branchId, bookId: r.bookId, delta: -r.quantity, type: 'SALE', note: `Sale #${created.id}`, userId, originBranchId: branchId, createdAt: created.createdAt },
+    });
+  }
+  return 'applied';
+}
+
+/** A sale voided on a branch laptop: exclude it from revenue and return its stock, once. */
+async function ingestSaleVoid(tx: Tx, data: Record<string, any>, allowed: number | null): Promise<IngestResult> {
+  const sale = await tx.sale.findUnique({ where: { uuid: String(data.saleUuid ?? '') }, include: { items: true } });
+  // The sale's own event is queued first; until it lands, fail so the runner retries.
+  if (!sale) throw new Error('Unknown saleUuid');
+  assertBranch(allowed, sale.branchId);
+  const voidedById = await idByUuid(tx, 'user', data.voidedByUuid);
+  const reason = String(data.reason ?? 'Voided at the branch').slice(0, 200);
+  const { count } = await tx.sale.updateMany({
+    where: { id: sale.id, voidedAt: null },
+    data: { voidedAt: data.voidedAt ? new Date(data.voidedAt) : new Date(), voidedById, voidReason: reason },
+  });
+  if (count === 0) return 'duplicate';
+  for (const item of sale.items) {
+    await tx.stock.upsert({
+      where: { branchId_bookId: { branchId: sale.branchId, bookId: item.bookId } },
+      create: { branchId: sale.branchId, bookId: item.bookId, quantity: item.quantity },
+      update: { quantity: { increment: item.quantity } },
+    });
+    await tx.stockMovement.create({
+      data: { branchId: sale.branchId, bookId: item.bookId, delta: item.quantity, type: 'VOID', note: `Void of sale #${sale.id}: ${reason}`, userId: voidedById, originBranchId: sale.branchId },
     });
   }
   return 'applied';
@@ -255,12 +291,15 @@ async function ingestMovement(tx: Tx, uuid: string, data: Record<string, any>, a
   await tx.stockMovement.create({
     data: { uuid, branchId, bookId, originBranchId: branchId, delta: data.delta, type: data.type ?? 'INTAKE', note: data.note ?? null, createdAt: data.createdAt ? new Date(data.createdAt) : undefined },
   });
-  const current = await tx.stock.findUnique({ where: { branchId_bookId: { branchId, bookId } } });
-  const newQty = Math.max(0, (current?.quantity ?? 0) + Number(data.delta));
+  // Apply the delta as it is. Flooring at zero (as this used to) threw away part of
+  // a correction while synced sales could still go negative, so the cloud's stock
+  // drifted from its own movement history.
+  const delta = Math.trunc(Number(data.delta));
+  if (!Number.isFinite(delta)) throw new Error('Invalid delta');
   await tx.stock.upsert({
     where: { branchId_bookId: { branchId, bookId } },
-    create: { branchId, bookId, quantity: newQty },
-    update: { quantity: newQty },
+    create: { branchId, bookId, quantity: delta },
+    update: { quantity: { increment: delta } },
   });
   return 'applied';
 }
@@ -286,7 +325,13 @@ async function ingestExpense(tx: Tx, uuid: string, data: Record<string, any>, al
  */
 async function ingestInvoice(tx: Tx, uuid: string, data: Record<string, any>, allowed: number | null): Promise<IngestResult> {
   const branchId = data.branchUuid ? await idByUuid(tx, 'branch', data.branchUuid) : null;
-  if (branchId != null) assertBranch(allowed, branchId);
+  // A branch laptop writes only its own branch's documents: it may not raise a
+  // head-office invoice, nor rewrite one that belongs to anyone else.
+  if (allowed != null && branchId !== allowed) throw new Error('Event branch does not match token branch');
+  if (allowed != null) {
+    const owner = await tx.invoice.findUnique({ where: { uuid }, select: { branchId: true } });
+    if (owner && owner.branchId !== allowed) throw new Error('Invoice belongs to another branch');
+  }
   const customerId = await idByUuid(tx, 'customer', data.customerUuid);
   if (customerId == null) throw new Error('Unknown customerUuid');
   const saleId = data.saleUuid ? (await tx.sale.findUnique({ where: { uuid: data.saleUuid }, select: { id: true } }))?.id ?? null : null;
@@ -340,6 +385,8 @@ async function ingestGoodsReceipt(tx: Tx, uuid: string, data: Record<string, any
   assertBranch(allowed, branchId);
   const supplierId = await idByUuid(tx, 'supplier', data.supplierUuid);
   if (supplierId == null) throw new Error('Unknown supplierUuid');
+  const prior = await tx.goodsReceipt.findUnique({ where: { uuid }, select: { branchId: true, status: true } });
+  if (allowed != null && prior && prior.branchId !== allowed) throw new Error('Goods receipt belongs to another branch');
 
   const fields = {
     number: data.number,
@@ -370,15 +417,31 @@ async function ingestGoodsReceipt(tx: Tx, uuid: string, data: Record<string, any
         quantity: it.quantity, unitCost: it.unitCost ?? 0, total: it.total ?? 0, sortOrder: it.sortOrder ?? i,
       },
     });
+    // Posting set the branch's own cost on the laptop. Mirror it here the first time
+    // the receipt arrives posted, or the next pull would put the old cost back.
+    if (fields.status === 'POSTED' && prior?.status !== 'POSTED' && Number(it.unitCost) > 0) {
+      await tx.stock.upsert({
+        where: { branchId_bookId: { branchId, bookId } },
+        create: { branchId, bookId, quantity: 0, costPrice: it.unitCost },
+        update: { costPrice: it.unitCost },
+      });
+    }
   }
   return existing ? 'updated' : 'applied';
 }
 
-async function ingestCustomerPayment(tx: Tx, uuid: string, data: Record<string, any>): Promise<IngestResult> {
+async function ingestCustomerPayment(tx: Tx, uuid: string, data: Record<string, any>, allowed: number | null): Promise<IngestResult> {
   if (await tx.customerPayment.findUnique({ where: { uuid }, select: { id: true } })) return 'duplicate';
   const customerId = await idByUuid(tx, 'customer', data.customerUuid);
   if (customerId == null) throw new Error('Unknown customerUuid');
-  const invoiceId = data.invoiceUuid ? (await tx.invoice.findUnique({ where: { uuid: data.invoiceUuid }, select: { id: true } }))?.id ?? null : null;
+  const invoice = data.invoiceUuid
+    ? await tx.invoice.findUnique({ where: { uuid: data.invoiceUuid }, select: { id: true, branchId: true, customerId: true } })
+    : null;
+  // Customers are shared by every branch, but a payment against an invoice must be
+  // against this branch's invoice (or a head-office one) and for that customer.
+  if (invoice && allowed != null && invoice.branchId != null && invoice.branchId !== allowed) throw new Error('Invoice belongs to another branch');
+  if (invoice && invoice.customerId !== customerId) throw new Error('Invoice is for a different customer');
+  const invoiceId = invoice?.id ?? null;
   await tx.customerPayment.create({
     data: {
       uuid, customerId, invoiceId, amount: data.amount, method: data.method ?? 'BANK_TRANSFER',
@@ -389,11 +452,16 @@ async function ingestCustomerPayment(tx: Tx, uuid: string, data: Record<string, 
   return 'applied';
 }
 
-async function ingestSupplierPayment(tx: Tx, uuid: string, data: Record<string, any>): Promise<IngestResult> {
+async function ingestSupplierPayment(tx: Tx, uuid: string, data: Record<string, any>, allowed: number | null): Promise<IngestResult> {
   if (await tx.supplierPayment.findUnique({ where: { uuid }, select: { id: true } })) return 'duplicate';
   const supplierId = await idByUuid(tx, 'supplier', data.supplierUuid);
   if (supplierId == null) throw new Error('Unknown supplierUuid');
-  const receiptId = data.receiptUuid ? (await tx.goodsReceipt.findUnique({ where: { uuid: data.receiptUuid }, select: { id: true } }))?.id ?? null : null;
+  const receipt = data.receiptUuid
+    ? await tx.goodsReceipt.findUnique({ where: { uuid: data.receiptUuid }, select: { id: true, branchId: true, supplierId: true } })
+    : null;
+  if (receipt && allowed != null && receipt.branchId !== allowed) throw new Error('Goods receipt belongs to another branch');
+  if (receipt && receipt.supplierId !== supplierId) throw new Error('Goods receipt is for a different supplier');
+  const receiptId = receipt?.id ?? null;
   await tx.supplierPayment.create({
     data: {
       uuid, supplierId, receiptId, amount: data.amount, method: data.method ?? 'BANK_TRANSFER',
@@ -409,12 +477,14 @@ async function ingestSupplierPayment(tx: Tx, uuid: string, data: Record<string, 
  * a duplicate. `entityId` is left as the branch recorded it: local ids differ
  * from the cloud's, and rewriting them would be a guess.
  */
-async function ingestAuditLog(tx: Tx, uuid: string, data: Record<string, any>): Promise<IngestResult> {
+async function ingestAuditLog(tx: Tx, uuid: string, data: Record<string, any>, allowed: number | null): Promise<IngestResult> {
   if (await tx.auditLog.findUnique({ where: { uuid }, select: { id: true } })) return 'duplicate';
-  const [userId, branchId] = await Promise.all([
+  const [userId, claimedBranchId] = await Promise.all([
     idByUuid(tx, 'user', data.userUuid),
     idByUuid(tx, 'branch', data.branchUuid),
   ]);
+  // A laptop's entries are filed under its own branch, whatever they claim.
+  const branchId = allowed ?? claimedBranchId;
   await tx.auditLog.create({
     data: {
       uuid, userId, branchId,

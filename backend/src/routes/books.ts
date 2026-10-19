@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authGuard, requireRole } from '../middleware/authGuard.js';
+import { authGuard, requireRole, isAdmin } from '../middleware/authGuard.js';
 import { auditRequest, diff } from '../lib/audit.js';
 
 const bookSchema = z.object({
@@ -16,6 +16,9 @@ const bookSchema = z.object({
   costPrice: z.number().nonnegative(),
 });
 const bookUpdateSchema = bookSchema.partial();
+
+/** Catalogue prices apply to every branch. A manager sets their own branch's on the stock page. */
+const CATALOGUE_PRICES = ['unitPrice', 'priceWholesale', 'priceSchool', 'costPrice'] as const;
 
 const importItemSchema = z.object({
   title: z.string().min(1),
@@ -76,6 +79,18 @@ export async function bookRoutes(app: FastifyInstance) {
     const body = bookUpdateSchema.parse(req.body);
     const before = await app.prisma.book.findUnique({ where: { id } });
     if (!before) return reply.code(404).send({ error: 'Book not found' });
+    // The product form sends every field, so refuse only a price that actually changes.
+    if (!isAdmin(req)) {
+      const changed = CATALOGUE_PRICES.filter((k) => {
+        const v = body[k];
+        if (v === undefined) return false;
+        const was = before[k];
+        return (v == null ? null : Number(v)) !== (was == null ? null : Number(was));
+      });
+      if (changed.length > 0) {
+        return reply.code(403).send({ error: 'Catalogue prices apply to every branch, so only an admin can change them. Set your branch price on the stock page.' });
+      }
+    }
     try {
       const updated = await app.prisma.book.update({ where: { id }, data: body });
       await auditRequest(app.prisma, req, {
@@ -91,8 +106,8 @@ export async function bookRoutes(app: FastifyInstance) {
     }
   });
 
-  // Archive a product (soft delete). Sales history and stock rows are preserved.
-  app.delete('/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  // Archive a product (soft delete). Admin only: it takes the product off every branch's till. Sales history and stock rows are preserved.
+  app.delete('/:id', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid book id' });
     const book = await app.prisma.book.findUnique({ where: { id } });
@@ -112,7 +127,7 @@ export async function bookRoutes(app: FastifyInstance) {
   });
 
   // Bring an archived product back into the live catalogue.
-  app.post('/:id/restore', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/:id/restore', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid book id' });
     const book = await app.prisma.book.findUnique({ where: { id } });
@@ -128,14 +143,15 @@ export async function bookRoutes(app: FastifyInstance) {
     return restored;
   });
 
-  // Bulk import/update the catalogue (e.g. from a CSV). Upserts by SKU when
+  // Bulk import/update the catalogue (e.g. from a CSV). Admin only: it rewrites catalogue
+  // prices for every branch. Upserts by SKU when
   // provided, otherwise matches an existing product by title.
   //
   // A new product needs a full row, so anything absent starts at 0. An UPDATE is
   // treated as a patch: a column the sheet does not carry is left alone. Without
   // that split, importing a supplier's cost-only price list would set the selling
   // price of every product in it to zero.
-  app.post('/import', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
+  app.post('/import', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
     const { items } = importSchema.parse(req.body);
     let created = 0;
     let updated = 0;

@@ -40,8 +40,9 @@ interface MpesaState {
 /** Effective unit price for a stock row given the selected customer tier. */
 const tierPrice = (row: Stock, tier: PriceTier): number => {
   const retail = num(row.price ?? row.book.unitPrice);
-  if (tier === 'WHOLESALE') return num(row.book.priceWholesale ?? retail);
-  if (tier === 'SCHOOL') return num(row.book.priceSchool ?? retail);
+  // The branch's own tier price first, as the server checks it, then the catalogue's.
+  if (tier === 'WHOLESALE') return num(row.priceWholesale ?? row.book.priceWholesale ?? retail);
+  if (tier === 'SCHOOL') return num(row.priceSchool ?? row.book.priceSchool ?? retail);
   return retail;
 };
 
@@ -52,7 +53,10 @@ const TIER_OPTIONS: Array<{ value: PriceTier; label: string }> = [
 ];
 
 export default function PosPage() {
-  const { isAdmin, branchId: myBranch, user } = useAuth();
+  const { isAdmin, canManage, branchId: myBranch, user } = useAuth();
+  // Cashiers sell at retail and discount within a cap; the server enforces both.
+  // A session from before the cap existed has no value stored, so assume the default.
+  const maxDiscountPct = user?.role === 'CASHIER' ? (user.maxDiscountPct ?? 10) : null;
   const { data: branches } = useBranches();
   const [branchId, setBranchId] = useState<number | null>(isAdmin ? null : myBranch);
   const [search, setSearch] = useState('');
@@ -169,7 +173,9 @@ export default function PosPage() {
 
   const subtotal = cart.reduce((s, l) => s + l.quantity * l.unitPrice, 0);
   // A discount can never exceed the basket or turn the sale negative.
-  const discountAmount = Math.min(Math.max(0, num(discount)), subtotal);
+  const discountCap = maxDiscountPct == null ? subtotal : Math.floor(subtotal * maxDiscountPct) / 100;
+  const discountAmount = Math.min(Math.max(0, num(discount)), subtotal, discountCap);
+  const discountCapped = maxDiscountPct != null && num(discount) > discountCap + 0.001;
   const total = subtotal - discountAmount;
   const change = method === 'CASH' && cashGiven ? num(cashGiven) - total : 0;
 
@@ -225,7 +231,7 @@ export default function PosPage() {
       try {
         await queueSale({
           uuid: saleUuid,
-          payload,
+          payload: { ...payload, recordedOffline: true },
           branchId: branchId ?? 0,
           total: totalNow,
           createdAt: Date.now(),
@@ -375,6 +381,7 @@ export default function PosPage() {
             </div>
 
             {/* Tier sits with the catalogue because it re-prices what is on screen. */}
+            {canManage ? (
             <div className="mt-3 mb-4 flex items-center gap-2">
               <span className="text-xs text-muted-foreground shrink-0">Price</span>
               <div className="inline-flex flex-1 sm:flex-none rounded-lg border border-border bg-muted/40 p-0.5" role="tablist" aria-label="Price tier">
@@ -396,6 +403,9 @@ export default function PosPage() {
                 ))}
               </div>
             </div>
+            ) : (
+              <div className="mb-4" />
+            )}
 
             {loading ? (
               <p className="text-sm text-muted-foreground py-10 text-center">Loading catalogue…</p>
@@ -578,6 +588,11 @@ export default function PosPage() {
                     className="font-mono text-right"
                   />
                 </div>
+                {discountCapped && (
+                  <p className="text-xs text-[#9b2626]">
+                    A cashier can discount at most {maxDiscountPct}% ({money(discountCap)}). Ask a manager for more.
+                  </p>
+                )}
                 {discountAmount > 0 && (
                   <Input
                     placeholder="Reason for the discount"

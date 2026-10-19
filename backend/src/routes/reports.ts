@@ -79,9 +79,12 @@ export async function reportRoutes(app: FastifyInstance) {
       orderBy: { createdAt: 'desc' },
       take: 5000,
     });
+    // Totals cover every sale in the range; only the detail list is capped. Summing
+    // inside the capped map made revenue stop at the first 1,000 sales while the
+    // transaction count kept going, so a busy month under-reported revenue.
     let revenue = 0, itemsSold = 0;
     const byBranch = new Map<number, { branchId: number; name: string; txns: number; revenue: number }>();
-    const rows = sales.slice(0, 1000).map((s) => {
+    const all = sales.map((s) => {
       const rev = Number(s.total);
       revenue += rev;
       const bb = byBranch.get(s.branch.id) ?? { branchId: s.branch.id, name: s.branch.name, txns: 0, revenue: 0 };
@@ -90,6 +93,7 @@ export async function reportRoutes(app: FastifyInstance) {
       itemsSold += items;
       return { id: s.id, date: s.createdAt, branch: s.branch.name, cashier: s.user?.name ?? '—', payment: s.paymentMethod, items, total: rev };
     });
+    const rows = all.slice(0, 1000);
     return {
       summary: { revenue, txns: sales.length, itemsSold, avgBasket: sales.length ? revenue / sales.length : 0 },
       byBranch: [...byBranch.values()].sort((a, b) => b.revenue - a.revenue),
@@ -112,7 +116,8 @@ export async function reportRoutes(app: FastifyInstance) {
     const rows = stock.map((r) => {
       const unitPrice = Number(r.price ?? r.book.unitPrice);
       const value = r.quantity * unitPrice;
-      retailValue += value; costValue += r.quantity * Number(r.book.costPrice); units += r.quantity;
+      // What this branch paid when it has its own cost — the same figure its sales use for COGS.
+      retailValue += value; costValue += r.quantity * Number(r.costPrice ?? r.book.costPrice); units += r.quantity;
       return { branch: r.branch.name, title: r.book.title, sku: r.book.sku, quantity: r.quantity, unitPrice, value, status: r.quantity <= 0 ? 'Out of stock' : r.quantity < LOW ? 'Low stock' : 'OK' };
     });
     return { summary: { skuCount: stock.length, units, retailValue, costValue }, rows: rows.slice(0, 5000) };
@@ -135,8 +140,17 @@ export async function reportRoutes(app: FastifyInstance) {
         where: { branchId: scoped, createdAt: { gte: start, lte: end }, NOT: { voidedAt: null } },
         include: { voidedBy: { select: { name: true } } },
       }),
-      app.prisma.expense.findMany({ where: { branchId: scoped, incurredAt: { gte: start, lte: end } } }),
+      // Payroll posts its cost on the last day of the month; it is paid by bank, not
+      // out of the till, so it must not come off the cash the drawer should hold.
+      app.prisma.expense.findMany({ where: { branchId: scoped, incurredAt: { gte: start, lte: end }, payrollRunId: null } }),
     ]);
+
+    // A delivered invoice is booked as a sale so stock and COGS flow, but the school
+    // pays on account — none of that money is in the drawer. Report it on its own line.
+    const onAccount = new Set(
+      (await app.prisma.invoice.findMany({ where: { saleId: { in: sales.map((s) => s.id) } }, select: { saleId: true } }))
+        .map((i) => i.saleId),
+    );
 
     const byMethod = new Map<string, { method: string; txns: number; amount: number }>();
     const byCashier = new Map<number, { name: string; txns: number; amount: number }>();
@@ -148,8 +162,9 @@ export async function reportRoutes(app: FastifyInstance) {
       discounts += Number(s.discount ?? 0);
       cogs += s.items.reduce((a, i) => a + i.quantity * Number(i.costPrice), 0);
       itemsSold += s.items.reduce((a, i) => a + i.quantity, 0);
-      const m = byMethod.get(s.paymentMethod) ?? { method: s.paymentMethod, txns: 0, amount: 0 };
-      m.txns += 1; m.amount += amt; byMethod.set(s.paymentMethod, m);
+      const method = onAccount.has(s.id) ? 'INVOICE' : s.paymentMethod;
+      const m = byMethod.get(method) ?? { method, txns: 0, amount: 0 };
+      m.txns += 1; m.amount += amt; byMethod.set(method, m);
       const c = byCashier.get(s.userId) ?? { name: s.user?.name ?? `User #${s.userId}`, txns: 0, amount: 0 };
       c.txns += 1; c.amount += amt; byCashier.set(s.userId, c);
     }
@@ -201,7 +216,7 @@ export async function reportRoutes(app: FastifyInstance) {
       category: r.book.category ?? '—',
       quantity: r.quantity,
       unitPrice: Number(r.price ?? r.book.unitPrice),
-      costPrice: Number(r.book.costPrice),
+      costPrice: Number(r.costPrice ?? r.book.costPrice),
       suggestedOrder: Math.max(limit * 2 - r.quantity, 0),
       status: r.quantity <= 0 ? 'Out of stock' : 'Low stock',
     }));

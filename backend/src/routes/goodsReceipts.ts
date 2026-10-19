@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
+import { authGuard, requireRole, branchScope, enforceWriteBranch, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
 import type { GoodsReceiptStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { recordMovement, queueGoodsReceipt, queueSupplierPayment } from '../lib/outbox.js';
@@ -42,6 +42,9 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 export async function goodsReceiptRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
+  // Credit documents, customers and suppliers are management information. The pages
+  // are manager-only; the API now matches, so a cashier cannot read them either.
+  app.addHook('preHandler', requireRole('ADMIN', 'MANAGER'));
 
   const withItems = {
     supplier: true,
@@ -150,6 +153,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid receipt id' });
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id }, include: withItems });
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
+    if (!ownsBranchRecord(req, grn.branchId)) return reply.code(404).send({ error: 'Goods receipt not found' });
     return grn;
   });
 
@@ -203,6 +207,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     const body = receiptSchema.partial().parse(req.body);
     const before = await app.prisma.goodsReceipt.findUnique({ where: { id } });
     if (!before || before.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
+    if (!ownsBranchRecord(req, before.branchId)) return reply.code(404).send({ error: 'Goods receipt not found' });
     if (before.status === 'POSTED') return reply.code(409).send({ error: 'A posted goods receipt can no longer be edited.' });
 
     let totalCost: number | undefined;
@@ -233,7 +238,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
       where: { id },
       data: {
         ...(body.supplierId !== undefined ? { supplierId: body.supplierId } : {}),
-        ...(body.branchId !== undefined ? { branchId: body.branchId } : {}),
+        ...(body.branchId !== undefined && isAdmin(req) ? { branchId: body.branchId } : {}),
         ...(body.deliveryNoteNo !== undefined ? { deliveryNoteNo: body.deliveryNoteNo } : {}),
         ...(body.invoiceNo !== undefined ? { invoiceNo: body.invoiceNo } : {}),
         ...(body.receivedAt !== undefined ? { receivedAt: new Date(body.receivedAt) } : {}),
@@ -257,15 +262,24 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
 
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id }, include: { items: true, supplier: true } });
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
+    if (!ownsBranchRecord(req, grn.branchId)) return reply.code(404).send({ error: 'Goods receipt not found' });
     if (grn.status === 'POSTED') return reply.code(409).send({ error: 'This goods receipt has already been posted.' });
     if (grn.items.length === 0) return reply.code(400).send({ error: 'Add at least one item before posting.' });
 
     const posted = await app.prisma.$transaction(async (tx) => {
+      // Claim the receipt first: a double click would otherwise pass the status check
+      // above twice and add the stock twice.
+      const { count } = await tx.goodsReceipt.updateMany({ where: { id, status: { not: 'POSTED' } }, data: { status: 'POSTED' } });
+      if (count === 0) return null;
       for (const it of grn.items) {
+        // What this branch paid becomes its own cost, which is what its sales use for
+        // COGS. Setting only the catalogue cost left a branch with its own cost on
+        // the old figure.
+        const branchCost = updateCost && n(it.unitCost) > 0 ? { costPrice: it.unitCost } : {};
         await tx.stock.upsert({
           where: { branchId_bookId: { branchId: grn.branchId, bookId: it.bookId } },
-          create: { branchId: grn.branchId, bookId: it.bookId, quantity: it.quantity },
-          update: { quantity: { increment: it.quantity } },
+          create: { branchId: grn.branchId, bookId: it.bookId, quantity: it.quantity, ...branchCost },
+          update: { quantity: { increment: it.quantity }, ...branchCost },
         });
         await recordMovement(tx, {
           branchId: grn.branchId,
@@ -275,8 +289,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
           note: `${grn.number}${grn.deliveryNoteNo ? ` · DN ${grn.deliveryNoteNo}` : ''} · ${grn.supplier.name}`,
           userId: req.user.id,
         });
-        // Keep costing current so margins reflect the latest buying price.
-        if (updateCost && n(it.unitCost) > 0) {
+        // The catalogue cost is shared by every branch, so only an admin's receipt moves it.
+        if (updateCost && n(it.unitCost) > 0 && isAdmin(req)) {
           await tx.book.update({ where: { id: it.bookId }, data: { costPrice: it.unitCost } });
         }
       }
@@ -288,6 +302,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
       await queueGoodsReceipt(tx, id);
       return done;
     });
+    if (!posted) return reply.code(409).send({ error: 'This goods receipt has already been posted.' });
 
     await auditRequest(app.prisma, req, {
       entity: 'goods.receipt', entityId: id, branchId: grn.branchId, action: 'POST',
@@ -306,6 +321,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id } });
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
+    if (!ownsBranchRecord(req, grn.branchId)) return reply.code(404).send({ error: 'Goods receipt not found' });
     if (grn.status === 'POSTED') return reply.code(409).send({ error: 'A posted goods receipt cannot be deleted.' });
     await app.prisma.goodsReceipt.update({ where: { id }, data: { deletedAt: new Date() } });
     await queueGoodsReceipt(app.prisma, id);

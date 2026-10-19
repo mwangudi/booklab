@@ -140,7 +140,7 @@ export async function stockRoutes(app: FastifyInstance) {
         for (const r of rows) {
           units += r.quantity;
           retailValue += r.quantity * Number(r.price ?? r.book.unitPrice);
-          costValue += r.quantity * Number(r.book.costPrice);
+          costValue += r.quantity * Number(r.costPrice ?? r.book.costPrice);
           if (r.quantity <= 0) outCount += 1;
           else if (r.quantity < LOW) lowCount += 1;
         }
