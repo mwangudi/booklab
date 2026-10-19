@@ -17,6 +17,8 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   were heading for.
 - Phones that already installed it keep the old start screen until Android
   refreshes the app's settings; reinstalling applies it at once.
+- Deployed `276ca42` 2026-10-19 13:24 EAT (frontend only). **Rollback point:**
+  `/root/deploy-bak-20261019-132400`; previous build at `frontend/dist-old-20261019-132400`.
 
 ## 2026-10-19 — Scheduled stock takes
 
