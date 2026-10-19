@@ -58,6 +58,19 @@ own stock and reporting.
 - A laptop's token can only change its own branch's invoices and goods receipts, and
   its payments must match that branch's documents.
 
+### Deployed
+- `2b0c9b8` deployed 2026-10-19 12:18 EAT by file upload (prod is not a git checkout).
+  Before it, prod's source matched `806ec93` except a server-regenerated
+  `package-lock.json`, which this release replaces. Production's `JWT_SECRET` was
+  checked first (64 characters), so nobody was signed out.
+- Tested beforehand against a throwaway copy of the live database: 44/44 checks.
+- **Rollback point:** `/root/deploy-bak-20261019-121805` (backend with
+  `node_modules`, frontend source and dist); the previous build is also at
+  `frontend/dist-old-20261019-121805`.
+- Still to do: tills must accept the "Update available" prompt (an old build's
+  offline sale that oversold would be refused and dropped), and the branch laptop
+  needs this backend before its voids reach the cloud.
+
 ## 2026-08-14
 
 ### The app installs on a phone and keeps selling offline
