@@ -15,6 +15,9 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   stays on the same day of the cycle.
 - New table `StockTakeSchedule` (migration `20261019120000_stock_take_schedule`).
   Branch laptops pick it up on their next update.
+- Deployed `fdcec71` 2026-10-19 13:17 EAT. Tested first on a throwaway copy of the
+  live database (15/15). **Rollback point:** `/root/deploy-bak-20261019-131715`
+  (database dump, backend without `node_modules`, frontend source and dist).
 
 ### Data correction
 - PL-0123 (4Q) stood at −1 at Luanda: invoice INV-LUA-0001 (1 Oct) was delivered
