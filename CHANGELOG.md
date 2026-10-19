@@ -11,6 +11,8 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   formatted, and a before/after pair reads as one arrow, e.g. `role default →
   allowed until 20 Oct 2026, 23:59`. The stored records were always complete; only
   the display was wrong, so existing entries read correctly too.
+- Deployed `cbde105` 2026-10-19 17:53 EAT (frontend only). **Rollback point:**
+  `/root/deploy-bak-20261019-175318`; previous build at `frontend/dist-old-20261019-175318`.
 
 ## 2026-10-19 — Cashiers see customers and raise invoices; per-person permissions
 
