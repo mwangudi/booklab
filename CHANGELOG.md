@@ -3,6 +3,26 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-19 — Scheduled stock takes
+
+- **Each branch can have a stock take schedule** — weekly, monthly or quarterly,
+  from a chosen date — set by an admin on Stock → Stock take. Changes are audited.
+- From a week before the date the dashboard shows **Stock take due**, and
+  **overdue** once it has passed. Cashiers see their own branch; admins see all.
+- Uploading a count completes it when it is within that week and covers at least
+  90% of the products the branch holds — a one-line correction does not. It
+  records who counted and when, and moves the date on by whole periods so it
+  stays on the same day of the cycle.
+- New table `StockTakeSchedule` (migration `20261019120000_stock_take_schedule`).
+  Branch laptops pick it up on their next update.
+
+### Data correction
+- PL-0123 (4Q) stood at −1 at Luanda: invoice INV-LUA-0001 (1 Oct) was delivered
+  from Luanda, which had none, before delivery checked stock. The goods came from
+  Kapsabet, so a transfer of 1 Kapsabet → Luanda was recorded (Kapsabet 10 → 9,
+  Luanda −1 → 0), with paired movements and an audit entry. Backup taken first:
+  `/root/pre-pl0123-fix-20261019-130744.sql.gz`.
+
 ## 2026-10-19 — Security, stock and P&L audit
 
 Brought into line with the PharmaCare October audit, plus fixes found in Booklab's

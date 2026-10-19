@@ -142,6 +142,7 @@ model Branch {
   invoices  Invoice[]
   receipts  GoodsReceipt[]
   syncTokens SyncToken[]
+  stockTakeSchedule StockTakeSchedule?
 }
 
 /// A book is the sellable product. `sku` is the internal code; `isbn` optional.
@@ -707,4 +708,26 @@ model PromoSlide {
   updatedAt DateTime @updatedAt
 
   @@index([active, sortOrder])
+}
+
+enum StockTakeFrequency {
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+}
+
+/// When a branch is next due a full stock take. One per branch, set by an admin.
+/// A full count posted from the stock take page while it is due marks it done and
+/// moves `nextDue` on by whole periods, so it stays on the same day of the cycle.
+model StockTakeSchedule {
+  id           Int                @id @default(autoincrement())
+  branchId     Int                @unique
+  frequency    StockTakeFrequency @default(MONTHLY)
+  nextDue      DateTime
+  active       Boolean            @default(true)
+  lastDoneAt   DateTime?
+  lastDoneById Int?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  branch       Branch             @relation(fields: [branchId], references: [id])
 }

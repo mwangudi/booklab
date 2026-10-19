@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
 import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
 import { actor, auditRequest, writeAudit } from '../lib/audit.js';
+import { DUE_WINDOW_DAYS, FULL_COUNT_SHARE, daysUntil, nextDueAfter, scheduleStatus, startOfDay } from '../lib/stockTakeSchedule.js';
 
 const stockSetSchema = z.object({ branchId: z.number().int(), bookId: z.number().int(), quantity: z.number().int(), note: z.string().max(200).optional() });
 // Any price omitted is left as it was; an explicit null clears it back to the
@@ -30,6 +31,12 @@ const stockTakeSchema = z.object({
     .array(z.object({ sku: z.string().min(1), counted: z.number().int().min(0) }))
     .min(1)
     .max(5000),
+});
+const scheduleSchema = z.object({
+  frequency: z.enum(['WEEKLY', 'MONTHLY', 'QUARTERLY']),
+  /** The next count's date, YYYY-MM-DD. */
+  nextDue: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-11-01'),
+  active: z.boolean().default(true),
 });
 const LOW = 5;
 /// Window used to rank best sellers at the till.
@@ -309,7 +316,17 @@ export async function stockRoutes(app: FastifyInstance) {
     const bookBySku = new Map(books.map((b) => [b.sku, b.id]));
 
     const note = body.note?.trim() || `Stock take ${new Date().toISOString().slice(0, 10)}`;
-    const results = { counted: 0, adjusted: 0, unchanged: 0, unknown: [] as string[], blocked: [] as string[], netUnits: 0 };
+    const results = {
+      counted: 0, adjusted: 0, unchanged: 0, unknown: [] as string[], blocked: [] as string[], netUnits: 0,
+      schedule: null as null | { completed: boolean; coverage: number; nextDue: Date; reason?: string },
+    };
+
+    // What the branch held before this count: a full count has to cover nearly all of it.
+    const heldBefore = await app.prisma.stock.findMany({
+      where: { branchId, quantity: { not: 0 }, book: { deletedAt: null } },
+      select: { bookId: true },
+    });
+    const countedIds = new Set<number>();
 
     for (const item of body.items) {
       const sku = item.sku.trim();
@@ -319,6 +336,7 @@ export async function stockRoutes(app: FastifyInstance) {
         continue;
       }
       results.counted += 1;
+      countedIds.add(bookId);
       const existing = await app.prisma.stock.findUnique({ where: { branchId_bookId: { branchId, bookId } } });
       const before = existing?.quantity ?? 0;
       const delta = item.counted - before;
@@ -358,7 +376,87 @@ export async function stockRoutes(app: FastifyInstance) {
       action: 'STOCK_TAKE_BULK',
       details: { note, counted: results.counted, adjusted: results.adjusted, netUnits: results.netUnits, unknown: results.unknown.length, blocked: results.blocked.length },
     });
+
+    // A full count while the branch's scheduled take is due completes it.
+    const schedule = await app.prisma.stockTakeSchedule.findUnique({ where: { branchId } });
+    if (schedule?.active) {
+      const covered = heldBefore.filter((r) => countedIds.has(r.bookId)).length;
+      const coverage = heldBefore.length === 0 ? (results.counted > 0 ? 1 : 0) : covered / heldBefore.length;
+      const now = new Date();
+      const opensAt = new Date(startOfDay(schedule.nextDue).getTime() - DUE_WINDOW_DAYS * 864e5);
+      if (now < opensAt) {
+        results.schedule = { completed: false, coverage, nextDue: schedule.nextDue, reason: 'not yet due' };
+      } else if (coverage < FULL_COUNT_SHARE) {
+        results.schedule = { completed: false, coverage, nextDue: schedule.nextDue, reason: 'not a full count' };
+      } else {
+        const nextDue = nextDueAfter(schedule.nextDue, schedule.frequency, now);
+        await app.prisma.stockTakeSchedule.update({
+          where: { branchId },
+          data: { lastDoneAt: now, lastDoneById: req.user.id, nextDue },
+        });
+        await writeAudit(app.prisma, {
+          ...actor(req), branchId, entity: 'stock.takeSchedule', entityId: schedule.id, action: 'COMPLETE',
+          details: { wasDue: schedule.nextDue, nextDue, coverage: Math.round(coverage * 1000) / 10, counted: results.counted },
+        });
+        results.schedule = { completed: true, coverage, nextDue };
+      }
+    }
     return results;
+  });
+
+  // Every branch's stock take schedule (non-admins: their own), with how it stands today.
+  app.get('/take-schedules', async (req, reply) => {
+    const mine = branchScope(req, reply, undefined);
+    const branches = await app.prisma.branch.findMany({
+      where: { deletedAt: null, ...(mine ? { id: mine } : {}) },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, stockTakeSchedule: true },
+    });
+    const doneBy = await app.prisma.user.findMany({
+      where: { id: { in: branches.map((b) => b.stockTakeSchedule?.lastDoneById).filter((x): x is number => x != null) } },
+      select: { id: true, name: true },
+    });
+    const nameOf = new Map(doneBy.map((u) => [u.id, u.name]));
+    return branches.map((b) => {
+      const s = b.stockTakeSchedule;
+      return {
+        branchId: b.id,
+        branchName: b.name,
+        frequency: s?.frequency ?? null,
+        nextDue: s?.nextDue ?? null,
+        active: s?.active ?? false,
+        lastDoneAt: s?.lastDoneAt ?? null,
+        lastDoneBy: s?.lastDoneById != null ? nameOf.get(s.lastDoneById) ?? null : null,
+        status: scheduleStatus(s),
+        daysUntilDue: s ? daysUntil(s.nextDue) : null,
+      };
+    });
+  });
+
+  // Set or change a branch's schedule. Admin only: it decides when every branch counts.
+  app.put('/take-schedules/:branchId', { preHandler: requireRole('ADMIN') }, async (req, reply) => {
+    const branchId = Number((req.params as { branchId: string }).branchId);
+    if (!Number.isInteger(branchId)) return reply.code(400).send({ error: 'Invalid branch' });
+    const body = scheduleSchema.parse(req.body);
+    const branch = await app.prisma.branch.findUnique({ where: { id: branchId }, select: { id: true, name: true } });
+    if (!branch) return reply.code(404).send({ error: 'Branch not found' });
+    const nextDue = new Date(`${body.nextDue}T00:00:00`);
+    if (Number.isNaN(nextDue.getTime())) return reply.code(400).send({ error: 'Invalid date' });
+    const before = await app.prisma.stockTakeSchedule.findUnique({ where: { branchId } });
+    const saved = await app.prisma.stockTakeSchedule.upsert({
+      where: { branchId },
+      create: { branchId, frequency: body.frequency, nextDue, active: body.active },
+      update: { frequency: body.frequency, nextDue, active: body.active },
+    });
+    await auditRequest(app.prisma, req, {
+      branchId, entity: 'stock.takeSchedule', entityId: saved.id, action: before ? 'UPDATE' : 'CREATE',
+      details: {
+        branch: branch.name,
+        from: before ? { frequency: before.frequency, nextDue: before.nextDue, active: before.active } : null,
+        to: { frequency: saved.frequency, nextDue: saved.nextDue, active: saved.active },
+      },
+    });
+    return saved;
   });
 
   // Stock movement history — the audit trail behind every quantity change.

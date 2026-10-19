@@ -294,6 +294,22 @@ export interface SupplierStatement {
   totals: { billed: number; paid: number };
 }
 
+export type StockTakeFrequency = 'WEEKLY' | 'MONTHLY' | 'QUARTERLY';
+
+/** A branch's stock take schedule and how it stands today (GET /api/stock/take-schedules). */
+export interface StockTakeScheduleRow {
+  branchId: number;
+  branchName: string;
+  frequency: StockTakeFrequency | null;
+  nextDue: string | null;
+  active: boolean;
+  lastDoneAt: string | null;
+  lastDoneBy: string | null;
+  status: 'scheduled' | 'due' | 'overdue' | 'off';
+  /** Negative when overdue. */
+  daysUntilDue: number | null;
+}
+
 export interface StockTakeRow {
   bookId: number;
   sku: string;

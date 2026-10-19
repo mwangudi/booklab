@@ -2,10 +2,11 @@ import { useMemo, useRef, useState } from 'react';
 import { CheckCircle2, ClipboardList, Download, Upload } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
-import { fmt, today } from '../lib/format';
+import { dateShort, fmt, today } from '../lib/format';
 import { parseCsv } from '../lib/csv';
 import { downloadCsv } from '../lib/reportExport';
 import { BranchSelect, useBranches } from '../components/BranchSelect';
+import { ScheduleCard } from '../components/StockTakeSchedule';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, PageHeader, SectionTitle, Table, Td, Th } from '../components/ui';
 
 interface SheetRow {
@@ -29,6 +30,8 @@ interface TakeResult {
   /** Skipped because the daily correction limit for that product was reached. */
   blocked: string[];
   netUnits: number;
+  /** Set when the branch has a schedule: whether this count completed it. */
+  schedule?: { completed: boolean; coverage: number; nextDue: string; reason?: string } | null;
 }
 
 export default function StockTakePage() {
@@ -159,6 +162,8 @@ export default function StockTakePage() {
         <Loading />
       ) : (
         <>
+          <ScheduleCard branchId={branchId} refreshKey={result} />
+
           <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
             <KpiCard label="Products to count" value={fmt(sheet?.length ?? 0)} tone="blue" icon={<ClipboardList className="h-4 w-4" />} />
             <KpiCard label="Rows uploaded" value={fmt(counts?.length ?? 0)} tone="purple" />
@@ -244,6 +249,19 @@ export default function StockTakePage() {
               {fmt(result.netUnits)} units.
               {result.unknown.length > 0 && ` ${result.unknown.length} SKU(s) were not recognised and were skipped.`} Every
               change is recorded in the stock history against your name.
+            </Alert>
+          )}
+
+          {result?.schedule?.completed && (
+            <Alert tone="green">
+              This was the branch’s scheduled full count — marked done. The next one is due{' '}
+              <b>{dateShort(result.schedule.nextDue)}</b>.
+            </Alert>
+          )}
+          {result?.schedule && !result.schedule.completed && result.schedule.reason === 'not a full count' && (
+            <Alert tone="amber">
+              The scheduled stock take is still open: this count covered {Math.round(result.schedule.coverage * 100)}% of
+              the products the branch holds, and a full count needs at least 90%.
             </Alert>
           )}
 

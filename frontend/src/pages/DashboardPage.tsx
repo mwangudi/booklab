@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth';
 import { fmt, money, startOfMonth, today } from '../lib/format';
 import type { PnlReport, StockValuation, TodayByBranch } from '../types';
 import { Button, Card, KpiCard, Loading, PageHeader, Pill, SectionTitle, Table, Td, Th } from '../components/ui';
+import { DueStockTakes } from '../components/StockTakeSchedule';
 
 export default function DashboardPage() {
   const { user, canManage } = useAuth();
@@ -37,6 +38,8 @@ export default function DashboardPage() {
           </>
         }
       />
+
+      <DueStockTakes />
 
       {l1 || l2 ? (
         <Loading />
