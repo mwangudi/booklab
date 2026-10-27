@@ -17,6 +17,10 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   default — managers included — and grantable to anyone under Administration →
   Permissions. A granted cashier edits only their own branch; catalogue prices stay
   admin-only.
+- Deployed `d3dba19` 2026-10-27 18:06 EAT. Tested first on a copy of the live data:
+  grid endpoint 23/23, headless-Chrome grid 23/23, permissions 36/36. **Rollback
+  point:** `/root/deploy-bak-20261027-180631`; previous build at
+  `frontend/dist-old-20261027-180631`.
 
 ### Data changes on production (2026-10-27, owner request)
 - **Stock zeroed at every branch**: Kapsabet's 671 products / 6,708 units (Luanda and
