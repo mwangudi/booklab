@@ -11,6 +11,10 @@ Multi-branch retail platform for **Booklab Bookshop** — “For Quality, For Yo
 6. **Reports** — P&L, sales, stock valuation, **daily Z-report** (cash-up) and a **re-order report**, each per branch and exportable to **CSV and PDF**.
 7. **Audit trail** — every sensitive action (sign-ins, price changes, stock takes, voids, reprints, payroll) recorded with the user, IP and before/after values, with an admin viewer.
 8. **Public website** — a marketing site at `/` (offerings, branches, contact) with the staff portal at `/login`.
+9. **Permissions per person** — roles set the defaults; an admin can grant or refuse a capability for one person, for a set number of days or until switched off (Administration → Permissions). Cashiers see customers and raise invoices by default.
+10. **Products grid** — edit retail, wholesale and school prices, and a branch's prices and quantities, in a spreadsheet-style grid (paste from Excel, one all-or-nothing save). Admins only unless granted.
+11. **Stock take schedules** — per-branch weekly, monthly or quarterly full counts, with due and overdue reminders on the dashboard.
+12. **Installable app** — install on Android or iPhone from the browser (Administration → Install the app); admins open on the dashboard, cashiers on the till.
 
 Plus the shared infrastructure: JWT auth with role + branch scoping and a store-and-forward sync engine so branch desktops keep working without internet and reconcile with the cloud when connected.
 
@@ -59,6 +63,6 @@ The web app serves the **public site** at `/` and the **staff portal** at `/logi
 **Branding on printed documents:** receipts and the invoice, delivery note and statement PDFs carry the shop logo. Printing uses `frontend/public/logo-print.png` — the logo with its black background knocked out to white, since the original would print as a solid black block on paper. `frontend/public/logo.jpeg` remains the on-screen version.
 
 ## Status
-In production at `https://booklab.localinvestors.co.ke`, **running on demonstration data**. Before the shop trades on it for real, work through [docs/GO-LIVE.md](docs/GO-LIVE.md) — domain, printers, opening stock, the 166 real schools in [docs/booklab-clients.csv](docs/booklab-clients.csv), and a database backup, which is not yet scheduled.
+In production at `https://booklab.localinvestors.co.ke`. Since 2026-10-27 the catalogue holds the real products (1,886 live; see [docs/CATALOGUE.md](docs/CATALOGUE.md)) and stock stands at zero at every branch, ready for opening stock; many selling prices are still to be set in the products grid. Release history and every production data change are in [CHANGELOG.md](CHANGELOG.md). Before the shop trades on it for real, work through [docs/GO-LIVE.md](docs/GO-LIVE.md) — domain, printers, opening stock, the 166 real schools in [docs/booklab-clients.csv](docs/booklab-clients.csv), and a database backup, which is not yet scheduled.
 
 Backend (Fastify + Prisma + MySQL) and frontend (React + Vite + TypeScript) both typecheck and build cleanly. Covers catalogue, stock, POS, sales with void/reprint/discounts, expenses, credit trading (customers, invoices, suppliers, goods received), payroll, reporting, auditing and the offline branch runtime. See [CHANGELOG.md](CHANGELOG.md) for what shipped when and [docs/ROADMAP.md](docs/ROADMAP.md) for what remains.

@@ -14,8 +14,8 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   are audited, quantities are recorded as stock-history adjustments.
 - Pages of 100 rows with edits kept across pages, and a **No price yet** filter.
 - New permission **Edit prices & stock in a grid** (`product.gridEdit`): admins only by
-  default — managers included — and grantable to anyone under Administration →
-  Permissions. A granted cashier edits only their own branch; catalogue prices stay
+  default — managers do not get it either — and grantable to anyone under
+  Administration → Permissions. A granted cashier edits only their own branch; catalogue prices stay
   admin-only.
 - Deployed `d3dba19` 2026-10-27 18:06 EAT. Tested first on a copy of the live data:
   grid endpoint 23/23, headless-Chrome grid 23/23, permissions 36/36. **Rollback
@@ -30,12 +30,25 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   Stationers' `Stationery List.xls`, with no duplicate names: 225 brochure products
   renamed to their full names ("LARGE" → "FLAG LARGE"), 87 recategorised, 55 brochure
   items the first load had lost created at brochure prices, and 1,173 stationery items
-  added (BS-0001…) with the sheet's **Retail column as buying price (cost)** and no
-  selling price yet. 13 same-product pairs across the two files were then merged (the
-  brochure product keeps its price and takes the buying price; the copy is archived).
+  added (BS-0001…) with no selling price yet. See [docs/CATALOGUE.md](docs/CATALOGUE.md).
   Record: [docs/catalogue-import-2026-10-27.csv](docs/catalogue-import-2026-10-27.csv).
-  Backups `/root/pre-catalogue-import-20261027-172802.sql.gz`,
-  `/root/pre-duplicate-merge-20261027-175317.sql.gz`, `/root/pre-cost-retail-20261027-180522.sql.gz`.
+  Backup `/root/pre-catalogue-import-20261027-172802.sql.gz`.
+- **13 same-product pairs merged** across the two files (e.g. the brochure's "STAPLER HD
+  23S24 (GIANT)" and the sheet's "KANGARO STAPLER HD 23 S 24"): the brochure product
+  keeps its selling price and takes the sheet's buying price as cost; the copy, which
+  had no sales or stock, is archived. The two Kangaro quotation products (DP 700 punch,
+  HD 45S stapler) kept their own costs. Backup `/root/pre-duplicate-merge-20261027-175317.sql.gz`.
+- **Buying price = the sheet's Retail column.** The import first took the W/Sale column
+  as cost; the owner confirmed the Retail column is Booklab's buying price, so 801
+  costs were changed to it (e.g. Acrylic Paint 100ml 150 → 170; the HD 23S24 stapler
+  3,495 → 3,540). Only costs still as imported were touched. Backup
+  `/root/pre-cost-retail-20261027-180522.sql.gz`.
+- **Retail and school prices were cleared on every product and then restored.** A
+  request to remove them was withdrawn minutes later ("from the Bhavinn sheet only pick
+  cost, the rest remain"), so all 726 retail prices and 12 school prices went back to
+  their previous values. Net effect: none. Both steps are in the audit log
+  (`CLEAR_PRICES`, `RESTORE_PRICES`); the old prices are also in
+  `/root/prices-before-clear-20261027-180943.tsv`.
 
 ## 2026-10-19 — Audit log shows nested details instead of "[object Object]"
 
