@@ -14,6 +14,9 @@ export interface CustomerRequestRow {
   organisation: string | null;
   location: string;
   note: string | null;
+  /** Typed into the website's quotation form instead of picking catalogue items. */
+  listText: string | null;
+  preferredBranch: string | null;
   status: 'NEW' | 'CONTACTED' | 'INVOICED' | 'CLOSED' | 'CANCELLED';
   invoiceId: number | null;
   createdAt: string;
@@ -85,7 +88,7 @@ export default function CustomerRequestsPage() {
                       <div className="text-xs text-muted-foreground">{r.organisation ? `${r.name} · ` : ''}{r.phone}</div>
                     </Td>
                     <Td>{r.location}</Td>
-                    <Td num>{fmt(r._count?.items ?? 0)}</Td>
+                    <Td num>{(r._count?.items ?? 0) > 0 ? fmt(r._count?.items ?? 0) : r.listText ? 'typed list' : '0'}</Td>
                     <Td><Pill tone={REQUEST_TONE[r.status]}>{r.status.toLowerCase()}</Pill></Td>
                   </tr>
                 ))}

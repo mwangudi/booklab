@@ -87,6 +87,7 @@ export default function CustomerRequestPage() {
           <div className="text-sm flex items-center gap-2"><Phone className="h-4 w-4 text-muted-foreground" /><a href={`tel:${r.phone}`} className="text-primary hover:underline">{r.phone}</a></div>
           {r.email && <div className="text-sm flex items-center gap-2"><Mail className="h-4 w-4 text-muted-foreground" /><a href={`mailto:${r.email}`} className="text-primary hover:underline">{r.email}</a></div>}
           <div className="text-sm flex items-start gap-2"><MapPin className="h-4 w-4 mt-0.5 text-muted-foreground" />{r.location}</div>
+          {r.preferredBranch && <div className="text-sm">Preferred branch: <b>{r.preferredBranch}</b></div>}
           {r.note && <div className="rounded-md bg-muted/60 p-2 text-sm whitespace-pre-wrap">{r.note}</div>}
           {!done && can('invoice.create') && (
             <div className="flex flex-wrap gap-2 pt-2">
@@ -99,6 +100,15 @@ export default function CustomerRequestPage() {
 
         <Card className="p-4 lg:col-span-2">
           <SectionTitle>Items asked for</SectionTitle>
+          {r.listText && (
+            <div className="mb-3">
+              <div className="text-xs font-medium text-muted-foreground mb-1">Their list, as typed on the website</div>
+              <div className="rounded-md border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap">{r.listText}</div>
+            </div>
+          )}
+          {r.items.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No catalogue items picked — work from their list above. The invoice starts empty; add the lines in the invoice editor.</p>
+          ) : (
           <div className="overflow-x-auto">
             <Table>
               <thead>
@@ -116,6 +126,7 @@ export default function CustomerRequestPage() {
               </tbody>
             </Table>
           </div>
+          )}
           {short.length > 0 && (
             <p className="mt-2 text-xs text-[#8a5a00]">
               {short.length} item{short.length === 1 ? '' : 's'} asked for in a larger quantity than all branches hold together. Agree the quantities with the customer.

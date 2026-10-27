@@ -81,3 +81,7 @@ body {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Horizontal chip rows on the public website scroll without a visible bar. */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }

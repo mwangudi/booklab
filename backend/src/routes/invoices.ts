@@ -472,7 +472,12 @@ export async function invoiceRoutes(app: FastifyInstance) {
           priceTier: tier,
           chargeVat,
           vatMode,
-          notes: `Website request ${request.number} — deliver to: ${request.location}${request.note ? `\nCustomer note: ${request.note}` : ''}`,
+          notes: [
+            `Website request ${request.number} — deliver to: ${request.location}`,
+            request.preferredBranch ? `Preferred branch: ${request.preferredBranch}` : null,
+            request.listText ? `Requested list:\n${request.listText}` : null,
+            request.note ? `Customer note: ${request.note}` : null,
+          ].filter(Boolean).join('\n'),
           subtotal: priced.subtotal,
           vatTotal: priced.vatTotal,
           total: priced.total,

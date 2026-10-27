@@ -771,6 +771,11 @@ model CustomerRequest {
   /// Where the goods are to be delivered.
   location      String                @db.VarChar(200)
   note          String?               @db.Text
+  /// A list typed or pasted into the quotation form instead of (or as well as)
+  /// catalogue items, e.g. a school's booklist.
+  listText      String?               @db.Text
+  /// The branch the customer would like to supply them, if they said.
+  preferredBranch String?             @db.VarChar(60)
   status        CustomerRequestStatus @default(NEW)
   /// The draft invoice made from it, once staff have done so.
   invoiceId     Int?

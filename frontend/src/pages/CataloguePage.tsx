@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Check, ChevronLeft, ChevronRight, ClipboardList, Minus, Plus, Search } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useRequestList } from '../lib/requestList';
-import { PublicHeader } from '../components/PublicHeader';
+import { PublicHeader, SiteFooter } from '../components/PublicHeader';
 
 interface Item {
   id: number;
@@ -19,8 +19,14 @@ const PAGE = 48;
 export default function CataloguePage() {
   const [items, setItems] = useState<Item[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState('');
-  const [category, setCategory] = useState('');
+  // The header's search box and the category links arrive as ?q= and ?category=.
+  const [params] = useSearchParams();
+  const [q, setQ] = useState(params.get('q') ?? '');
+  const [category, setCategory] = useState(params.get('category') ?? '');
+  useEffect(() => {
+    setQ(params.get('q') ?? '');
+    setCategory(params.get('category') ?? '');
+  }, [params]);
   const [page, setPage] = useState(0);
   const [qty, setQty] = useState<Record<number, number>>({});
   const [added, setAdded] = useState<number | null>(null);
@@ -33,9 +39,10 @@ export default function CataloguePage() {
       .catch((e) => setError(e instanceof ApiError ? e.message : 'The catalogue could not be loaded. Check your connection.'));
   }, []);
 
+  // Keep the chosen category in the list even when nothing in it is in stock, so the box shows what is filtered.
   const categories = useMemo(
-    () => [...new Set((items ?? []).map((i) => i.category).filter((c): c is string => !!c))].sort(),
-    [items],
+    () => [...new Set([...(items ?? []).map((i) => i.category), category].filter((c): c is string => !!c))].sort(),
+    [items, category],
   );
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -57,20 +64,21 @@ export default function CataloguePage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-site-canvas text-site-ink font-site">
       <PublicHeader />
 
-      <section className="bg-gradient-to-br from-[#7a2e12] via-[#b4530a] to-[#f7941d] text-white">
-        <div className="max-w-6xl mx-auto px-4 py-10">
-          <h1 className="text-3xl sm:text-4xl font-extrabold">Our catalogue</h1>
-          <p className="mt-2 max-w-2xl text-white/90">
+      <section className="bg-site-navy text-white">
+        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-10">
+          <p className="font-display text-[12px] font-semibold uppercase tracking-wider text-[#ffb691]">In stock now</p>
+          <h1 className="mt-1 font-display text-[30px] sm:text-[40px] font-bold tracking-tight">Our catalogue</h1>
+          <p className="mt-2 max-w-2xl text-white/75">
             Everything shown is in stock now. Add what you need to your request and send it: we will get back to you with
             an invoice and arrange delivery.
           </p>
         </div>
       </section>
 
-      <main className="max-w-6xl mx-auto px-4 py-8 space-y-5">
+      <main className="max-w-[1280px] mx-auto px-4 sm:px-6 py-8 space-y-5">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -78,13 +86,13 @@ export default function CataloguePage() {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search for a product…"
-              className="w-full rounded-lg border border-input bg-background py-2.5 pl-9 pr-3 text-[16px] sm:text-sm outline-none focus:border-primary"
+              className="w-full rounded border border-site-line-strong bg-white py-2.5 pl-9 pr-3 text-[16px] sm:text-sm text-site-navy outline-none focus:border-site-ochre focus:ring-2 focus:ring-site-ochre/30"
             />
           </div>
           <select
             value={category}
             onChange={(e) => setCategory(e.target.value)}
-            className="rounded-lg border border-input bg-background px-3 py-2.5 text-[16px] sm:text-sm outline-none focus:border-primary sm:w-56"
+            className="rounded border border-site-line-strong bg-white px-3 py-2.5 text-[16px] sm:text-sm text-site-navy outline-none focus:border-site-ochre focus:ring-2 focus:ring-site-ochre/30 sm:w-64"
             aria-label="Category"
           >
             <option value="">All categories</option>
@@ -98,23 +106,27 @@ export default function CataloguePage() {
         {!items && !error && <p className="py-16 text-center text-muted-foreground">Loading the catalogue…</p>}
         {items && shown.length === 0 && (
           <p className="py-16 text-center text-muted-foreground">
-            {items.length === 0 ? 'Our stock is being updated. Please check back soon, or call us.' : 'Nothing matches your search.'}
+            {items.length === 0
+              ? 'Our stock is being updated. Please check back soon, or call us.'
+              : category && !q.trim()
+                ? `Nothing in ${category} is in stock right now. Send us your list and we will source it for you.`
+                : 'Nothing matches your search.'}
           </p>
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {rows.map((i) => (
-            <div key={i.id} className="flex flex-col rounded-xl border border-border bg-card p-4">
+            <div key={i.id} className="flex flex-col rounded-lg border border-site-line bg-white p-4 shadow-site-1 transition hover:border-site-line-strong hover:shadow-site-2">
               <div className="flex-1">
-                <div className="font-semibold leading-snug">{i.title}</div>
-                <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  {i.category && <span className="rounded-md bg-muted px-2 py-0.5">{i.category}</span>}
+                <div className="font-display font-semibold leading-snug text-site-navy">{i.title}</div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-site-muted">
+                  {i.category && <span className="rounded border border-site-line bg-site-alt px-2 py-0.5 text-site-navy/80">{i.category}</span>}
                   <span>Per {i.unit.toLowerCase()}</span>
-                  <span className="inline-flex items-center gap-1 text-[#1a7a4a]"><Check className="h-3.5 w-3.5" /> In stock</span>
+                  <span className="inline-flex items-center gap-1 rounded border border-[#bbf7d0] bg-site-sage px-1.5 py-0.5 font-display text-[10px] font-bold uppercase tracking-wider text-site-sage-ink"><Check className="h-3 w-3" /> In stock</span>
                 </div>
               </div>
               <div className="mt-3 flex items-center gap-2">
-                <div className="inline-flex items-center rounded-lg border border-input">
+                <div className="inline-flex items-center rounded border border-site-line-strong">
                   <button type="button" aria-label="Fewer" className="p-2 hover:bg-muted" onClick={() => setQty((p) => ({ ...p, [i.id]: Math.max(1, (p[i.id] ?? 1) - 1) }))}>
                     <Minus className="h-4 w-4" />
                   </button>
@@ -132,7 +144,7 @@ export default function CataloguePage() {
                 <button
                   type="button"
                   onClick={() => add(i)}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded bg-site-ochre px-3 py-2 font-display text-sm font-semibold text-white hover:bg-site-ochre-dark"
                 >
                   {added === i.id ? <><Check className="h-4 w-4" /> Added</> : <><Plus className="h-4 w-4" /> Add to request</>}
                 </button>
@@ -153,15 +165,20 @@ export default function CataloguePage() {
             </button>
           </div>
         )}
+        <p className="pt-4 text-sm text-site-muted">
+          Can’t find what you need? <Link to="/#quote" className="font-semibold text-site-ochre hover:underline">Send us your list</Link> and we will quote for it.
+        </p>
       </main>
 
+      <SiteFooter />
+
       {list.count > 0 && (
-        <div className="sticky bottom-0 z-20 border-t border-border bg-card/95 backdrop-blur">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+        <div className="sticky bottom-0 z-20 border-t border-site-line bg-white/95 backdrop-blur shadow-site-3">
+          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
             <span className="text-sm">
               <b>{list.count}</b> item{list.count === 1 ? '' : 's'} in your request
             </span>
-            <Link to="/catalogue/request" className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90">
+            <Link to="/catalogue/request" className="inline-flex items-center gap-1.5 rounded bg-site-ochre px-4 py-2 font-display text-sm font-semibold text-white hover:bg-site-ochre-dark">
               <ClipboardList className="h-4 w-4" /> Review and send
             </Link>
           </div>

@@ -16,9 +16,15 @@ const requestSchema = z.object({
   organisation: z.string().trim().max(160).optional(),
   location: z.string().trim().min(2).max(200),
   note: z.string().trim().max(2000).optional(),
-  items: z.array(z.object({ bookId: z.number().int(), quantity: z.number().int().min(1).max(100_000) })).min(1).max(200),
+  /** The quotation form's free-text list (a booklist, reagents, page counts…). */
+  listText: z.string().trim().max(5000).optional(),
+  preferredBranch: z.enum(['Luanda', 'Kapsabet', 'Mumias']).optional(),
+  items: z.array(z.object({ bookId: z.number().int(), quantity: z.number().int().min(1).max(100_000) })).max(200).default([]),
   /** Left empty by people; bots fill every field they see. */
   website: z.string().max(0).optional(),
+}).refine((b) => b.items.length > 0 || (b.listText ?? '').length >= 3, {
+  message: 'Add items from the catalogue, or type what you need.',
+  path: ['items'],
 });
 
 /** Products with stock on hand somewhere, as the website may show them. */
@@ -73,6 +79,8 @@ export async function publicCatalogueRoutes(app: FastifyInstance) {
             organisation: body.organisation || null,
             location: body.location,
             note: body.note || null,
+            listText: body.listText || null,
+            preferredBranch: body.preferredBranch ?? null,
             ip: req.ip,
             items: { create: ok.map((b) => ({ bookId: b.id, title: b.title, quantity: qty.get(b.id)! })) },
           },
@@ -80,7 +88,7 @@ export async function publicCatalogueRoutes(app: FastifyInstance) {
         });
         await writeAudit(app.prisma, {
           entity: 'customerRequest', entityId: created.id, action: 'CREATE', ip: req.ip,
-          details: { number, name: body.name, organisation: body.organisation ?? null, lines: ok.length },
+          details: { number, name: body.name, organisation: body.organisation ?? null, lines: ok.length, typedList: !!body.listText },
         });
         return reply.code(201).send({ number: created.number });
       } catch (e) {

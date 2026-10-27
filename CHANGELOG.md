@@ -3,6 +3,32 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-27 — Website redesign and quotation form
+
+### Website: new design
+- Public pages (`/`, `/catalogue`, `/catalogue/request`) follow the Stitch design in
+  `docs/DESIGN-website.md` (mockup `docs/design-website-mockup.png`): navy top bar with
+  the phone numbers, sticky header with search and the request basket, a category row,
+  Plus Jakarta Sans and Space Grotesk, ochre and navy tokens (`colors.site` in Tailwind).
+- Home page: hero, fact tiles (3 branches, 11 supply areas, logo exercise books,
+  delivery), six supply-division cards linking to the filtered catalogue, a "Prices on
+  request" band, branches with landmarks, and a shared footer. Only confirmed facts are
+  shown; no prices anywhere; "KRA tax compliant" without the PIN.
+- **Download 2026 price list** serves `/site/booklab-price-catalogue-2026.pdf`: brochure
+  pages 2–4 only (the page with the tax certificate is left out).
+- Catalogue reads `?q=` and `?category=`; the category row highlights the one shown, and
+  an empty category says nothing in it is in stock and points to the quotation form.
+
+### Quotation form (typed list)
+- The home page form takes a school's list as typed text plus a preferred branch
+  (Luanda, Kapsabet, Mumias), with no catalogue items needed. Requests need items or a
+  list of at least 3 characters (list up to 5,000).
+- Staff see the typed list and preferred branch on the request (list shows "typed list").
+  **Make invoice** on such a request creates an empty draft whose notes carry the branch
+  and the list; staff add the lines. An empty invoice still cannot be issued.
+- Migration `20261027220000_request_typed_list`: `CustomerRequest.listText`,
+  `CustomerRequest.preferredBranch` (both nullable).
+
 ## 2026-10-27 — Online catalogue and customer requests; tidy sidebar
 
 ### Website: catalogue and order requests
