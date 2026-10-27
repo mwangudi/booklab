@@ -21,6 +21,7 @@ export const CAPABILITIES = [
   'goods.receive',
   'product.create',
   'expense.manage',
+  'product.gridEdit',
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
@@ -38,13 +39,15 @@ export const CAPABILITY_LABELS: Record<Capability, { label: string; hint: string
   'goods.receive':       { label: 'Receive supplier deliveries', hint: 'Goods received notes, including posting their cost' },
   'product.create':      { label: 'Add or edit products',       hint: 'Change the shared catalogue (catalogue prices stay admin-only)' },
   'expense.manage':      { label: 'Manage expenses',            hint: 'Record and view branch expenses' },
+  'product.gridEdit':    { label: 'Edit prices & stock in a grid', hint: 'Products page grid: retail, wholesale and school prices and quantities for their branch' },
 };
 
 /** What each role gets unless a person is given an exception. Cashier defaults keep
  *  what cashiers could already do, plus seeing customers and raising invoices. */
 const ROLE_DEFAULTS: Record<string, Capability[]> = {
   ADMIN: [...CAPABILITIES],
-  MANAGER: [...CAPABILITIES],
+  // The products grid rewrites prices and stock in bulk: admins only, unless granted.
+  MANAGER: CAPABILITIES.filter((c) => c !== 'product.gridEdit'),
   CASHIER: ['customer.view', 'invoice.create', 'price.edit', 'stock.quantity.edit', 'stock.intake'],
 };
 

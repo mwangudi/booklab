@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { authGuard, requireRole, branchScope, enforceWriteBranch } from '../middleware/authGuard.js';
+import { authGuard, requireRole, branchScope, enforceWriteBranch, isAdmin } from '../middleware/authGuard.js';
 import { requireCapability } from '../middleware/permissions.js';
 import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
 import { actor, auditRequest, writeAudit } from '../lib/audit.js';
@@ -38,6 +38,22 @@ const scheduleSchema = z.object({
   /** The next count's date, YYYY-MM-DD. */
   nextDue: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a date like 2026-11-01'),
   active: z.boolean().default(true),
+});
+/** A price in a grid cell: positive, or null to clear it (blank cell). */
+const gridPrice = z.number().positive().max(10_000_000).nullable().optional();
+const gridSchema = z.object({
+  /** null edits the catalogue (admins only); a branch id edits that branch. */
+  branchId: z.number().int().nullable(),
+  rows: z
+    .array(z.object({
+      bookId: z.number().int(),
+      price: gridPrice,
+      priceWholesale: gridPrice,
+      priceSchool: gridPrice,
+      quantity: z.number().int().min(0).max(10_000_000).optional(),
+    }))
+    .min(1)
+    .max(2000),
 });
 const LOW = 5;
 /// Window used to rank best sellers at the till.
@@ -491,6 +507,117 @@ export async function stockRoutes(app: FastifyInstance) {
       note: r.note,
       user: r.user?.name ?? 'System',
     }));
+  });
+
+  /**
+   * Save a batch of edits from the products grid: retail, wholesale and school prices,
+   * and quantities. With a branch, prices are that branch's own (blank clears them back
+   * to the catalogue) and quantities are set like a stock take. Without one, the
+   * catalogue prices are edited — admins only, since they apply to every branch.
+   * All or nothing: a batch that fails part-way changes nothing.
+   */
+  app.post('/grid', { preHandler: requireCapability('product.gridEdit') }, async (req, reply) => {
+    const body = gridSchema.parse(req.body);
+    const catalogue = body.branchId == null;
+    if (catalogue && !isAdmin(req)) {
+      return reply.code(403).send({ error: 'Catalogue prices apply to every branch, so only an administrator can change them. Choose your branch.' });
+    }
+    const branchId = catalogue ? null : enforceWriteBranch(req, reply, body.branchId);
+    if (catalogue && body.rows.some((r) => r.quantity !== undefined)) {
+      return reply.code(400).send({ error: 'Quantities belong to a branch. Choose a branch to edit them.' });
+    }
+    if (catalogue && body.rows.some((r) => r.price === null)) {
+      return reply.code(400).send({ error: 'Every product needs a retail price in the catalogue.' });
+    }
+
+    const ids = [...new Set(body.rows.map((r) => r.bookId))];
+    const books = await app.prisma.book.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, sku: true, unitPrice: true, priceWholesale: true, priceSchool: true },
+    });
+    const bookById = new Map(books.map((b) => [b.id, b]));
+    const missing = ids.filter((id) => !bookById.has(id));
+    if (missing.length) return reply.code(400).send({ error: `Unknown or archived product(s): ${missing.join(', ')}` });
+
+    const money = (v: unknown) => (v == null ? null : Number(v));
+    const same = (a: unknown, b: unknown) => money(a) === money(b);
+    const summary = { products: 0, prices: 0, quantities: 0, netUnits: 0 };
+
+    await app.prisma.$transaction(async (tx) => {
+      const shelf = branchId == null ? [] : await tx.stock.findMany({ where: { branchId, bookId: { in: ids } } });
+      const shelfByBook = new Map(shelf.map((s) => [s.bookId, s]));
+
+      for (const row of body.rows) {
+        let touched = false;
+        if (catalogue) {
+          const b = bookById.get(row.bookId)!;
+          const patch: Record<string, number | null> = {};
+          if (row.price !== undefined && !same(row.price, b.unitPrice)) patch.unitPrice = row.price;
+          if (row.priceWholesale !== undefined && !same(row.priceWholesale, b.priceWholesale)) patch.priceWholesale = row.priceWholesale;
+          if (row.priceSchool !== undefined && !same(row.priceSchool, b.priceSchool)) patch.priceSchool = row.priceSchool;
+          if (Object.keys(patch).length) {
+            await tx.book.update({ where: { id: b.id }, data: patch });
+            await writeAudit(tx, {
+              ...actor(req), entity: 'book', entityId: b.id, action: 'GRID_SET_PRICE',
+              details: {
+                sku: b.sku,
+                from: { retail: money(b.unitPrice), wholesale: money(b.priceWholesale), school: money(b.priceSchool) },
+                to: { retail: money(patch.unitPrice ?? b.unitPrice), wholesale: money('priceWholesale' in patch ? patch.priceWholesale : b.priceWholesale), school: money('priceSchool' in patch ? patch.priceSchool : b.priceSchool) },
+              },
+            });
+            summary.prices += 1;
+            touched = true;
+          }
+        } else {
+          const existing = shelfByBook.get(row.bookId);
+          const patch: Record<string, number | null> = {};
+          if (row.price !== undefined && !same(row.price, existing?.price)) patch.price = row.price;
+          if (row.priceWholesale !== undefined && !same(row.priceWholesale, existing?.priceWholesale)) patch.priceWholesale = row.priceWholesale;
+          if (row.priceSchool !== undefined && !same(row.priceSchool, existing?.priceSchool)) patch.priceSchool = row.priceSchool;
+          const before = existing?.quantity ?? 0;
+          const qtyChanges = row.quantity !== undefined && row.quantity !== before;
+          if (!Object.keys(patch).length && !qtyChanges) continue;
+
+          await tx.stock.upsert({
+            where: { branchId_bookId: { branchId: branchId!, bookId: row.bookId } },
+            create: { branchId: branchId!, bookId: row.bookId, quantity: qtyChanges ? row.quantity! : 0, ...patch },
+            update: { ...patch, ...(qtyChanges ? { quantity: row.quantity } : {}) },
+          });
+          if (Object.keys(patch).length) {
+            await writeAudit(tx, {
+              ...actor(req), branchId, entity: 'stock.price', entityId: row.bookId, action: 'GRID_SET_PRICE',
+              details: {
+                sku: bookById.get(row.bookId)!.sku,
+                from: { retail: money(existing?.price), wholesale: money(existing?.priceWholesale), school: money(existing?.priceSchool) },
+                to: {
+                  retail: money('price' in patch ? patch.price : existing?.price),
+                  wholesale: money('priceWholesale' in patch ? patch.priceWholesale : existing?.priceWholesale),
+                  school: money('priceSchool' in patch ? patch.priceSchool : existing?.priceSchool),
+                },
+              },
+            });
+            summary.prices += 1;
+          }
+          if (qtyChanges) {
+            const delta = row.quantity! - before;
+            await recordMovement(tx, {
+              branchId: branchId!, bookId: row.bookId, delta, type: 'ADJUST',
+              note: `Grid edit: ${before} -> ${row.quantity}`, userId: req.user.id,
+            });
+            await writeAudit(tx, {
+              ...actor(req), branchId, entity: 'stock.quantity', entityId: row.bookId, action: 'GRID_SET_QTY',
+              details: { sku: bookById.get(row.bookId)!.sku, from: before, to: row.quantity, delta },
+            });
+            summary.quantities += 1;
+            summary.netUnits += delta;
+          }
+          touched = true;
+        }
+        if (touched) summary.products += 1;
+      }
+    }, { timeout: 120_000 });
+
+    return summary;
   });
 
   // Move stock between branches. Recorded as a paired OUT/IN movement.

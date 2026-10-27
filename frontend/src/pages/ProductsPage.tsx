@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Archive, ArchiveRestore, BookOpen, CheckCircle2, Download, FileUp, Pencil, Plus, Upload } from 'lucide-react';
+import { Archive, ArchiveRestore, BookOpen, CheckCircle2, Download, FileUp, Grid3x3, Pencil, Plus, Upload } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
 import { useAuth } from '../lib/auth';
@@ -14,10 +14,16 @@ import type { Book, Stock } from '../types';
 import { DataTable, type Column } from '../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions, Td, Th } from '../components/ui';
 import { Select2 } from '../components/Select2';
+import { ProductGrid } from '../components/ProductGrid';
 
 export default function ProductsPage() {
   const { canManage, isAdmin, branchId: myBranch } = useAuth();
-  const canEditProducts = useCan()('product.create');
+  const can = useCan();
+  const canEditProducts = can('product.create');
+  // Spreadsheet editing of prices and stock: admins, and anyone they grant it to.
+  const canGridEdit = can('product.gridEdit');
+  const [gridMode, setGridMode] = useState(false);
+  const [gridDirty, setGridDirty] = useState(0);
   const [showArchived, setShowArchived] = useState(false);
   const { data: books, loading, refresh } = useApi<Book[]>(`/api/books${showArchived ? '?archived=only' : ''}`, [showArchived]);
   const [category, setCategory] = useState('');
@@ -26,7 +32,7 @@ export default function ProductsPage() {
   // quantity and price override, so the catalogue can be read per shop.
   const { data: branches } = useBranches();
   const [branchId, setBranchId] = useState<number | null>(isAdmin ? null : myBranch);
-  const { data: branchStock } = useApi<Stock[]>(branchId ? `/api/stock/branch/${branchId}` : null, [branchId]);
+  const { data: branchStock, refresh: refreshStock } = useApi<Stock[]>(branchId ? `/api/stock/branch/${branchId}` : null, [branchId]);
   const stockByBook = useMemo(
     () => new Map((branchStock ?? []).map((s) => [s.bookId, s])),
     [branchStock],
@@ -227,9 +233,24 @@ export default function ProductsPage() {
         right={
           <div className="flex items-center gap-2">
             {isAdmin && (branches?.length ?? 0) > 0 && !showArchived && (
-              <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All branches" className="w-44" />
+              <BranchSelect
+                value={branchId}
+                onChange={(v) => {
+                  // The grid edits one branch at a time; switching would drop what is typed.
+                  if (gridMode && gridDirty > 0 && !window.confirm(`Discard ${gridDirty} unsaved change${gridDirty === 1 ? '' : 's'} and switch?`)) return;
+                  setBranchId(v);
+                }}
+                includeAll
+                allLabel={gridMode ? 'Catalogue (all branches)' : 'All branches'}
+                className="w-52"
+              />
             )}
-            {canManage && (
+            {canGridEdit && !showArchived && !gridMode && (
+              <Button variant="outline" onClick={() => setGridMode(true)}>
+                <Grid3x3 className="h-4 w-4" /> Edit in grid
+              </Button>
+            )}
+            {canManage && !gridMode && (
               <>
                 <Button variant="outline" onClick={() => setShowArchived((v) => !v)}>
                   {showArchived ? <BookOpen className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
@@ -253,8 +274,38 @@ export default function ProductsPage() {
       </div>
 
       <Card className="p-4">
-        {loading ? (
+        {/* Only the first load shows the spinner: a refresh after saving the grid must
+            not unmount it, or the "Saved" confirmation would vanish with it. */}
+        {loading && !books ? (
           <Loading />
+        ) : gridMode ? (
+          <div className="space-y-3">
+          <Select2
+            className="sm:w-56"
+            value={category}
+            onChange={(v) => {
+              if (gridDirty > 0 && !window.confirm(`Discard ${gridDirty} unsaved change${gridDirty === 1 ? '' : 's'}?`)) return;
+              setCategory(v);
+            }}
+            options={[{ value: '', label: 'All categories' }, ...PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))]}
+          />
+          <ProductGrid
+            books={rows}
+            branchId={branchId}
+            branchName={branches?.find((b) => b.id === branchId)?.name ?? 'this branch'}
+            shelf={stockByBook}
+            onSaved={() => {
+              refresh();
+              if (branchId) refreshStock();
+            }}
+            onClose={() => {
+              setGridMode(false);
+              setGridDirty(0);
+            }}
+            onDirty={setGridDirty}
+            resetKey={category}
+          />
+          </div>
         ) : (
           <DataTable
             data={rows}

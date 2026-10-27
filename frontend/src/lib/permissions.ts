@@ -17,12 +17,16 @@ export type Capability =
   | 'stock.intake'
   | 'goods.receive'
   | 'product.create'
-  | 'expense.manage';
+  | 'expense.manage'
+  | 'product.gridEdit';
 
 /** Role defaults, used only for a session signed in before capabilities were sent. */
 const ROLE_DEFAULTS: Record<Role, Capability[] | 'all'> = {
   ADMIN: 'all',
-  MANAGER: 'all',
+  MANAGER: [
+    'customer.view', 'invoice.create', 'customer.manage', 'invoice.deliver', 'payment.record', 'sale.tierPrice',
+    'sale.discount', 'price.edit', 'stock.quantity.edit', 'stock.intake', 'goods.receive', 'product.create', 'expense.manage',
+  ],
   CASHIER: ['customer.view', 'invoice.create', 'price.edit', 'stock.quantity.edit', 'stock.intake'],
 };
 

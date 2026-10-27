@@ -3,6 +3,36 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-27 — Edit prices and stock in a grid; catalogue import; stock reset
+
+### Products grid
+- **Edit in grid** on the Products page: spreadsheet-style editing of retail,
+  wholesale and school prices, and — with a branch chosen — that branch's own prices
+  and quantities. Arrow keys / Enter move, Esc undoes a cell, a block pasted from
+  Excel fills down and across; changed cells are highlighted, invalid ones block
+  Save. One Save sends everything, all or nothing (`POST /api/stock/grid`): prices
+  are audited, quantities are recorded as stock-history adjustments.
+- Pages of 100 rows with edits kept across pages, and a **No price yet** filter.
+- New permission **Edit prices & stock in a grid** (`product.gridEdit`): admins only by
+  default — managers included — and grantable to anyone under Administration →
+  Permissions. A granted cashier edits only their own branch; catalogue prices stay
+  admin-only.
+
+### Data changes on production (2026-10-27, owner request)
+- **Stock zeroed at every branch**: Kapsabet's 671 products / 6,708 units (Luanda and
+  Mumias were already 0), each with a stock-history adjustment and an audit entry.
+  Backup `/root/pre-zero-stock-20261027-162628.sql.gz`.
+- **Catalogue 671 → 1,899 products** from `Booklab Catalogue 2026.pdf` and Bhavinn
+  Stationers' `Stationery List.xls`, with no duplicate names: 225 brochure products
+  renamed to their full names ("LARGE" → "FLAG LARGE"), 87 recategorised, 55 brochure
+  items the first load had lost created at brochure prices, and 1,173 stationery items
+  added (BS-0001…) with the sheet's **Retail column as buying price (cost)** and no
+  selling price yet. 13 same-product pairs across the two files were then merged (the
+  brochure product keeps its price and takes the buying price; the copy is archived).
+  Record: [docs/catalogue-import-2026-10-27.csv](docs/catalogue-import-2026-10-27.csv).
+  Backups `/root/pre-catalogue-import-20261027-172802.sql.gz`,
+  `/root/pre-duplicate-merge-20261027-175317.sql.gz`, `/root/pre-cost-retail-20261027-180522.sql.gz`.
+
 ## 2026-10-19 — Audit log shows nested details instead of "[object Object]"
 
 - Entries holding a before/after record — permission changes, branch price changes,
