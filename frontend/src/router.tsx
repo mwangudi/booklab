@@ -9,6 +9,10 @@ import HomePage from './pages/HomePage';
 import DashboardPage from './pages/DashboardPage';
 import InstallAppPage from './pages/InstallAppPage';
 import PermissionsPage from './pages/PermissionsPage';
+import CataloguePage from './pages/CataloguePage';
+import RequestPage from './pages/RequestPage';
+import CustomerRequestsPage from './pages/invoicing/CustomerRequestsPage';
+import CustomerRequestPage from './pages/invoicing/CustomerRequestPage';
 import PosPage from './pages/PosPage';
 import SalesPage from './pages/SalesPage';
 import ProductsPage from './pages/ProductsPage';
@@ -68,6 +72,9 @@ function AppHome() {
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/', element: <HomePage /> },
+  // The public website's catalogue and order request: no sign-in.
+  { path: '/catalogue', element: <CataloguePage /> },
+  { path: '/catalogue/request', element: <RequestPage /> },
   {
     element: <RequireAuth />,
     children: [
@@ -94,6 +101,8 @@ export const router = createBrowserRouter([
           { path: 'customers/new', element: <CapabilityOnly any={['customer.manage']}><CustomerUpsertPage /></CapabilityOnly> },
           { path: 'customers/:id/edit', element: <CapabilityOnly any={['customer.manage']}><CustomerUpsertPage /></CapabilityOnly> },
           { path: 'customers/:id/statement', element: <CapabilityOnly any={['customer.view']}><StatementPage /></CapabilityOnly> },
+          { path: 'requests', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><CustomerRequestsPage /></CapabilityOnly> },
+          { path: 'requests/:id', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><CustomerRequestPage /></CapabilityOnly> },
           { path: 'invoices', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><InvoicesPage /></CapabilityOnly> },
           { path: 'invoices/new', element: <CapabilityOnly any={['invoice.create']}><InvoiceEditorPage /></CapabilityOnly> },
           { path: 'invoices/:id', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><InvoiceEditorPage /></CapabilityOnly> },

@@ -172,6 +172,7 @@ model Book {
   movements StockMovement[]
   invoiceItems InvoiceItem[]
   receiptItems GoodsReceiptItem[]
+  requestItems CustomerRequestItem[]
 
   @@index([deletedAt])
 }
@@ -746,4 +747,49 @@ model UserPermission {
   user       User      @relation(fields: [userId], references: [id])
 
   @@unique([userId, capability])
+}
+
+enum CustomerRequestStatus {
+  NEW
+  CONTACTED
+  INVOICED
+  CLOSED
+  CANCELLED
+}
+
+/// A request sent from the public catalogue on the website: what a school or
+/// customer would like, and how to reach them. Staff turn it into an invoice.
+model CustomerRequest {
+  id            Int                   @id @default(autoincrement())
+  uuid          String                @unique @default(uuid())
+  /// Shown to the customer as their reference, e.g. REQ-0007.
+  number        String                @unique
+  name          String                @db.VarChar(120)
+  phone         String                @db.VarChar(40)
+  email         String?               @db.VarChar(160)
+  organisation  String?               @db.VarChar(160)
+  /// Where the goods are to be delivered.
+  location      String                @db.VarChar(200)
+  note          String?               @db.Text
+  status        CustomerRequestStatus @default(NEW)
+  /// The draft invoice made from it, once staff have done so.
+  invoiceId     Int?
+  handledById   Int?
+  ip            String?               @db.VarChar(45)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  items         CustomerRequestItem[]
+
+  @@index([status, createdAt])
+}
+
+model CustomerRequestItem {
+  id        Int             @id @default(autoincrement())
+  requestId Int
+  bookId    Int
+  /// The product name as the customer saw it.
+  title     String
+  quantity  Int
+  request   CustomerRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  book      Book            @relation(fields: [bookId], references: [id])
 }

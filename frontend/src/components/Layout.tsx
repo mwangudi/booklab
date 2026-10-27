@@ -80,6 +80,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { to: '/invoices', label: 'Invoices', icon: <FileText className={ic} />, caps: ['customer.view', 'invoice.create'] },
       { to: '/customers', label: 'Customers', icon: <Users className={ic} />, caps: ['customer.view', 'invoice.create'] },
+      { to: '/requests', label: 'Website requests', icon: <FileText className={ic} />, caps: ['customer.view', 'invoice.create'] },
     ],
   },
   {
@@ -133,6 +134,7 @@ const GROUPS: NavGroup[] = [
   },
 ];
 
+/** Where the sidebar used to save which sections were open; cleared on load. */
 const OPEN_KEY = 'booklab_nav_open';
 
 const initials = (name: string) =>
@@ -219,29 +221,23 @@ function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => v
     [role, user],
   );
 
-  // Remember which sections the user left open, and always reveal the active page.
-  const [open, setOpen] = useState<Record<string, boolean>>(() => {
-    try {
-      const saved = localStorage.getItem(OPEN_KEY);
-      if (saved) return JSON.parse(saved) as Record<string, boolean>;
-    } catch {
-      /* fall through to defaults */
-    }
-    return { stock: true, reports: true, admin: false };
-  });
+  // One section open at a time, like an accordion: the one holding the current page.
+  // Remembering every section ever opened (as this used to) left them all open, so
+  // nothing is stored any more and the menu starts tidy on every visit.
+  const ownerKey = groups.find((g) => g.items.some((it) => isItemActive(pathname, it)))?.key ?? null;
+  const [openKey, setOpenKey] = useState<string | null>(ownerKey);
 
   useEffect(() => {
-    const owner = groups.find((g) => g.items.some((it) => isItemActive(pathname, it)));
-    if (owner) setOpen((p) => (p[owner.key] ? p : { ...p, [owner.key]: true }));
-  }, [pathname, groups]);
+    if (ownerKey) setOpenKey(ownerKey);
+  }, [ownerKey]);
 
   useEffect(() => {
     try {
-      localStorage.setItem(OPEN_KEY, JSON.stringify(open));
+      localStorage.removeItem(OPEN_KEY);
     } catch {
-      /* storage unavailable — not critical */
+      /* storage unavailable — nothing to clear */
     }
-  }, [open]);
+  }, []);
 
   return (
     <div className="flex h-full flex-col">
@@ -269,8 +265,8 @@ function SidebarContent({ role, onNavigate }: { role: Role; onNavigate?: () => v
               key={g.key}
               group={g}
               pathname={pathname}
-              open={!!open[g.key]}
-              onToggle={() => setOpen((p) => ({ ...p, [g.key]: !p[g.key] }))}
+              open={openKey === g.key}
+              onToggle={() => setOpenKey((k) => (k === g.key ? null : g.key))}
               onNavigate={onNavigate}
             />
           ))}

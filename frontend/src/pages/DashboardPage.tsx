@@ -7,10 +7,13 @@ import { fmt, money, startOfMonth, today } from '../lib/format';
 import type { PnlReport, StockValuation, TodayByBranch } from '../types';
 import { Button, Card, KpiCard, Loading, PageHeader, Pill, SectionTitle, Table, Td, Th } from '../components/ui';
 import { DueStockTakes } from '../components/StockTakeSchedule';
+import { Inbox } from 'lucide-react';
 
 export default function DashboardPage() {
   const { user, canManage } = useAuth();
   const can = useCan();
+  const { data: reqSummary } = useApi<{ new: number }>(can('customer.view', 'invoice.create') ? '/api/requests/summary' : null);
+  const newRequests = reqSummary?.new ?? 0;
   const { data: todayRows, loading: l1 } = useApi<TodayByBranch[]>('/api/sales/today-by-branch');
   const { data: valuation, loading: l2 } = useApi<StockValuation>('/api/stock/valuation');
   const pnlPath = canManage ? `/api/reports/pnl?from=${startOfMonth()}&to=${today()}T23:59:59` : null;
@@ -42,6 +45,17 @@ export default function DashboardPage() {
       />
 
       <DueStockTakes />
+      {can('customer.view', 'invoice.create') && newRequests > 0 && (
+        <Link to="/requests" className="block">
+          <Card className="p-4 flex items-center justify-between gap-3 border-[#d9a441] bg-[#fdf3e0] hover:bg-[#fbeccc]">
+            <span className="flex items-center gap-2 text-sm text-[#8a5a00]">
+              <Inbox className="h-4 w-4" />
+              <b>{newRequests}</b> new website request{newRequests === 1 ? '' : 's'} waiting for a call back
+            </span>
+            <span className="text-sm font-medium text-[#8a5a00]">Open →</span>
+          </Card>
+        </Link>
+      )}
 
       {l1 || l2 ? (
         <Loading />

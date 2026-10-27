@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, CheckCircle2, Plus, Receipt, Save, Trash2, Truck } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
+import { useLocation } from 'react-router-dom';
 import { useCan } from '../../lib/permissions';
 import { money, num, today } from '../../lib/format';
 import { PRODUCT_UNITS } from '../../lib/categories';
@@ -27,6 +28,8 @@ export default function InvoiceEditorPage() {
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id && id !== 'new';
   const navigate = useNavigate();
+  // Set when this draft was just made from a website request.
+  const unpriced = ((useLocation().state as { unpriced?: string[] } | null)?.unpriced) ?? [];
   const can = useCan();
 
   const { data: invoice, loading, refresh } = useApi<Invoice>(isEdit ? `/api/invoices/${id}` : null, [id]);
@@ -212,6 +215,12 @@ export default function InvoiceEditorPage() {
       />
 
       {error && <Alert tone="red">{error}</Alert>}
+      {unpriced.length > 0 && invoice?.status === 'DRAFT' && (
+        <Alert tone="amber">
+          Made from a website request. These items have no selling price yet, so they came in at 0. Enter their prices
+          before issuing: {unpriced.join('; ')}.
+        </Alert>
+      )}
       {readOnly && (
         <Alert tone="blue">
           This invoice is {invoice?.status.toLowerCase()} and can no longer be edited. It remains available to print.

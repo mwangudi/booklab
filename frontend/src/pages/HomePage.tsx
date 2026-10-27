@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { PublicHeader } from '../components/PublicHeader';
 import {
   ArrowRight,
   BookOpen,
@@ -31,26 +32,7 @@ const BRANCHES = [
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-background text-foreground">
-      {/* Header */}
-      <header className="sticky top-0 z-30 bg-card/85 backdrop-blur border-b border-border">
-        <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between gap-4">
-          <a href="#top" className="flex items-center gap-2.5">
-            <img src="/logo.jpeg" alt="Booklab Bookshop" className="h-9 rounded-md" />
-            <span className="font-bold text-[15px] hidden sm:block">Booklab Bookshop</span>
-          </a>
-          <nav className="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
-            <a href="#offer" className="hover:text-foreground">What we offer</a>
-            <a href="#branches" className="hover:text-foreground">Branches</a>
-            <a href="#contact" className="hover:text-foreground">Contact</a>
-          </nav>
-          <Link
-            to="/login"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            Staff Login <ArrowRight className="h-4 w-4" />
-          </Link>
-        </div>
-      </header>
+      <PublicHeader home />
 
       {/* Hero */}
       <section id="top" className="relative overflow-hidden">
@@ -69,9 +51,15 @@ export default function HomePage() {
               computer supplies — quality products at fair prices across our branches.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                to="/catalogue"
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#b4530a] hover:bg-white/90"
+              >
+                <BookOpen className="h-4 w-4" /> Browse the catalogue
+              </Link>
               <a
                 href="#branches"
-                className="inline-flex items-center gap-2 rounded-lg bg-white px-5 py-2.5 text-sm font-semibold text-[#b4530a] hover:bg-white/90"
+                className="inline-flex items-center gap-2 rounded-lg border border-white/40 px-5 py-2.5 text-sm font-semibold text-white hover:bg-white/10"
               >
                 <MapPin className="h-4 w-4" /> Find a branch
               </a>
@@ -160,7 +148,7 @@ export default function HomePage() {
             <h4 className="text-white font-semibold text-sm">Get in touch</h4>
             <ul className="mt-3 space-y-2 text-sm">
               <li className="flex items-center gap-2">
-                <Phone className="h-4 w-4 text-[#f7941d]" /> 07XX XXX XXX
+                <Phone className="h-4 w-4 text-[#f7941d]" /> 0728 492 372 · 0737 452 210
               </li>
               <li className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-[#f7941d]" /> info@booklabbookshop.co.ke

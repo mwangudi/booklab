@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
-import { requireAnyCapability, requireCapability } from '../middleware/permissions.js';
+import { can, requireAnyCapability, requireCapability } from '../middleware/permissions.js';
 import { asVatMode, type InvoiceStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { SYNC_ROLE, enqueueOutbox, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
@@ -393,6 +393,110 @@ export async function invoiceRoutes(app: FastifyInstance) {
     return { ok: true };
   });
 
+  /**
+   * Turn a website request into a draft invoice. The customer is an existing one, or
+   * (with permission to add customers) a new one made from the request's details.
+   * Lines take the school price for the branch, falling back to the catalogue; a
+   * product with no selling price yet comes in at 0 and must be priced before issuing.
+   */
+  app.post('/from-request/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
+    const id = Number((req.params as { id: string }).id);
+    const body = z.object({
+      customerId: z.number().int().optional(),
+      createCustomer: z.boolean().optional(),
+      branchId: z.number().int().nullable().optional(),
+      priceTier: z.enum(['RETAIL', 'WHOLESALE', 'SCHOOL']).default('SCHOOL'),
+    }).parse(req.body ?? {});
+    const request = await app.prisma.customerRequest.findUnique({ where: { id }, include: { items: true } });
+    if (!request) return reply.code(404).send({ error: 'Request not found' });
+    if (request.status === 'INVOICED' && request.invoiceId) return reply.code(409).send({ error: 'This request already has an invoice.' });
+
+    let customer;
+    if (body.customerId) {
+      customer = await app.prisma.customer.findUnique({ where: { id: body.customerId } });
+      if (!customer || customer.deletedAt) return reply.code(400).send({ error: 'Choose a valid customer.' });
+    } else if (body.createCustomer) {
+      if (!(await can(app.prisma, req.user, 'customer.manage'))) {
+        return reply.code(403).send({ error: 'You do not have permission to add customers. Choose an existing customer.' });
+      }
+      customer = await app.prisma.customer.create({
+        data: {
+          name: request.organisation || request.name,
+          type: request.organisation ? 'SCHOOL' : 'INDIVIDUAL',
+          contactPerson: request.name,
+          phone: request.phone,
+          email: request.email,
+          address: request.location,
+          notes: `From website request ${request.number}`,
+        },
+      });
+      await auditRequest(app.prisma, req, {
+        entity: 'customer', entityId: customer.id, action: 'CREATE', details: { name: customer.name, fromRequest: request.number },
+      });
+    } else {
+      return reply.code(400).send({ error: 'Choose the customer to invoice, or create one from the request.' });
+    }
+
+    const branchId = isAdmin(req) ? body.branchId ?? req.user.branchId ?? null : req.user.branchId ?? null;
+    const ids = request.items.map((i) => i.bookId);
+    const [books, shelf] = await Promise.all([
+      app.prisma.book.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, unit: true, vatRate: true, unitPrice: true, priceWholesale: true, priceSchool: true } }),
+      branchId == null ? Promise.resolve([]) : app.prisma.stock.findMany({ where: { branchId, bookId: { in: ids } }, select: { bookId: true, price: true, priceWholesale: true, priceSchool: true } }),
+    ]);
+    const bookById = new Map(books.map((b) => [b.id, b]));
+    const shelfById = new Map(shelf.map((x) => [x.bookId, x]));
+    const tier = body.priceTier;
+    const priceOf = (bookId: number) => {
+      const b = bookById.get(bookId)!;
+      const sh = shelfById.get(bookId);
+      const retail = Number(sh?.price ?? b.unitPrice);
+      if (tier === 'WHOLESALE') return Number(sh?.priceWholesale ?? b.priceWholesale ?? retail);
+      if (tier === 'SCHOOL') return Number(sh?.priceSchool ?? b.priceSchool ?? retail);
+      return retail;
+    };
+    const lines = request.items.map((i) => {
+      const b = bookById.get(i.bookId)!;
+      return { bookId: i.bookId, description: b.title, unit: b.unit || 'Piece', quantity: i.quantity, unitPrice: priceOf(i.bookId), vatRate: Number(b.vatRate) };
+    });
+    const unpriced = lines.filter((l) => l.unitPrice <= 0).map((l) => l.description);
+    const chargeVat = customer.chargeVat;
+    const vatMode = asVatMode(customer.vatMode);
+    const priced = priceLines(lines, vatMode, chargeVat);
+
+    const created = await app.prisma.$transaction(async (tx) => {
+      const inv = await tx.invoice.create({
+        data: {
+          number: await nextNumber('INV', branchId),
+          customerId: customer.id,
+          branchId,
+          priceTier: tier,
+          chargeVat,
+          vatMode,
+          notes: `Website request ${request.number} — deliver to: ${request.location}${request.note ? `\nCustomer note: ${request.note}` : ''}`,
+          subtotal: priced.subtotal,
+          vatTotal: priced.vatTotal,
+          total: priced.total,
+          createdById: req.user.id,
+          items: { create: priced.lines },
+        },
+        include: withItems,
+      });
+      // Claimed in the same transaction, so two people cannot invoice one request twice.
+      const { count } = await tx.customerRequest.updateMany({
+        where: { id, OR: [{ invoiceId: null }, { status: { not: 'INVOICED' } }] },
+        data: { status: 'INVOICED', invoiceId: inv.id, handledById: req.user.id },
+      });
+      if (count === 0) throw Object.assign(new Error('This request already has an invoice.'), { statusCode: 409 });
+      return inv;
+    });
+    await queueInvoice(app.prisma, created.id);
+    await auditRequest(app.prisma, req, {
+      entity: 'invoice', entityId: created.id, branchId: created.branchId, action: 'CREATE',
+      details: { number: created.number, customer: customer.name, fromRequest: request.number, lines: lines.length, unpriced: unpriced.length },
+    });
+    return reply.code(201).send({ invoice: created, unpriced });
+  });
+
   /** Issue the invoice — it stops being a draft and gets a delivery note number. */
   app.post('/:id/issue', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
@@ -401,6 +505,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
     if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
     if (inv.status !== 'DRAFT') return reply.code(409).send({ error: 'Only a draft invoice can be issued.' });
     if (inv.items.length === 0) return reply.code(400).send({ error: 'Add at least one item before issuing.' });
+    const free = inv.items.filter((i) => i.bookId != null && Number(i.unitPrice) <= 0).map((i) => i.description);
+    if (free.length) return reply.code(400).send({ error: `Set a price before issuing: ${free.join('; ')}.` });
 
     const updated = await app.prisma.invoice.update({
       where: { id },

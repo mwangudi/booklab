@@ -3,6 +3,39 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-27 — Online catalogue and customer requests; tidy sidebar
+
+### Website: catalogue and order requests
+- **Catalogue** at `/catalogue` (linked from the home page): the products the shop holds
+  in stock — total across all branches above zero — with search and a category filter.
+  No prices, quantities or branches are shown.
+- Visitors add items and quantities to **a request** and send it with their name, phone,
+  school/organisation, delivery location and a note; no account is needed. They get a
+  reference (`REQ-0001`, …). Public endpoints `GET /api/public/catalogue` and
+  `POST /api/public/requests` expose names, codes, categories and units only.
+- Abuse guards: a hidden bot trap, 5 requests per address per 10 minutes, item and
+  quantity caps, and only in-stock products accepted. Each request is audited with the
+  sender's address.
+- Home page footer shows the shop's numbers (0728 492 372 · 0737 452 210).
+
+### Staff: Website requests
+- **Customers & Invoicing → Website requests**: list and detail (contact, delivery
+  location, items against stock held), mark contacted, cancel or reopen; the dashboard
+  shows how many new ones are waiting. Visible with *See customers* or *Create invoices*.
+- **Make invoice** turns a request into a draft invoice — for an existing customer, or a
+  new one built from the request (needs *Add or edit customers*) — at the school,
+  wholesale or retail price for the branch (`POST /api/invoices/from-request/:id`). A
+  request can be invoiced once. Then the usual flow: issue, delivery note, deliver.
+- **An invoice cannot be issued while a catalogue line is priced 0** (any invoice). Items
+  without a selling price come into a request's invoice at 0 and are flagged.
+- New tables `CustomerRequest`, `CustomerRequestItem` (migration
+  `20261027200000_customer_requests`).
+
+### Sidebar
+- The menu is an accordion: only the section holding the current page is open, opening
+  another closes it, and nothing is remembered between visits. It used to keep every
+  section ever opened, so over time all of them stood open.
+
 ## 2026-10-27 — Edit prices and stock in a grid; catalogue import; stock reset
 
 ### Products grid

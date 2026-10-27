@@ -25,6 +25,8 @@ import { syncRoutes } from './routes/sync.js';
 import { mpesaRoutes } from './routes/mpesa.js';
 import { promoRoutes } from './routes/promo.js';
 import { permissionRoutes } from './routes/permissions.js';
+import { publicCatalogueRoutes } from './routes/publicCatalogue.js';
+import { requestRoutes } from './routes/requests.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -116,6 +118,9 @@ await app.register(syncRoutes, { prefix: '/api/sync' });
 await app.register(mpesaRoutes, { prefix: '/api/mpesa' });
 await app.register(promoRoutes, { prefix: '/api/promo' });
 await app.register(permissionRoutes, { prefix: '/api/permissions' });
+// The website's catalogue and order requests: no sign-in.
+await app.register(publicCatalogueRoutes, { prefix: '/api/public' });
+await app.register(requestRoutes, { prefix: '/api/requests' });
 
 // A branch runs without nginx in front of it, so the API serves the web app
 // itself. Set SERVE_WEB to the built frontend; in the cloud nginx does this.
