@@ -3,6 +3,15 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-27 — Website: wider layout, pinned header, hero carousel
+- Public pages use up to 1,720 px of width (was 1,280) with wider side margins; the hero
+  splits 50/50 on wide screens and the catalogue shows 4 cards per row.
+- The header and category row stay pinned while scrolling; the navy top bar scrolls away.
+  Jump links (`#quote`, `#branches`) land below the pinned header.
+- The hero picture is a carousel of the brochure photos (stationery, lab equipment,
+  computers, furniture): every 5 s, arrows and dots, each caption opens that category;
+  paused on hover or focus and for reduced motion.
+
 ## 2026-10-27 — Website redesign and quotation form
 
 ### Website: new design

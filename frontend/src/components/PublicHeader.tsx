@@ -42,10 +42,11 @@ export function PublicHeader({ home = false }: { home?: boolean }) {
     `shrink-0 rounded px-3 py-1.5 ${on ? 'bg-site-alt font-display font-semibold text-site-ochre' : 'text-site-navy/80 hover:bg-site-alt hover:text-site-navy'}`;
 
   return (
-    <div className="font-site">
+    // The whole frame is sticky, offset by the top bar's height (h-9), so only the header and category row stay on screen.
+    <div className="font-site sticky -top-9 z-30">
       {/* Top bar */}
       <div className="bg-site-navy text-white/85 text-[12px]">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-9 flex items-center justify-between gap-4">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 h-9 flex items-center justify-between gap-4">
           <div className="hidden md:flex items-center gap-3">
             <span className="inline-flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-[#ffb691]" /> Branches in Luanda, Kapsabet &amp; Mumias</span>
             <span className="text-white/30">|</span>
@@ -68,8 +69,8 @@ export function PublicHeader({ home = false }: { home?: boolean }) {
       </div>
 
       {/* Header */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-site-line">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 h-16 flex items-center gap-4">
+      <header className="bg-white border-b border-site-line shadow-site-2">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 h-16 flex items-center gap-4">
           <Link to="/" className="flex items-center gap-2.5 shrink-0">
             <img src="/logo.jpeg" alt="Booklab Bookshop" className="h-10 rounded" />
             <span className="hidden sm:block leading-tight">
@@ -120,7 +121,7 @@ export function PublicHeader({ home = false }: { home?: boolean }) {
 
         {/* Category row */}
         <nav className="border-t border-site-line bg-white" aria-label="Catalogue categories">
-          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 flex items-center gap-1 overflow-x-auto no-scrollbar py-1.5 text-[13px]">
+          <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 flex items-center gap-1 overflow-x-auto no-scrollbar py-1.5 text-[13px]">
             <Link to="/catalogue" className={tab(current === '')} aria-current={current === '' ? 'page' : undefined}>All catalogue</Link>
             {SITE_CATEGORIES.map((c) => (
               <Link key={c.category} to={`/catalogue?category=${encodeURIComponent(c.category)}`} className={tab(current === c.category)} aria-current={current === c.category ? 'page' : undefined}>
@@ -139,7 +140,7 @@ export function PublicHeader({ home = false }: { home?: boolean }) {
 export function SiteFooter() {
   return (
     <footer id="contact" className="font-site bg-site-navy text-white/75">
-      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
+      <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-8">
         <div>
           <div className="flex items-center gap-2.5">
             <img src="/logo.jpeg" alt="" className="h-10 rounded" />
@@ -191,7 +192,7 @@ export function SiteFooter() {
         </div>
       </div>
       <div className="border-t border-white/10">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-5 text-xs text-white/45 flex flex-col sm:flex-row items-center justify-between gap-2">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-5 text-xs text-white/45 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>© {new Date().getFullYear()} Booklab Bookshop. All rights reserved.</span>
           <span>Prices on request · invoices and delivery notes with every order</span>
         </div>

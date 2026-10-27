@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight,
   Armchair,
   BookOpen,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   Download,
@@ -172,6 +173,83 @@ function QuoteForm() {
 const eyebrow = 'font-display text-[12px] font-semibold uppercase tracking-wider text-site-ochre';
 const h2 = 'mt-1 font-display text-[24px] leading-8 sm:text-[32px] sm:leading-10 font-bold tracking-tight text-site-navy';
 
+const SLIDES = [
+  { src: '/site/stationery.jpg', alt: 'Files, exercise books, pens and a calculator', title: 'Stationery & office supplies', category: 'Stationery' },
+  { src: '/site/lab.png', alt: 'Flasks, test tubes and a microscope', title: 'School lab equipment', category: 'Lab Equipment' },
+  { src: '/site/computer.png', alt: 'Desktop computer, monitor, keyboard and mouse', title: 'Computers & printers', category: 'Computers & IT' },
+  { src: '/site/desk.jpg', alt: 'Wooden school desk and steel chair', title: 'School furniture', category: null },
+];
+
+/** The hero picture: the brochure photos in turn, every 5 seconds; paused while pointed at or for reduced motion. */
+function HeroCarousel() {
+  const [i, setI] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const n = SLIDES.length;
+  useEffect(() => {
+    if (paused || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => setI((x) => (x + 1) % n), 5000);
+    return () => clearInterval(t);
+  }, [paused, n]);
+  const go = (d: number) => setI((x) => (x + d + n) % n);
+  const s = SLIDES[i];
+
+  return (
+    <div
+      className="relative bg-white"
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+      aria-roledescription="carousel"
+      aria-label="What we supply"
+    >
+      <div className="relative h-64 sm:h-80 xl:h-96">
+        {SLIDES.map((sl, k) => (
+          <img
+            key={sl.src}
+            src={sl.src}
+            alt={sl.alt}
+            aria-hidden={k !== i}
+            className={`absolute inset-0 m-auto max-h-full max-w-full object-contain p-6 pb-14 transition-opacity duration-700 ${k === i ? 'opacity-100' : 'opacity-0'}`}
+          />
+        ))}
+      </div>
+      <span className="absolute left-3 top-3 rounded bg-site-navy px-2 py-1 font-display text-[10px] font-bold uppercase tracking-wider text-white">Booklab Bookshop</span>
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-white via-white/90 to-transparent px-4 pb-3 pt-6">
+        <div aria-live="polite">
+          {s.category ? (
+            <Link to={`/catalogue?category=${encodeURIComponent(s.category)}`} className="font-display text-sm font-semibold text-site-navy hover:text-site-ochre">
+              {s.title} <ChevronRight className="inline h-4 w-4" />
+            </Link>
+          ) : (
+            <a href="#quote" className="font-display text-sm font-semibold text-site-navy hover:text-site-ochre">
+              {s.title} <ChevronRight className="inline h-4 w-4" />
+            </a>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => go(-1)} className="grid h-7 w-7 place-items-center rounded-full border border-site-line-strong bg-white text-site-navy hover:border-site-ochre" aria-label="Previous picture">
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          {SLIDES.map((sl, k) => (
+            <button
+              key={sl.src}
+              type="button"
+              onClick={() => setI(k)}
+              aria-label={`Show ${sl.title}`}
+              aria-current={k === i}
+              className={`h-2 rounded-full transition-all ${k === i ? 'w-5 bg-site-ochre' : 'w-2 bg-site-line-strong hover:bg-site-muted'}`}
+            />
+          ))}
+          <button type="button" onClick={() => go(1)} className="grid h-7 w-7 place-items-center rounded-full border border-site-line-strong bg-white text-site-navy hover:border-site-ochre" aria-label="Next picture">
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function HomePage() {
   return (
     <div className="min-h-screen bg-site-canvas text-site-ink font-site">
@@ -179,8 +257,8 @@ export default function HomePage() {
 
       {/* Hero */}
       <section id="top" className="border-b border-site-line">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-12 sm:py-16 grid lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-7">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-12 sm:py-16 grid lg:grid-cols-12 gap-10 items-center">
+          <div className="lg:col-span-7 xl:col-span-6">
             <div className="flex flex-wrap gap-2">
               <span className="inline-flex items-center gap-1 rounded border border-[#bae6fd] bg-site-azure-tint px-2.5 py-1 font-display text-[10px] font-bold uppercase tracking-wider text-site-azure-ink">
                 <ShieldCheck className="h-3.5 w-3.5" /> KRA tax compliant
@@ -212,13 +290,9 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="lg:col-span-5">
+          <div className="lg:col-span-5 xl:col-span-6">
             <div className="overflow-hidden rounded-xl border border-site-line bg-white shadow-site-2">
-              <div className="relative bg-site-alt">
-                <img src="/site/stationery.jpg" alt="Stationery, files and calculators" className="w-full h-56 sm:h-64 object-contain p-4" />
-                <img src="/site/lab.png" alt="" className="absolute right-3 bottom-3 h-20 sm:h-24 drop-shadow" />
-                <span className="absolute left-3 top-3 rounded bg-site-navy px-2 py-1 font-display text-[10px] font-bold uppercase tracking-wider text-white">Booklab Bookshop</span>
-              </div>
+              <HeroCarousel />
               <div className="grid grid-cols-2 border-t border-site-line text-sm">
                 {[
                   { icon: Truck, t: 'Delivery', s: 'To your school' },
@@ -239,7 +313,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 pb-12 grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 pb-12 grid grid-cols-2 lg:grid-cols-4 gap-4">
           {FACTS.map((f) => (
             <div key={f.label} className="rounded-lg border border-site-line bg-white p-4 shadow-site-1">
               <div className="font-display text-3xl font-bold text-site-ochre">{f.value}</div>
@@ -251,7 +325,7 @@ export default function HomePage() {
       </section>
 
       {/* Supply divisions */}
-      <section id="offer" className="max-w-[1280px] mx-auto px-4 sm:px-6 py-14">
+      <section id="offer" className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-14">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
           <div>
             <p className={eyebrow}>What we supply</p>
@@ -288,7 +362,7 @@ export default function HomePage() {
 
       {/* In place of the mockup's price schedule: prices are given on request. */}
       <section className="bg-site-navy text-white">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-12 grid lg:grid-cols-12 gap-8 items-center">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-12 grid lg:grid-cols-12 gap-8 items-center">
           <div className="lg:col-span-8">
             <p className="font-display text-[12px] font-semibold uppercase tracking-wider text-[#ffb691]">Prices on request</p>
             <h2 className="mt-1 font-display text-[24px] sm:text-[32px] font-bold tracking-tight">Need prices for your school?</h2>
@@ -309,7 +383,7 @@ export default function HomePage() {
       </section>
 
       {/* Ordering for a school */}
-      <section className="max-w-[1280px] mx-auto px-4 sm:px-6 py-14">
+      <section className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-14">
         <p className={eyebrow}>Ordering for a school</p>
         <h2 className={h2}>Equipping schools with confidence</h2>
         <div className="mt-8 grid md:grid-cols-3 gap-5">
@@ -329,7 +403,7 @@ export default function HomePage() {
 
       {/* Branches */}
       <section id="branches" className="border-y border-site-line bg-white">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-14">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-14">
           <p className={eyebrow}>Physical locations</p>
           <h2 className={h2}>Visit our branches</h2>
           <p className="mt-1 text-site-muted">Walk in to buy, or talk to us about supplying your school.</p>
@@ -352,7 +426,7 @@ export default function HomePage() {
       </section>
 
       {/* Quotation request */}
-      <section id="quote" className="max-w-[1280px] mx-auto px-4 sm:px-6 py-14 grid lg:grid-cols-12 gap-10">
+      <section id="quote" className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-14 grid lg:grid-cols-12 gap-10">
         <div className="lg:col-span-5">
           <p className={eyebrow}>School orders</p>
           <h2 className={h2}>Preparing for Term 1, Term 2 or the science fair?</h2>

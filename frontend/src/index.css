@@ -85,3 +85,6 @@ body {
 /* Horizontal chip rows on the public website scroll without a visible bar. */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
+
+/* The public website's header stays pinned; jump links (#quote, #branches) land below it. */
+html { scroll-padding-top: 7.5rem; }

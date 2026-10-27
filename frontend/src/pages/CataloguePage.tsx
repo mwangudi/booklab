@@ -68,7 +68,7 @@ export default function CataloguePage() {
       <PublicHeader />
 
       <section className="bg-site-navy text-white">
-        <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-10">
+        <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-10">
           <p className="font-display text-[12px] font-semibold uppercase tracking-wider text-[#ffb691]">In stock now</p>
           <h1 className="mt-1 font-display text-[30px] sm:text-[40px] font-bold tracking-tight">Our catalogue</h1>
           <p className="mt-2 max-w-2xl text-white/75">
@@ -78,7 +78,7 @@ export default function CataloguePage() {
         </div>
       </section>
 
-      <main className="max-w-[1280px] mx-auto px-4 sm:px-6 py-8 space-y-5">
+      <main className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-8 space-y-5">
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -114,7 +114,7 @@ export default function CataloguePage() {
           </p>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {rows.map((i) => (
             <div key={i.id} className="flex flex-col rounded-lg border border-site-line bg-white p-4 shadow-site-1 transition hover:border-site-line-strong hover:shadow-site-2">
               <div className="flex-1">
@@ -174,7 +174,7 @@ export default function CataloguePage() {
 
       {list.count > 0 && (
         <div className="sticky bottom-0 z-20 border-t border-site-line bg-white/95 backdrop-blur shadow-site-3">
-          <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-3 flex items-center justify-between gap-3">
+          <div className="max-w-[1720px] mx-auto px-4 sm:px-6 lg:px-10 py-3 flex items-center justify-between gap-3">
             <span className="text-sm">
               <b>{list.count}</b> item{list.count === 1 ? '' : 's'} in your request
             </span>
