@@ -36,6 +36,30 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   another closes it, and nothing is remembered between visits. It used to keep every
   section ever opened, so over time all of them stood open.
 
+### Deployed
+- `778bd52` deployed 2026-10-27 20:36 EAT with migration `20261027200000_customer_requests`.
+  Tested first on a copy of the live data: API 26/26, headless-Chrome journey 15/15.
+  **Rollback point:** `/root/deploy-bak-20261027-203636` (database dump, backend, frontend
+  source and dist); previous build at `frontend/dist-old-20261027-203636`.
+- The website shows only products in stock. At deploy time only one was (Kapsabet, 284 ×
+  EX BK A4 120 PGS SQ), so the catalogue fills as opening stock is entered.
+
+### Data changes on production (2026-10-27, owner request)
+- **1 October test sales cleared**: sales #1–#4 (KES 6,040; #1 already voided "TEST") and
+  their lines, test invoices INV-LUA-0001 and INV-LUA-0002 and their lines, and the 12
+  stock-history entries that existed only because of them — the sale and void entries, the
+  19 Oct PL-0123 transfer correction and the 5 Oct Luanda stock takes that set PL-0021,
+  PL-0085 and PL-0090 back to 0. Three Kapsabet reset entries (PL-0089, PL-0123, PL-0369)
+  now read "10 -> 0". Stock remains 0 and equal to its history; the customer and the audit
+  log are kept, with a `CLEAR_TEST_DATA` entry. Backup
+  `/root/pre-clear-oct1-sales-20261027-204457.sql.gz`.
+- **Known timestamp offset, left as recorded.** Rows written by direct database operations
+  on 2026-10-19 and 2026-10-27 (the PL-0123 correction, the stock reset, the catalogue
+  import, the duplicate merges, the Retail-column costs, the price clear and restore) were
+  stamped with Nairobi time where the app stores UTC, so they display **3 hours later**
+  than they happened. Audit entries are not rewritten; a `system` / `NOTE` audit entry
+  records the offset. Later database operations use UTC.
+
 ## 2026-10-27 — Edit prices and stock in a grid; catalogue import; stock reset
 
 ### Products grid
