@@ -24,6 +24,8 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
 - Hero carousel: taller (up to 30rem), brochure photos upscaled 2.5× and served as WebP;
   the stationery photo's white background removed; cut-outs on a per-slide tint, the
   portrait desk photo over a blurred copy of itself; fade-and-zoom between slides.
+- Contact email **info@booklabbookshop.co.ke** in the top bar (wide screens), under the
+  hero's phone numbers and in the footer (`EMAIL` in `PublicHeader.tsx`).
 
 ## 2026-10-27 — Website: wider layout, pinned header, hero carousel
 - Public pages use up to 1,720 px of width (was 1,280) with wider side margins; the hero

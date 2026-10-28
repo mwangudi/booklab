@@ -12,6 +12,7 @@ import {
   FileText,
   FlaskConical,
   Lock,
+  Mail,
   MapPin,
   NotebookPen,
   Phone,
@@ -23,7 +24,7 @@ import {
   Truck,
 } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
-import { BRANCHES, PHONES, PRICE_LIST, PublicHeader, SiteFooter } from '../components/PublicHeader';
+import { BRANCHES, EMAIL, PHONES, PRICE_LIST, PublicHeader, SiteFooter } from '../components/PublicHeader';
 
 /**
  * Public home page, after the Stitch design (docs/DESIGN-website.md, mockup
@@ -292,6 +293,10 @@ export default function HomePage() {
               {PHONES.map((p, i) => (
                 <a key={p} href={tel(p)} className="font-display font-semibold text-site-navy hover:text-site-ochre">{p}{i === 0 ? ' /' : ''}</a>
               ))}
+            </p>
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-site-muted">
+              <Mail className="h-4 w-4 text-site-ochre" /> Email:
+              <a href={`mailto:${EMAIL}`} className="font-display font-semibold text-site-navy hover:text-site-ochre">{EMAIL}</a>
             </p>
           </div>
 

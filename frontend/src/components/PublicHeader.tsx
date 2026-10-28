@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { ArrowRight, ClipboardList, Download, MapPin, Phone, Search, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ClipboardList, Download, Mail, MapPin, Phone, Search, ShieldCheck } from 'lucide-react';
 import { useRequestList } from '../lib/requestList';
 
 /**
@@ -10,6 +10,7 @@ import { useRequestList } from '../lib/requestList';
  */
 
 export const PHONES = ['0728 492 372', '0737 452 210'];
+export const EMAIL = 'info@booklabbookshop.co.ke';
 export const PRICE_LIST = '/site/booklab-price-catalogue-2026.pdf';
 export const BRANCHES = [
   { name: 'Luanda', where: 'Near Equity Bank' },
@@ -60,6 +61,10 @@ export function PublicHeader({ home = false }: { home?: boolean }) {
                 <a href={tel(p)} className="hover:text-white">{p}</a>
               </span>
             ))}
+            <span className="text-white/30 hidden lg:inline">|</span>
+            <a href={`mailto:${EMAIL}`} className="hidden lg:inline-flex items-center gap-1.5 hover:text-white">
+              <Mail className="h-3.5 w-3.5 text-[#ffb691]" /> {EMAIL}
+            </a>
             <span className="text-white/30 hidden sm:inline">|</span>
             <Link to="/login" className="hidden sm:inline font-display font-semibold uppercase tracking-wide text-[11px] text-[#ffb691] hover:text-white">
               Staff portal
@@ -180,6 +185,7 @@ export function SiteFooter() {
             {PHONES.map((p) => (
               <li key={p} className="flex items-center gap-2"><Phone className="h-4 w-4 text-[#ffb691]" /><a href={tel(p)} className="hover:text-white">{p}</a></li>
             ))}
+            <li className="flex items-center gap-2"><Mail className="h-4 w-4 text-[#ffb691]" /><a href={`mailto:${EMAIL}`} className="hover:text-white break-all">{EMAIL}</a></li>
             <li>
               <a href={PRICE_LIST} target="_blank" rel="noopener" className="inline-flex items-center gap-1.5 hover:text-white">
                 <Download className="h-4 w-4 text-[#ffb691]" /> 2026 price catalogue (PDF)
