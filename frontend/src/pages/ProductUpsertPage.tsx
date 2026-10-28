@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
 import { BOOK_CATEGORIES, PRODUCT_CATEGORIES, PRODUCT_UNITS } from '../lib/categories';
 import { num } from '../lib/format';
 import type { Book } from '../types';
-import { Alert, Button, Card, FormField, Input, Loading, PageHeader } from '../components/ui';
+import { Alert, Button, Card, FormField, Input, Loading, PageHeader, Select } from '../components/ui';
 import { Select2 } from '../components/Select2';
 
 interface BranchStock {
@@ -19,6 +19,37 @@ interface BranchStock {
   priceWholesale: string | number | null;
   priceSchool: string | number | null;
   costPrice: string | number | null;
+}
+
+/** A SKU series and its next free code, from GET /api/books/sku-series. */
+interface SkuSeries {
+  prefix: string;
+  separator: string;
+  count: number;
+  next: string;
+  categories: Array<{ category: string; count: number }>;
+}
+
+/** Where the known series came from; any other series shows its prefix only. */
+const SERIES_NAMES: Record<string, string> = {
+  PL: 'brochure price list',
+  BS: 'Bhavinn stationery',
+  ST: 'older ST codes',
+};
+const OWN_CODE = '';
+
+/** The series most used for a category, else the largest one. */
+function seriesFor(series: SkuSeries[], category: string): SkuSeries | undefined {
+  let best: SkuSeries | undefined;
+  let bestCount = 0;
+  for (const s of series) {
+    const n = s.categories.find((c) => c.category === category)?.count ?? 0;
+    if (n > bestCount) {
+      best = s;
+      bestCount = n;
+    }
+  }
+  return best ?? series[0];
 }
 
 type PriceField = 'price' | 'priceWholesale' | 'priceSchool' | 'costPrice';
@@ -55,6 +86,13 @@ export default function ProductUpsertPage() {
   const existing = useMemo(() => books?.find((b) => String(b.id) === id) ?? null, [books, id]);
 
   const [form, setForm] = useState<FormState>(empty);
+  // New products: suggest the next free code in a series. Typing a code of your own
+  // stops the suggestion following the category.
+  const { data: series, refresh: refreshSeries } = useApi<SkuSeries[]>(isEdit ? null : '/api/books/sku-series');
+  const [seriesKey, setSeriesKey] = useState<string | null>(null);
+  const [ownSku, setOwnSku] = useState(false);
+  const keyOf = (s: SkuSeries) => s.prefix + s.separator;
+  const chosenSeries = series?.find((s) => keyOf(s) === seriesKey);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -102,6 +140,32 @@ export default function ProductUpsertPage() {
   }, [existing]);
 
   const set = (k: keyof FormState, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Follow the category until a series is picked by hand or a code is typed.
+  const [seriesPicked, setSeriesPicked] = useState(false);
+  useEffect(() => {
+    if (isEdit || !series?.length || ownSku) return;
+    const s = seriesPicked ? chosenSeries : seriesFor(series, form.category);
+    if (!s) return;
+    setSeriesKey(keyOf(s));
+    setForm((f) => ({ ...f, sku: s.next }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [series, form.category, seriesPicked, ownSku, isEdit]);
+
+  const pickSeries = (key: string) => {
+    if (key === OWN_CODE) {
+      setOwnSku(true);
+      setSeriesKey(null);
+      setForm((f) => ({ ...f, sku: '' }));
+      return;
+    }
+    const s = series?.find((x) => keyOf(x) === key);
+    if (!s) return;
+    setOwnSku(false);
+    setSeriesPicked(true);
+    setSeriesKey(key);
+    setForm((f) => ({ ...f, sku: s.next }));
+  };
   const showBookFields = BOOK_CATEGORIES.has(form.category);
 
   const submit = async (e: React.FormEvent) => {
@@ -163,7 +227,13 @@ export default function ProductUpsertPage() {
       }
       navigate('/products');
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save the product.');
+      // Someone else took the suggested code meanwhile: fetch the next one.
+      if (!isEdit && err instanceof ApiError && err.status === 409 && !ownSku) {
+        refreshSeries();
+        setError('That code was just taken. The next free code is filled in; save again.');
+      } else {
+        setError(err instanceof ApiError ? err.message : 'Could not save the product.');
+      }
     } finally {
       setSaving(false);
     }
@@ -200,9 +270,47 @@ export default function ProductUpsertPage() {
                 options={PRODUCT_CATEGORIES.map((c) => ({ value: c, label: c }))}
               />
             </FormField>
-            <FormField label="SKU / product code *" hint="Unique internal code used at the till.">
-              <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="BK-0001" className="font-mono" />
-            </FormField>
+            {isEdit || !series?.length ? (
+              <FormField label="SKU / product code *" hint="Unique internal code used at the till.">
+                <Input value={form.sku} onChange={(e) => set('sku', e.target.value)} placeholder="BK-0001" className="font-mono" />
+              </FormField>
+            ) : (
+              <FormField
+                label="SKU / product code *"
+                hint={
+                  chosenSeries && !ownSku
+                    ? `Next free code in the ${chosenSeries.prefix} series${SERIES_NAMES[chosenSeries.prefix] ? ` (${SERIES_NAMES[chosenSeries.prefix]})` : ''}, ${chosenSeries.count} products.`
+                    : 'Your own code. It must not be in use already.'
+                }
+              >
+                <div className="flex gap-2">
+                  <div className="w-28 shrink-0">
+                    <Select
+                      value={ownSku ? OWN_CODE : seriesKey ?? OWN_CODE}
+                      onChange={(e) => pickSeries(e.target.value)}
+                      aria-label="SKU series"
+                    >
+                      {series.map((s) => (
+                        <option key={keyOf(s)} value={keyOf(s)}>{s.prefix}{s.separator}…</option>
+                      ))}
+                      <option value={OWN_CODE}>Own code</option>
+                    </Select>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      value={form.sku}
+                      onChange={(e) => {
+                        set('sku', e.target.value);
+                        if (chosenSeries && e.target.value !== chosenSeries.next) setOwnSku(true);
+                      }}
+                      placeholder="BK-0001"
+                      className="font-mono"
+                      aria-label="SKU"
+                    />
+                  </div>
+                </div>
+              </FormField>
+            )}
             <FormField label="Sold in" hint="Pieces, dozens, reams, cartons, metres, litres…">
               <Select2
                 value={form.unit}

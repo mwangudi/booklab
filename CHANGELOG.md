@@ -3,6 +3,16 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-28 — New products get the next SKU in a series
+- **Products → New product** fills in the next free code in a SKU series: `BS-` (Bhavinn
+  stationery), `PL-` (brochure price list), `ST` (older codes) or any other series in use.
+  It follows the series most used for the chosen category (Stationery → BS, Lab Equipment
+  → PL) until a series is picked or a code typed by hand; "Own code" clears the box.
+- The next code is one past the highest in the series; archived products keep their codes,
+  so those are never suggested again. If the code is taken meanwhile, the form refetches the
+  next one. `GET /api/books/sku-series` (needs *Add products*); logic in
+  `backend/src/lib/skuSeries.ts`. Editing a product is unchanged.
+
 ## 2026-10-28 — New address www.booklabbookshop.co.ke; Roboto; bigger hero pictures
 
 ### New domain

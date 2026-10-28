@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authGuard, requireRole, isAdmin } from '../middleware/authGuard.js';
 import { requireCapability } from '../middleware/permissions.js';
 import { auditRequest, diff } from '../lib/audit.js';
+import { skuSeries } from '../lib/skuSeries.js';
 
 const bookSchema = z.object({
   title: z.string().min(1),
@@ -55,6 +56,12 @@ export async function bookRoutes(app: FastifyInstance) {
       // 500 cap silently hid stock once the real price list was loaded.
       take: 5000,
     });
+  });
+
+  // The SKU series in use and the next free code in each, for the new-product form.
+  app.get('/sku-series', { preHandler: requireCapability('product.create') }, async () => {
+    const rows = await app.prisma.book.findMany({ select: { sku: true, category: true, deletedAt: true } });
+    return skuSeries(rows);
   });
 
   app.post('/', { preHandler: requireCapability('product.create') }, async (req, reply) => {
