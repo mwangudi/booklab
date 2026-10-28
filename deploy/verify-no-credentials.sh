@@ -3,7 +3,7 @@
 set -uo pipefail
 ASSET=$(grep -o '/assets/index-[A-Za-z0-9_-]*\.js' /var/www/booklab/frontend/dist/index.html | head -1)
 echo "serving: $ASSET"
-BODY=$(curl -s "https://booklab.localinvestors.co.ke$ASSET")
+BODY=$(curl -s "https://www.booklabbookshop.co.ke$ASSET")
 echo "bytes: ${#BODY}"
 for pat in admin123 cashier123 manager123 'Demo admin' 'admin@booklabbookshop'; do
   if printf '%s' "$BODY" | grep -qF "$pat"; then

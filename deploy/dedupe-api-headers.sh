@@ -6,7 +6,7 @@
 # Hide the upstream's copies so nginx is the single source of truth here. Helmet
 # stays enabled because a branch laptop runs Fastify with no nginx in front.
 set -euo pipefail
-VHOST=/etc/nginx/sites-enabled/booklab.localinvestors.co.ke.conf
+VHOST=/etc/nginx/sites-enabled/booklabbookshop.co.ke.conf
 cp "$VHOST" "/root/booklab-vhost.hide.$(date +%Y%m%d%H%M%S).bak"
 
 python3 - "$VHOST" <<'PY'

@@ -55,7 +55,7 @@ for u in sorted(users, key=lambda x: x["id"]):
 path = "/root/booklab-credentials-%s.txt" % date.today().isoformat()
 with open(path, "w") as f:
     f.write("Booklab sign-in details - generated %s\n" % date.today().isoformat())
-    f.write("Sign in at https://booklab.localinvestors.co.ke with the USERNAME.\n")
+    f.write("Sign in at https://www.booklabbookshop.co.ke with the USERNAME.\n")
     f.write("Give each person only their own line, then delete this file.\n")
     f.write("=" * 72 + "\n\n")
     for u, pw, ok in rotated:

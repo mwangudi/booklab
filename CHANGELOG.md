@@ -3,6 +3,28 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-10-28 — New address www.booklabbookshop.co.ke; Roboto; bigger hero pictures
+
+### New domain
+- The system is now at **https://www.booklabbookshop.co.ke**. `booklabbookshop.co.ke` and
+  plain HTTP redirect there (vhost `deploy/nginx/booklabbookshop.co.ke.conf`, Let's Encrypt
+  certificate via webroot `/var/www/letsencrypt`, auto-renewal tested).
+- `booklab.localinvestors.co.ke` is **retired**: its vhost and certificate are deleted and
+  the server refuses the name. `CORS_ORIGIN` and the M-Pesa callback use the new address.
+- Installed apps (PWA) belong to the old address: staff reinstall from the new one. Branch
+  laptops need `CLOUD_URL="https://www.booklabbookshop.co.ke"` (the Kapsabet laptop is
+  being reinstalled afresh).
+- Install page, branch `.env` template, deploy scripts and docs use the new address;
+  `deploy/provision.sh` gets the certificate before installing the vhost and needs
+  `LE_EMAIL` set.
+
+### Website
+- Public pages use **Roboto** (Plus Jakarta Sans and Space Grotesk are no longer loaded).
+  The staff app keeps Inter.
+- Hero carousel: taller (up to 30rem), brochure photos upscaled 2.5× and served as WebP;
+  the stationery photo's white background removed; cut-outs on a per-slide tint, the
+  portrait desk photo over a blurred copy of itself; fade-and-zoom between slides.
+
 ## 2026-10-27 — Website: wider layout, pinned header, hero carousel
 - Public pages use up to 1,720 px of width (was 1,280) with wider side margins; the hero
   splits 50/50 on wide screens and the catalogue shows 4 cards per row.

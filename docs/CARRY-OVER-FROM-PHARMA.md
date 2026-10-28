@@ -2,7 +2,7 @@
 
 **Written** 2026-08-25 · **For** a fresh context window working in `c:\Users\v-mwangudi\source\repos\bookshop`
 **Deployed as** `booklab` — `/var/www/booklab`, service `booklab-api`, database `booklab`,
-nginx `booklab.localinvestors.co.ke.conf`, same droplet as pharma (`root@46.101.6.131`).
+nginx `booklabbookshop.co.ke.conf`, same droplet as pharma (`root@46.101.6.131`).
 
 Between 21–25 August a set of fixes went into PharmaCare. This document records which of them
 apply to Booklab, which do **not**, and why — based on reading the deployed code and querying the
@@ -123,7 +123,7 @@ Fixed on 24 August via `/etc/nginx/conf.d/gzip.conf`, which sits in the **http b
 already covers Booklab. Confirmed live:
 
 ```
-curl -I -H "Accept-Encoding: gzip" https://booklab.localinvestors.co.ke/
+curl -I -H "Accept-Encoding: gzip" https://www.booklabbookshop.co.ke/
 → Content-Encoding: gzip
 ```
 

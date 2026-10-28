@@ -2,7 +2,7 @@
 # Ensure the SPA fallback sends a no-cache header so browsers never get stuck on
 # a stale index.html (and therefore an old JS bundle) after a redeploy.
 set -euo pipefail
-CONF=/etc/nginx/sites-available/booklab.localinvestors.co.ke.conf
+CONF=/etc/nginx/sites-available/booklabbookshop.co.ke.conf
 
 if [ "$(grep -c 'no-cache, must-revalidate' "$CONF")" -ge 2 ]; then
   echo "already patched"

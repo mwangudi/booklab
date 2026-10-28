@@ -10,7 +10,7 @@
 # one changes nothing at all.
 set -euo pipefail
 
-VHOST=/etc/nginx/sites-enabled/booklab.localinvestors.co.ke.conf
+VHOST=/etc/nginx/sites-enabled/booklabbookshop.co.ke.conf
 SNIPPET=/etc/nginx/snippets/booklab-security.conf
 STAMP=$(date +%Y%m%d%H%M%S)
 BACKUP="/root/booklab-enabled-vhost.$STAMP.bak"

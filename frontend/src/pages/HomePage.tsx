@@ -173,11 +173,12 @@ function QuoteForm() {
 const eyebrow = 'font-display text-[12px] font-semibold uppercase tracking-wider text-site-ochre';
 const h2 = 'mt-1 font-display text-[24px] leading-8 sm:text-[32px] sm:leading-10 font-bold tracking-tight text-site-navy';
 
+// Brochure photos, upscaled; cut-outs sit on a tint, the (portrait) desk photo sits on a blurred copy of itself.
 const SLIDES = [
-  { src: '/site/stationery.jpg', alt: 'Files, exercise books, pens and a calculator', title: 'Stationery & office supplies', category: 'Stationery' },
-  { src: '/site/lab.png', alt: 'Flasks, test tubes and a microscope', title: 'School lab equipment', category: 'Lab Equipment' },
-  { src: '/site/computer.png', alt: 'Desktop computer, monitor, keyboard and mouse', title: 'Computers & printers', category: 'Computers & IT' },
-  { src: '/site/desk.jpg', alt: 'Wooden school desk and steel chair', title: 'School furniture', category: null },
+  { src: '/site/hero-stationery.webp', alt: 'Files, exercise books, pens and a calculator', title: 'Stationery & office supplies', category: 'Stationery', bg: 'bg-site-ochre-tint', fill: false },
+  { src: '/site/hero-lab.webp', alt: 'Flasks, test tubes and a microscope', title: 'School lab equipment', category: 'Lab Equipment', bg: 'bg-site-sage', fill: false },
+  { src: '/site/hero-computer.webp', alt: 'Desktop computer, monitor, keyboard and mouse', title: 'Computers & printers', category: 'Computers & IT', bg: 'bg-site-azure-tint', fill: false },
+  { src: '/site/hero-desk.jpg', alt: 'Wooden school desk and steel chair', title: 'School furniture', category: null, bg: 'bg-site-alt', fill: true },
 ];
 
 /** The hero picture: the brochure photos in turn, every 5 seconds; paused while pointed at or for reduced motion. */
@@ -195,7 +196,7 @@ function HeroCarousel() {
 
   return (
     <div
-      className="relative bg-white"
+      className={`relative transition-colors duration-700 ${s.bg}`}
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)}
@@ -203,27 +204,31 @@ function HeroCarousel() {
       aria-roledescription="carousel"
       aria-label="What we supply"
     >
-      <div className="relative h-64 sm:h-80 xl:h-96">
+      <div className="relative h-72 sm:h-[26rem] xl:h-[30rem] overflow-hidden">
         {SLIDES.map((sl, k) => (
-          <img
-            key={sl.src}
-            src={sl.src}
-            alt={sl.alt}
-            aria-hidden={k !== i}
-            className={`absolute inset-0 m-auto max-h-full max-w-full object-contain p-6 pb-14 transition-opacity duration-700 ${k === i ? 'opacity-100' : 'opacity-0'}`}
-          />
+          <div key={sl.src} aria-hidden={k !== i} className={`absolute inset-0 transition-opacity duration-700 ${k === i ? 'opacity-100' : 'opacity-0'}`}>
+            {sl.fill && <img src={sl.src} alt="" loading="lazy" className="absolute inset-0 h-full w-full object-cover scale-110 blur-2xl brightness-75" />}
+            <img
+              src={sl.src}
+              alt={sl.alt}
+              loading={k === 0 ? 'eager' : 'lazy'}
+              className={`absolute inset-0 h-full w-full object-contain transition-transform duration-[1200ms] ease-out ${
+                sl.fill ? 'py-4 pb-14 drop-shadow-2xl' : 'px-6 pt-10 pb-16 sm:px-10 drop-shadow-xl'
+              } ${k === i ? 'scale-100' : 'scale-105'}`}
+            />
+          </div>
         ))}
       </div>
       <span className="absolute left-3 top-3 rounded bg-site-navy px-2 py-1 font-display text-[10px] font-bold uppercase tracking-wider text-white">Booklab Bookshop</span>
-      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-white via-white/90 to-transparent px-4 pb-3 pt-6">
-        <div aria-live="polite">
+      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-3 bg-gradient-to-t from-white via-white/85 to-transparent px-4 pb-3 pt-8">
+        <div aria-live="polite" className="min-w-0">
           {s.category ? (
-            <Link to={`/catalogue?category=${encodeURIComponent(s.category)}`} className="font-display text-sm font-semibold text-site-navy hover:text-site-ochre">
-              {s.title} <ChevronRight className="inline h-4 w-4" />
+            <Link to={`/catalogue?category=${encodeURIComponent(s.category)}`} className="inline-flex items-center gap-0.5 whitespace-nowrap font-display text-[13px] sm:text-sm font-semibold text-site-navy hover:text-site-ochre">
+              {s.title} <ChevronRight className="h-4 w-4 shrink-0" />
             </Link>
           ) : (
-            <a href="#quote" className="font-display text-sm font-semibold text-site-navy hover:text-site-ochre">
-              {s.title} <ChevronRight className="inline h-4 w-4" />
+            <a href="#quote" className="inline-flex items-center gap-0.5 whitespace-nowrap font-display text-[13px] sm:text-sm font-semibold text-site-navy hover:text-site-ochre">
+              {s.title} <ChevronRight className="h-4 w-4 shrink-0" />
             </a>
           )}
         </div>

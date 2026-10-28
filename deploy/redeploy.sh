@@ -17,4 +17,4 @@ npm run build
 chown -R www-data:www-data "$APP_DIR"
 systemctl restart booklab-api
 systemctl reload nginx
-echo "Redeployed → https://booklab.localinvestors.co.ke"
+echo "Redeployed → https://www.booklabbookshop.co.ke"

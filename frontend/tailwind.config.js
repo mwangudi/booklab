@@ -47,8 +47,9 @@ export default {
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
         mono: ['"JetBrains Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
-        display: ['"Space Grotesk"', 'Inter', 'ui-sans-serif', 'sans-serif'],
-        site: ['"Plus Jakarta Sans"', 'Inter', 'ui-sans-serif', 'sans-serif'],
+        // The public website: Roboto for headings and text.
+        display: ['Roboto', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        site: ['Roboto', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
     },
   },

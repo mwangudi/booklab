@@ -72,7 +72,7 @@ Set these four. The rest of the file can stay as it is.
 | Setting | Value |
 |---|---|
 | `HOST` | `127.0.0.1` — **without this the till answers to every device on the shop wifi** |
-| `CLOUD_URL` | `https://booklab.localinvestors.co.ke` |
+| `CLOUD_URL` | `https://www.booklabbookshop.co.ke` |
 | `SYNC_TOKEN` | filled in at step 5 |
 | `JWT_SECRET` | a long random string, **different on every laptop and different from the cloud** |
 

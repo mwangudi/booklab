@@ -4,11 +4,11 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/var/www/booklab}"
-DOMAIN="${DOMAIN:-booklab.localinvestors.co.ke}"
+DOMAIN="${DOMAIN:-www.booklabbookshop.co.ke}"
 PORT="${PORT:-4100}"
 DB_NAME="${DB_NAME:-booklab}"
 DB_USER="${DB_USER:-booklab}"
-LE_EMAIL="${LE_EMAIL:-admin@localinvestors.co.ke}"
+LE_EMAIL="${LE_EMAIL:?set LE_EMAIL to the address for certificate renewal notices}"
 
 echo "==> Booklab provisioning ($DOMAIN, port $PORT)"
 cd "$APP_DIR/backend"
@@ -78,17 +78,32 @@ systemctl daemon-reload
 systemctl enable booklab-api
 systemctl restart booklab-api
 
-# --- Nginx vhost (HTTP) ---
-echo "==> Nginx vhost"
-cp "$APP_DIR/deploy/nginx/${DOMAIN}.conf" "/etc/nginx/sites-available/${DOMAIN}.conf"
-ln -sf "/etc/nginx/sites-available/${DOMAIN}.conf" "/etc/nginx/sites-enabled/${DOMAIN}.conf"
-nginx -t
-systemctl reload nginx
+# --- HTTPS certificate first (the vhost references it), via a temporary HTTP-only vhost ---
+APEX="${DOMAIN#www.}"
+VHOST="${APEX}.conf"
+echo "==> TLS certificate for ${DOMAIN} and ${APEX}"
+mkdir -p /var/www/letsencrypt
+if [ ! -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+  cat > "/etc/nginx/sites-available/${VHOST}" <<NGX
+server {
+    listen 80;
+    listen [::]:80;
+    server_name ${DOMAIN} ${APEX};
+    location /.well-known/acme-challenge/ { root /var/www/letsencrypt; }
+    location / { return 404; }
+}
+NGX
+  ln -sf "/etc/nginx/sites-available/${VHOST}" "/etc/nginx/sites-enabled/${VHOST}"
+  nginx -t && systemctl reload nginx && sleep 2
+  certbot certonly --webroot -w /var/www/letsencrypt -d "${DOMAIN}" -d "${APEX}"     --non-interactive --agree-tos -m "${LE_EMAIL}" --keep-until-expiring
+fi
 
-# --- HTTPS (Let's Encrypt) ---
-echo "==> TLS certificate"
-certbot --nginx -d "${DOMAIN}" --non-interactive --agree-tos -m "${LE_EMAIL}" --redirect --keep-until-expiring \
-  || echo "   (certbot failed — check DNS / port 80; site still serves on HTTP)"
+# --- Nginx vhost: HTTPS on www, apex and HTTP redirect to it ---
+echo "==> Nginx vhost"
+cp "$APP_DIR/deploy/nginx/${VHOST}" "/etc/nginx/sites-available/${VHOST}"
+ln -sf "/etc/nginx/sites-available/${VHOST}" "/etc/nginx/sites-enabled/${VHOST}"
+cp "$APP_DIR/deploy/nginx/booklab-security.conf" /etc/nginx/snippets/booklab-security.conf
+nginx -t
 systemctl reload nginx
 
 echo "==> Done → https://${DOMAIN}"

@@ -2,7 +2,7 @@
 # Confirm the security headers survive on every kind of response, including the
 # location blocks that set their own Cache-Control.
 set -uo pipefail
-HOST=https://booklab.localinvestors.co.ke
+HOST=https://www.booklabbookshop.co.ke
 ASSET=$(grep -o '/assets/index-[A-Za-z0-9_-]*\.js' /var/www/booklab/frontend/dist/index.html | head -1)
 
 for p in / "$ASSET" /manifest.webmanifest /sw.js /api/promo; do

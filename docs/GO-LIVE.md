@@ -26,7 +26,7 @@ database backup**, which has to be fixed before a single real sale is recorded.
 ## 2. Domain and DNS
 
 The domain has not been registered yet. The app currently answers on
-`booklab.localinvestors.co.ke`, which is a temporary address.
+`www.booklabbookshop.co.ke`, which is a temporary address.
 
 ### About cPanel
 

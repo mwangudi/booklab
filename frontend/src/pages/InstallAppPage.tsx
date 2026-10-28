@@ -6,7 +6,7 @@ import {
 } from '../lib/pwaInstall';
 import { Alert, Button, Card, PageHeader, Pill, SectionTitle } from '../components/ui';
 
-const APP_URL = 'https://booklab.localinvestors.co.ke';
+const APP_URL = 'https://www.booklabbookshop.co.ke';
 
 const STEPS: Record<BrowserKind, { browser: string; steps: string[] }> = {
   'chrome-android': {
