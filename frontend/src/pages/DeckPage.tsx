@@ -396,7 +396,7 @@ const stagger = (k: number) => ({ animationDelay: `${120 + k * 70}ms` });
 const CARD =
   'group relative cursor-zoom-in overflow-hidden rounded-xl bg-white transition duration-300 ease-out hover:-translate-y-1.5 hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,.6)] hover:ring-4 hover:ring-site-ochre/70 animate-[cardIn_.55s_cubic-bezier(.2,.8,.3,1.1)_both]';
 const ZOOM_IMG = 'transition-transform duration-700 ease-out group-hover:scale-110';
-const INVITE = p('conference-invite', 'Booklab Bookshop Conference & Thanksgiving · Monday 2 November 2026, 12:00 PM · Allens Hotel');
+const INVITE = p('conference-poster', 'Booklab Bookshop Conference & Thanksgiving · Saturday 31 October 2026, 12:00 PM · Roddys Hotel, Buyangu');
 
 function Brand() {
   return (
@@ -439,8 +439,8 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
           </p>
           <div className="mt-[3vh] inline-flex w-fit flex-wrap items-center gap-x-5 gap-y-1 rounded-xl border border-[#d4a373]/40 bg-[#d4a373]/10 px-4 py-2.5 text-[clamp(12px,1.15vw,18px)] text-[#f3d9b1] animate-[cardIn_.7s_.5s_ease-out_both]">
             <span className="font-display font-bold uppercase tracking-wider">Conference &amp; Thanksgiving</span>
-            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> Mon 2 Nov 2026</span>
-            <span className="inline-flex items-center gap-1.5"><Clock className="h-4 w-4" /> 12:00 PM · Allens Hotel</span>
+            <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" /> Sat 31 Oct 2026</span>
+            <span className="inline-flex items-center gap-1.5"><Clock className="h-4 w-4" /> 12:00 PM · Roddys Hotel, Buyangu</span>
           </div>
         </div>
         <button type="button" onClick={() => open([INVITE], 0)} className="group relative hidden md:flex items-center justify-center overflow-hidden bg-[#1a120b] cursor-zoom-in" aria-label="Open the conference invitation">
@@ -448,7 +448,7 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(212,163,115,.28),transparent_65%)]" />
           <img
             src={INVITE.src}
-            alt="Welcome to Booklab Bookshop Conference & Thanksgiving: Allens Hotel, opposite Steve Nice, Monday 2nd November 2026, 12:00 PM. RSVP 0728 492 372."
+            alt="Welcome to Booklab Bookshop Conference & Thanksgiving: Roddys Hotel, Buyangu, Saturday 31st October 2026, 12:00 PM. RSVP 0728 492 372."
             className="relative h-[88vh] w-auto max-w-[92%] rounded-lg object-contain shadow-[0_30px_80px_-10px_rgba(0,0,0,.85),0_0_0_1px_rgba(212,163,115,.45),0_0_60px_rgba(212,163,115,.25)] transition-transform duration-500 group-hover:scale-[1.03] animate-[posterIn_.9s_cubic-bezier(.2,.8,.3,1)_both]"
           />
         </button>
