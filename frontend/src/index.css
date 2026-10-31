@@ -102,3 +102,4 @@ html { scroll-padding-top: 7.5rem; }
 @media (prefers-reduced-motion: reduce) {
   [class*="animate-["] { animation: none !important; }
 }
+@keyframes spinSlow { to { transform: rotate(360deg); } }

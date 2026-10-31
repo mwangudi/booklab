@@ -13,7 +13,7 @@ import { BRANCHES, EMAIL, PHONES } from '../components/PublicHeader';
 type Pic = { src: string; caption?: string };
 type Offer = { src: string; name: string; price?: string; price2?: string; note?: string };
 /** How a gallery slide arranges its photos; varied so consecutive slides look different. */
-type Layout = 'grid' | 'mosaic' | 'spotlight' | 'filmstrip';
+type Layout = 'grid' | 'mosaic' | 'spotlight' | 'filmstrip' | 'shelf' | 'orbit';
 
 type Slide =
   | { kind: 'cover' }
@@ -100,18 +100,18 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Books',
-    layout: 'mosaic',
+    layout: 'shelf',
     light: true,
     title: 'CBC & JSS set books and readers',
     text: 'KICD-approved literature and Kiswahili set books and story readers. Best books for revision: KES 1,400.',
     pics: [
+      p('kjsea-maths-workbook', 'Best books for revision · KES 1,400'),
       p('book-bridges-without-rivers', 'Bridges Without Rivers'),
       p('book-daughter-of-nature', 'Daughter of Nature'),
       p('book-melodies-of-africa', 'Melodies of Africa'),
       p('book-mshale-wa-matumaini', 'Mshale wa Matumaini'),
       p('book-wema-hauozi', 'Wema Hauozi'),
       p('book-hodi-hodi-mashairi', 'Hodi Hodi Mashairi'),
-      p('kjsea-maths-workbook', 'Revision books · KES 1,400'),
       p('readers', 'Story readers'),
     ],
   },
@@ -187,7 +187,7 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Office furniture',
-    layout: 'spotlight',
+    layout: 'orbit',
     light: true,
     title: 'Office chairs, desks & steel storage',
     text: 'Executive chairs from KES 10,000, steel cabinets KES 40,000, lockers KES 5,000, office chairs KES 4,000: ready in our warehouse.',
@@ -205,7 +205,7 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Sports equipment',
-    layout: 'grid',
+    layout: 'orbit',
     title: 'Balls, nets & training gear',
     text: 'Basketball, volleyball, football, rugby and more: check out your nearest Booklab Bookshop.',
     pics: [
@@ -257,7 +257,7 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Kitchen & catering',
-    layout: 'spotlight',
+    layout: 'orbit',
     title: 'For school kitchens and dining halls',
     text: 'Sufurias: extra heavy, extra strong, all sizes. Cooking drums, energy-saving jikos, hot pots and tea urns.',
     pics: [
@@ -274,9 +274,10 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Gates & security',
-    layout: 'mosaic',
+    layout: 'orbit',
     title: 'Gates, security & school essentials',
     text: 'Steel gates made to order, padlocks, solar flood lights and cameras, school bells and clocks.',
+    light: true,
     pics: [
       p('gate-ornate', 'Steel gates'),
       p('gate-green', 'Made-to-order gates'),
@@ -291,8 +292,7 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Music & home science',
-    layout: 'spotlight',
-    light: true,
+    layout: 'orbit',
     title: 'Music instruments & home science',
     text: 'Music instruments: Yamaha pianos and keyboards, kayamba, drums and descant recorders. Sound systems, and sewing machines for home science.',
     pics: [
@@ -422,7 +422,7 @@ export default function DeckPage() {
       <div className="absolute bottom-0 inset-x-0 h-1 bg-white/10">
         <div className="h-full bg-site-ochre transition-all duration-300" style={{ width: `${((i + 1) / n) * 100}%` }} />
       </div>
-      <div className="absolute bottom-3 right-4 flex items-center gap-2 text-xs text-white/70">
+      <div className="absolute bottom-3 right-4 z-30 flex items-center gap-2 rounded-full bg-site-navy/90 px-1.5 py-1 text-xs text-white/80 shadow-lg ring-1 ring-white/10">
         <button type="button" onClick={() => go(-1)} disabled={i === 0} className="grid h-9 w-9 place-items-center rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30" aria-label="Previous slide">
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -468,7 +468,7 @@ function Zoom({ pics, k, onClose, onStep }: { pics: Pic[]; k: number; onClose: (
 const stagger = (k: number) => ({ animationDelay: `${120 + k * 70}ms` });
 /** A photo card that lifts and zooms on hover and opens large on click. */
 const CARD =
-  'group relative cursor-zoom-in overflow-hidden rounded-xl bg-white transition duration-300 ease-out hover:-translate-y-1.5 hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,.6)] hover:ring-4 hover:ring-site-ochre/70 animate-[cardIn_.55s_cubic-bezier(.2,.8,.3,1.1)_both]';
+  'group relative cursor-zoom-in overflow-hidden rounded-xl transition duration-300 ease-out hover:-translate-y-1.5 hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,.6)] hover:ring-4 hover:ring-site-ochre/70 animate-[cardIn_.55s_cubic-bezier(.2,.8,.3,1.1)_both]';
 const ZOOM_IMG = 'transition-transform duration-700 ease-out group-hover:scale-110';
 const INVITE = p('conference-poster', 'Booklab Bookshop Conference & Thanksgiving · Saturday 31 October 2026, 12:00 PM · Roddys Hotel, Buyangu');
 
@@ -481,9 +481,9 @@ function Brand() {
   );
 }
 
-function Frame({ eyebrow, title, text, children, light = false }: { eyebrow: string; title: string; text?: string; children: React.ReactNode; light?: boolean }) {
+function Frame({ eyebrow, title, text, children, light = false, bg }: { eyebrow: string; title: string; text?: string; children: React.ReactNode; light?: boolean; bg?: string }) {
   return (
-    <div className={`h-full w-full flex flex-col px-[4vw] pt-[3.2vh] pb-[7vh] ${light ? 'bg-[#f6f1e7] text-site-navy' : ''}`}>
+    <div className={`h-full w-full flex flex-col px-[4vw] pt-[3.2vh] pb-[7vh] ${!bg && light ? 'bg-[#f6f1e7]' : ''} ${light ? 'text-site-navy' : ''}`} style={bg ? { background: bg } : undefined}>
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0">
           <p className="font-display text-[clamp(11px,1.1vw,16px)] font-bold uppercase tracking-[0.18em] text-site-ochre">{eyebrow}</p>
@@ -499,11 +499,16 @@ function Frame({ eyebrow, title, text, children, light = false }: { eyebrow: str
 
 function PhotoCard({ pic, k, onOpen, className = '', big = false }: { pic: Pic; k: number; onOpen: () => void; className?: string; big?: boolean }) {
   return (
-    <figure className={`${CARD} ${className}`} style={stagger(k)} onClick={onOpen}>
-      <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-contain p-[0.8vh] ${big ? 'pb-[6vh]' : 'pb-[4.6vh]'} ${ZOOM_IMG}`} />
+    <figure className={`${CARD} bg-[#1b2230] ${className}`} style={stagger(k)} onClick={onOpen}>
+      <img src={pic.src} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl brightness-[.7] saturate-[1.4]" />
+      <img
+        src={pic.src}
+        alt={pic.caption ?? ''}
+        className={`absolute inset-0 h-full w-full object-contain px-[0.8vh] pt-[0.8vh] ${big ? 'pb-[6vh]' : 'pb-[4.6vh]'} drop-shadow-[0_8px_18px_rgba(0,0,0,.45)] ${ZOOM_IMG}`}
+      />
       {pic.caption && (
         <figcaption
-          className={`absolute inset-x-0 bottom-0 bg-site-navy/90 px-2 text-center font-display font-semibold leading-tight text-white ${
+          className={`absolute inset-x-0 bottom-0 bg-site-navy/85 backdrop-blur-sm px-2 text-center font-display font-semibold leading-tight text-white ${
             big ? 'py-[1.2vh] text-[clamp(13px,1.4vw,22px)]' : 'py-[0.8vh] text-[clamp(10px,1vw,16px)]'
           }`}
         >
@@ -514,7 +519,7 @@ function PhotoCard({ pic, k, onOpen, className = '', big = false }: { pic: Pic; 
   );
 }
 
-function Gallery({ pics, layout, open }: { pics: Pic[]; layout: Layout; open: (pics: Pic[], k: number) => void }) {
+function Gallery({ pics, layout, open, light = false }: { pics: Pic[]; layout: Layout; open: (pics: Pic[], k: number) => void; light?: boolean }) {
   const at = (k: number) => () => open(pics, k);
 
   if (layout === 'mosaic') {
@@ -545,12 +550,133 @@ function Gallery({ pics, layout, open }: { pics: Pic[]; layout: Layout; open: (p
 
   if (layout === 'filmstrip') return <Filmstrip pics={pics} open={open} />;
 
+  if (layout === 'orbit') return <Orbit pics={pics} open={open} light={light} />;
+
+  if (layout === 'shelf') {
+    // Portrait covers in portrait cards, so each cover fills its card. The first is featured large.
+    const [first, ...rest] = pics;
+    const Cover = ({ pic, k, big = false }: { pic: Pic; k: number; big?: boolean }) => (
+      <figure
+        className={`${CARD} bg-white mx-auto h-full aspect-[3/4] max-w-full ${big ? 'ring-4 ring-site-ochre' : ''}`}
+        style={stagger(k)}
+        onClick={at(k)}
+      >
+        <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-cover ${ZOOM_IMG}`} />
+        {pic.caption && (
+          <figcaption
+            className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-site-navy via-site-navy/85 to-transparent px-2 pb-[1vh] pt-[3vh] text-center font-display font-bold leading-tight text-white ${
+              big ? 'text-[clamp(14px,1.5vw,24px)]' : 'text-[clamp(10px,1vw,16px)]'
+            }`}
+          >
+            {pic.caption}
+          </figcaption>
+        )}
+      </figure>
+    );
+    return (
+      <div className="grid h-full gap-[1.6vw] md:grid-cols-[auto_1fr]">
+        <div className="hidden md:block h-full min-h-0">
+          <Cover pic={first} k={0} big />
+        </div>
+        <div className="grid h-full min-h-0 grid-cols-3 md:grid-cols-4 grid-rows-3 md:grid-rows-2 gap-[1.2vw] place-items-center">
+          {rest.map((pic, k) => (
+            <div key={pic.src} className="h-full w-full min-h-0">
+              <Cover pic={pic} k={k + 1} />
+            </div>
+          ))}
+          <div className="hidden md:flex h-full w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-site-ochre/50 p-3 text-center animate-[cardIn_.55s_ease-out_both]" style={stagger(rest.length + 1)}>
+            <span className="font-display text-[clamp(14px,1.5vw,24px)] font-bold">And many more</span>
+            <span className="mt-1 text-[clamp(11px,1vw,16px)] opacity-70">Send us your class list: we have the set books.</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const few = pics.length <= 6;
   return (
     <div className={`grid h-full gap-[1.2vw] ${few ? 'grid-cols-2 md:grid-cols-3 grid-rows-3 md:grid-rows-2' : 'grid-cols-2 md:grid-cols-4 grid-rows-4 md:grid-rows-2'}`}>
       {pics.map((pic, k) => (
         <PhotoCard key={pic.src} pic={pic} k={k} onOpen={at(k)} />
       ))}
+    </div>
+  );
+}
+
+/** "Name · detail" captions split so the detail (often a price) can stand out. */
+const splitCaption = (c = '') => {
+  const i = c.indexOf(' · ');
+  return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 3)];
+};
+
+/**
+ * Infographic layout: the first photo in a big ringed circle in the centre, up to six
+ * others in small ringed circles down both sides with their name and detail beside them.
+ */
+function Orbit({ pics, open, light }: { pics: Pic[]; open: (pics: Pic[], k: number) => void; light: boolean }) {
+  const [hero, ...rest] = pics;
+  const items = rest.slice(0, 6);
+  const left = items.slice(0, Math.ceil(items.length / 2));
+  const right = items.slice(Math.ceil(items.length / 2));
+  const RINGS = ['#C25608', '#0e7490', '#15803d', '#b45309', '#1d4ed8', '#be123c'];
+  const [heroName, heroDetail] = splitCaption(hero.caption);
+
+  const Item = ({ pic, k, side }: { pic: Pic; k: number; side: 'left' | 'right' }) => {
+    const [name, detail] = splitCaption(pic.caption);
+    const ring = RINGS[k % RINGS.length];
+    return (
+      <button
+        type="button"
+        onClick={() => open(pics, k + 1)}
+        className={`group flex w-full items-center gap-[1.2vw] text-left animate-[slideIn_.6s_ease-out_both] ${side === 'left' ? 'flex-row-reverse text-right' : ''}`}
+        style={{ animationDelay: `${350 + k * 160}ms` }}
+      >
+        <span
+          className="relative block aspect-square h-[13vh] shrink-0 overflow-hidden rounded-full bg-white p-[0.5vh] shadow-[0_10px_30px_-10px_rgba(0,0,0,.5)] transition duration-300 group-hover:scale-110"
+          style={{ boxShadow: `0 0 0 0.55vh ${ring}, 0 0 0 1.3vh ${light ? 'rgba(15,23,42,.06)' : 'rgba(255,255,255,.08)'}` }}
+        >
+          <img src={pic.src} alt="" className="h-full w-full rounded-full object-cover transition-transform duration-500 group-hover:scale-110" />
+        </span>
+        <span className="min-w-0">
+          <span className={`block font-display text-[clamp(14px,1.45vw,24px)] font-bold leading-tight ${light ? 'text-site-navy' : 'text-white'}`}>{name}</span>
+          {detail && <span className="mt-0.5 block font-display text-[clamp(12px,1.2vw,20px)] font-bold text-site-ochre">{detail}</span>}
+        </span>
+      </button>
+    );
+  };
+
+  const Column = ({ list, side, offset }: { list: Pic[]; side: 'left' | 'right'; offset: number }) => (
+    <div className="flex h-full flex-col justify-around">
+      {list.map((pic, k) => (
+        <div key={pic.src} className={`py-[1.2vh] ${k < list.length - 1 ? `border-b ${light ? 'border-site-navy/10' : 'border-white/10'}` : ''}`}>
+          <Item pic={pic} k={offset + k} side={side} />
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div className="grid h-full grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-[2.5vw]">
+      <Column list={left} side="left" offset={0} />
+      <div className="relative hidden md:flex flex-col items-center justify-center">
+        <button
+          type="button"
+          onClick={() => open(pics, 0)}
+          className="group relative aspect-square h-[54vh] cursor-zoom-in rounded-full animate-[posterIn_.9s_cubic-bezier(.2,.8,.3,1)_both]"
+          aria-label={`Open ${heroName}`}
+        >
+          <span className={`absolute -inset-[2.4vh] rounded-full ${light ? 'bg-site-navy/[.05]' : 'bg-white/[.06]'}`} />
+          <span className="absolute -inset-[1.1vh] rounded-full bg-[conic-gradient(from_200deg,#C25608,#8a4a1f,#C25608)] animate-[spinSlow_24s_linear_infinite]" />
+          <span className="absolute inset-0 overflow-hidden rounded-full bg-white">
+            <img src={hero.src} alt={heroName} className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-110 animate-[kenBurns_14s_ease-in-out_infinite_alternate]" />
+          </span>
+        </button>
+        <div className="relative -mt-[4vh] rounded-full bg-site-ochre px-[2vw] py-[1vh] text-center shadow-xl animate-[pricePop_.6s_cubic-bezier(.2,.9,.3,1.4)_both]" style={{ animationDelay: '700ms' }}>
+          <span className="block font-display text-[clamp(15px,1.7vw,28px)] font-black leading-tight text-white">{heroName}</span>
+          {heroDetail && <span className="block font-display text-[clamp(12px,1.2vw,19px)] font-bold text-white/90">{heroDetail}</span>}
+        </div>
+      </div>
+      <Column list={right} side="right" offset={left.length} />
     </div>
   );
 }
@@ -666,7 +792,7 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
       <Frame eyebrow="What we supply" title="One supplier for the whole school" text="Twelve supply areas, from set books and charts to desks, uniforms, kitchens and gates. Delivered to your school.">
         <div className="grid h-full grid-cols-3 md:grid-cols-4 lg:grid-cols-6 grid-rows-4 md:grid-rows-3 lg:grid-rows-2 gap-[1.2vw]">
           {CATEGORIES.map((c, k) => (
-            <div key={c.title} className={CARD} style={stagger(k)} onClick={() => open(CATEGORIES.map((x) => p(x.src, x.title)), k)}>
+            <div key={c.title} className={`${CARD} bg-white`} style={stagger(k)} onClick={() => open(CATEGORIES.map((x) => p(x.src, x.title)), k)}>
               <img src={img(c.src)} alt="" className={`absolute inset-0 h-full w-full object-contain p-2 pb-10 ${ZOOM_IMG}`} />
               <div className="absolute inset-x-0 bottom-0 bg-site-navy/90 px-2 py-1.5 text-center font-display text-[clamp(10px,1vw,15px)] font-semibold leading-tight text-white">{c.title}</div>
             </div>
@@ -683,7 +809,7 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
           {s.offers.map((o, k) => (
             <div
               key={o.name}
-              className={`${CARD} flex flex-col text-site-navy ${k === 0 && s.offers.length > 4 ? 'md:row-span-2' : ''}`}
+              className={`${CARD} bg-white flex flex-col text-site-navy ${k === 0 && s.offers.length > 4 ? 'md:row-span-2' : ''}`}
               style={stagger(k)}
               onClick={() => open(s.offers.map((x) => ({ src: x.src, caption: [x.name, x.price, x.price2].filter(Boolean).join(' · ') })), k)}
             >
@@ -768,8 +894,9 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
           ))}
           <div className="grid min-h-0 grid-rows-2 gap-[1.2vw]">
             {s.pics.map((pic, k) => (
-              <figure key={pic.src} className={CARD} style={stagger(k + 2)} onClick={() => open(s.pics, k)}>
-                <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-contain p-[0.8vh] pb-[4.6vh] ${ZOOM_IMG}`} />
+              <figure key={pic.src} className={`${CARD} bg-[#1b2230]`} style={stagger(k + 2)} onClick={() => open(s.pics, k)}>
+                <img src={pic.src} alt="" aria-hidden className="absolute inset-0 h-full w-full scale-125 object-cover blur-2xl brightness-[.7] saturate-[1.4]" />
+                <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-contain p-[0.8vh] pb-[4.6vh] drop-shadow-[0_8px_18px_rgba(0,0,0,.45)] ${ZOOM_IMG}`} />
                 {pic.caption && (
                   <figcaption className="absolute inset-x-0 bottom-0 bg-site-ochre px-2 py-[0.8vh] text-center font-display text-[clamp(11px,1.1vw,17px)] font-bold leading-tight text-white">{pic.caption}</figcaption>
                 )}
@@ -783,8 +910,20 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
 
   if (s.kind === 'gallery') {
     return (
-      <Frame eyebrow={s.eyebrow} title={s.title} text={s.text} light={s.light}>
-        <Gallery pics={s.pics} layout={s.layout ?? 'grid'} open={open} />
+      <Frame
+        eyebrow={s.eyebrow}
+        title={s.title}
+        text={s.text}
+        light={s.light}
+        bg={
+          s.layout === 'orbit'
+            ? s.light
+              ? 'radial-gradient(ellipse at 12% 65%, #dcebf1 0%, transparent 42%), radial-gradient(ellipse at 88% 65%, #e2eee3 0%, transparent 42%), #ffffff'
+              : 'linear-gradient(115deg, #04070d 0%, #0b1d36 45%, #1b5aa0 100%)'
+            : undefined
+        }
+      >
+        <Gallery pics={s.pics} layout={s.layout ?? 'grid'} open={open} light={s.light} />
       </Frame>
     );
   }
