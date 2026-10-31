@@ -6,6 +6,7 @@ import { useAuth } from './lib/auth';
 
 import LoginPage from './pages/LoginPage';
 import HomePage from './pages/HomePage';
+import DeckPage from './pages/DeckPage';
 import DashboardPage from './pages/DashboardPage';
 import InstallAppPage from './pages/InstallAppPage';
 import PermissionsPage from './pages/PermissionsPage';
@@ -75,6 +76,8 @@ export const router = createBrowserRouter([
   // The public website's catalogue and order request: no sign-in.
   { path: '/catalogue', element: <CataloguePage /> },
   { path: '/catalogue/request', element: <RequestPage /> },
+  // Presentation of the shop's items, for showing from a browser.
+  { path: '/deck', element: <DeckPage /> },
   {
     element: <RequireAuth />,
     children: [

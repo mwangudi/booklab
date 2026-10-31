@@ -88,3 +88,6 @@ body {
 
 /* The public website's header stays pinned; jump links (#quote, #branches) land below it. */
 html { scroll-padding-top: 7.5rem; }
+
+/* /deck: each slide fades and rises in. */
+@keyframes deckIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }

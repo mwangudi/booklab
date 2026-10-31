@@ -17,3 +17,6 @@ backend/prisma/schema.sqlite.prisma
 
 # Excel lock files created while a workbook is open
 ~$*.xlsx
+
+# Original product photos (WhatsApp downloads); the deck uses resized copies in frontend/public/deck.
+docs/product-photos/
