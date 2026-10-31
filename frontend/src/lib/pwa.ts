@@ -15,11 +15,23 @@ const UPDATE_CHECK_MS = 60 * 60 * 1000;
 
 let applyUpdate: ((reload?: boolean) => Promise<void>) | null = null;
 
+/** The public website: home, catalogue and request, and the deck. */
+function isPublicPage(): boolean {
+  const p = window.location.pathname;
+  return p === '/' || p.startsWith('/catalogue') || p.startsWith('/deck');
+}
+
 export function initPwa(): void {
   if (!('serviceWorker' in navigator)) return;
   applyUpdate = registerSW({
     immediate: true,
     onNeedRefresh() {
+      // The public website has no sale to interrupt: take a new version at once, or an
+      // old cached shell would send a new page (like /deck) to the login screen.
+      if (isPublicPage()) {
+        void applyUpdate?.(true);
+        return;
+      }
       // A till must not reload itself mid-sale, so this only raises a prompt.
       window.dispatchEvent(new Event(PWA_UPDATE_EVENT));
     },
