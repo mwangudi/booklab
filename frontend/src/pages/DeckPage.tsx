@@ -12,12 +12,17 @@ import { BRANCHES, EMAIL, PHONES } from '../components/PublicHeader';
 
 type Pic = { src: string; caption?: string };
 type Offer = { src: string; name: string; price?: string; price2?: string; note?: string };
+/** How a gallery slide arranges its photos; varied so consecutive slides look different. */
+type Layout = 'grid' | 'mosaic' | 'spotlight' | 'filmstrip';
+
 type Slide =
   | { kind: 'cover' }
   | { kind: 'overview' }
+  | { kind: 'quote'; lines: string[] }
   | { kind: 'offers'; title: string; offers: Offer[] }
   | { kind: 'feature'; eyebrow: string; title: string; src: string; price: string; points: string[] }
-  | { kind: 'gallery'; eyebrow: string; title: string; text: string; pics: Pic[] }
+  | { kind: 'gallery'; eyebrow: string; title: string; text: string; pics: Pic[]; layout?: Layout; light?: boolean }
+  | { kind: 'lists'; eyebrow: string; title: string; text: string; lists: Array<{ title: string; price?: string; items: string[] }>; pics: Pic[] }
   | { kind: 'contact' };
 
 const img = (name: string) => `/site/deck/${name}.webp`;
@@ -40,6 +45,16 @@ const CATEGORIES = [
 
 const SLIDES: Slide[] = [
   { kind: 'cover' },
+  {
+    kind: 'quote',
+    lines: [
+      'Take care of your teachers,',
+      'they will take care of your learners,',
+      'and the learners will take care of your school,',
+      'and the school will take care of your capitation,',
+      'and the capitation will take care of you.',
+    ],
+  },
   { kind: 'overview' },
   {
     kind: 'offers',
@@ -85,6 +100,8 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Books',
+    layout: 'mosaic',
+    light: true,
     title: 'CBC & JSS set books and readers',
     text: 'KICD-approved literature and Kiswahili set books and story readers. Best books for revision: KES 1,400.',
     pics: [
@@ -101,6 +118,7 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Teaching aids',
+    layout: 'grid',
     title: 'Charts, flash cards & classroom aids',
     text: 'Full-colour, double-sided laminated charts in English and Kiswahili, flip charts, flash cards and maths models.',
     pics: [
@@ -117,6 +135,7 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Printing & branding',
+    layout: 'spotlight',
     title: 'Your school name and logo on everything',
     text: 'Exercise books with your logo, rubber and self-inking stamps of all sizes, branded T-shirts and school signage.',
     pics: [
@@ -126,18 +145,20 @@ const SLIDES: Slide[] = [
       p('self-inking-stamps', 'Self-inking stamps'),
       p('branded-theatre-tshirts', 'Branded T-shirts'),
       p('branded-school-tshirt', 'School T-shirts'),
-      p('branded-staff-tshirt', 'Staff wear'),
+      p('head-of-institution-stamp', 'Office stamps with your school name'),
       p('school-signage', 'School signage'),
     ],
   },
   {
     kind: 'gallery',
     eyebrow: 'ICT & electronics',
+    layout: 'filmstrip',
     title: 'Computers, printers & office electronics',
     text: 'Laptops and desktops, copiers and ink-tank printers, routers, dual SIM wireless desk phones (KES 8,000), chargers and power protection.',
     pics: [
       p('laptops-8th-gen', '8th Gen laptops · KES 40,000'),
       p('desktop-computer', 'Desktop computers'),
+      p('kyocera-mfp-floor', 'Kyocera multifunction copiers'),
       p('kyocera-copier', 'Kyocera photocopiers'),
       p('epson-ink-tank-printer', 'Epson ink-tank printers'),
       p('wifi-router-4g', '4G router · KES 12,000'),
@@ -149,38 +170,42 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'School furniture',
+    layout: 'mosaic',
     title: 'Desks, lockers, tables & chairs',
-    text: 'Made and delivered in bulk for classrooms, labs, dining halls and staff rooms.',
+    text: 'Locker desks, desks with benches, steel lockers (KES 5,000), lab stools and tables: made and delivered in bulk.',
     pics: [
       p('school-desks-outdoor', 'Locker desks'),
-      p('desks-delivery', 'Bulk delivery to schools'),
-      p('classroom-desks', 'Classroom desks'),
+      p('desk-bench-steel', 'Desk & bench, steel frame'),
+      p('desk-bench-wood', 'Desk & bench, all wood'),
       p('locker-desk-chair', 'Desk & chair sets'),
+      p('steel-lockers-6-door', 'Steel lockers · KES 5,000'),
+      p('desks-delivery', 'Bulk delivery to schools'),
       p('lab-stools-tables', 'Lab stools 3,000 · tables 15,000'),
-      p('padded-chairs', 'Padded chairs'),
       p('skyplast-chairs', 'Skyplast easy chair · KES 1,500'),
-      p('folding-table-set', 'Foldable table 10,000 · chair 4,500'),
     ],
   },
   {
     kind: 'gallery',
     eyebrow: 'Office furniture',
+    layout: 'spotlight',
+    light: true,
     title: 'Office chairs, desks & steel storage',
-    text: 'Executive and visitor chairs, office desks, steel cabinets and lockers: ready in our warehouse.',
+    text: 'Executive chairs from KES 10,000, steel cabinets KES 40,000, lockers KES 5,000, office chairs KES 4,000: ready in our warehouse.',
     pics: [
       p('steel-lockers-6-door', 'Lockers · KES 5,000'),
       p('office-chair', 'Office chair · KES 4,000'),
       p('conference-chair', 'Conference chair · KES 4,000'),
-      p('executive-chair', 'Executive chairs'),
+      p('executive-chair', 'Executive chairs · from KES 10,000'),
       p('visitor-chairs', 'Visitor chairs'),
       p('executive-desk', 'Executive desks'),
-      p('steel-cabinets-pair', 'Steel cabinets'),
+      p('steel-cabinets-pair', 'Steel cabinets · KES 40,000'),
       p('office-desk', 'Office desks'),
     ],
   },
   {
     kind: 'gallery',
     eyebrow: 'Sports equipment',
+    layout: 'grid',
     title: 'Balls, nets & training gear',
     text: 'Basketball, volleyball, football, rugby and more: check out your nearest Booklab Bookshop.',
     pics: [
@@ -197,6 +222,8 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'Uniforms & kits',
+    layout: 'mosaic',
+    light: true,
     title: 'Jerseys, tracksuits & school wear',
     text: 'Team jerseys, netball dresses, goalkeeper kits, tracksuits and polo shirts in your school colours.',
     pics: [
@@ -212,9 +239,27 @@ const SLIDES: Slide[] = [
   },
   {
     kind: 'gallery',
+    eyebrow: 'Staff wear',
+    layout: 'filmstrip',
+    title: 'Staff shirts & branded polos',
+    text: 'Staff shirts and polos with your school or company name and logo embroidered, front and back, in your colours.',
+    pics: [
+      p('staff-shirt-booklab', 'Staff shirt, embroidered logo'),
+      p('staff-shirt-back', 'Name on the back'),
+      p('staff-polo-booklab', 'Branded polo'),
+      p('staff-polo-back', 'Polo, name on the back'),
+      p('school-polo-embroidered', 'School polo, embroidered'),
+      p('staff-shirt-red-trim', 'Staff shirt, red trim'),
+      p('staff-shirt-blue-trim', 'Staff shirt, blue trim'),
+      p('staff-shirt-blue-long', 'Long-sleeve staff shirt'),
+    ],
+  },
+  {
+    kind: 'gallery',
     eyebrow: 'Kitchen & catering',
+    layout: 'spotlight',
     title: 'For school kitchens and dining halls',
-    text: 'Sufurias: extra heavy, extra strong, all sizes. Cooking drums, energy-saving jikos and hot pots.',
+    text: 'Sufurias: extra heavy, extra strong, all sizes. Cooking drums, energy-saving jikos, hot pots and tea urns.',
     pics: [
       p('homkart-180l', 'Homkart 180 L'),
       p('kaluworks-55l', 'Kaluworks 55 L sufuria'),
@@ -223,12 +268,13 @@ const SLIDES: Slide[] = [
       p('steel-cooking-drum', 'Cooking drums'),
       p('energy-jikos', 'Energy-saving jikos'),
       p('matrix-hotpot', 'Hot pots'),
-      p('camping-stove', 'Gas stoves'),
+      p('electric-tea-urn', 'Electric tea urn · 14 L'),
     ],
   },
   {
     kind: 'gallery',
     eyebrow: 'Gates & security',
+    layout: 'mosaic',
     title: 'Gates, security & school essentials',
     text: 'Steel gates made to order, padlocks, solar flood lights and cameras, school bells and clocks.',
     pics: [
@@ -244,17 +290,45 @@ const SLIDES: Slide[] = [
   },
   {
     kind: 'gallery',
-    eyebrow: 'Co-curricular & labs',
-    title: 'Music, home science & lab',
-    text: 'Instruments for music and drama, sewing machines for home science, and lab equipment.',
+    eyebrow: 'Music & home science',
+    layout: 'spotlight',
+    light: true,
+    title: 'Music instruments & home science',
+    text: 'Music instruments: Yamaha pianos and keyboards, kayamba, drums and descant recorders. Sound systems, and sewing machines for home science.',
     pics: [
+      p('keyboard-stand', 'Yamaha pianos & keyboards'),
       p('keyboard', 'Keyboards'),
-      p('drum', 'Drums'),
-      p('sewing-machine', 'Sewing machines'),
-      p('microscope', 'Microscopes'),
-      p('wall-clock', 'Wall clocks'),
-      p('curtains', 'Curtains'),
+      p('traditional-drums', 'Traditional drums'),
+      p('drums-pair', 'Drums'),
+      p('drum', 'Drums & kayamba'),
+      p('pa-speaker', 'Sound system & mics'),
+      p('treadle-sewing-machine', 'Treadle sewing machines'),
+      p('sewing-machine', 'Electric sewing machines'),
     ],
+  },
+  {
+    kind: 'lists',
+    eyebrow: 'School administration',
+    title: 'Official books & regulatory documents',
+    text: 'Everything the school office and the board need, in stock.',
+    lists: [
+      {
+        title: 'Official books',
+        items: [
+          'Grant in aid', 'Ledger books 2Q', 'Cash books', 'Inventory', 'Store ledgers S1/S2', 'Fees registers', 'Admission registers', 'Teacher attendance registers',
+          'Visitors book', 'Supplies registers', 'Contract agreement', 'Payment vouchers', 'Payment schedule', 'LPO/LSO', 'Receipt book A5',
+        ],
+      },
+      {
+        title: 'Regulatory documents',
+        price: 'KES 750 each',
+        items: [
+          'TSC Act', 'Leadership & Integrity', 'Guidance and Counselling', 'Teacher on Duty', 'Children Act', 'The Constitution', 'Procurement Act', 'Basic Education Act',
+          'Code of Conduct', 'Sexual Offences', 'Public Finance Management',
+        ],
+      },
+    ],
+    pics: [p('service-charter', 'Service charter · KES 3,500'), p('fpe-fund-chart', 'School disbursement chart · KES 3,500')],
   },
   { kind: 'contact' },
 ];
@@ -319,7 +393,7 @@ export default function DeckPage() {
     window.history.replaceState(null, '', `#${i + 1}`);
     // Warm the next slide's photos so they are there when it opens.
     const next = SLIDES[i + 1];
-    const srcs = next?.kind === 'gallery' ? next.pics.map((x) => x.src) : next?.kind === 'offers' ? next.offers.map((o) => o.src) : next?.kind === 'feature' ? [next.src] : [];
+    const srcs = next?.kind === 'gallery' || next?.kind === 'lists' ? next.pics.map((x) => x.src) : next?.kind === 'offers' ? next.offers.map((o) => o.src) : next?.kind === 'feature' ? [next.src] : [];
     srcs.forEach((s) => { const im = new Image(); im.src = s; });
   }, [i]);
 
@@ -409,7 +483,7 @@ function Brand() {
 
 function Frame({ eyebrow, title, text, children, light = false }: { eyebrow: string; title: string; text?: string; children: React.ReactNode; light?: boolean }) {
   return (
-    <div className={`h-full w-full flex flex-col px-[4vw] pt-[3.2vh] pb-[7vh] ${light ? 'bg-site-canvas text-site-navy' : ''}`}>
+    <div className={`h-full w-full flex flex-col px-[4vw] pt-[3.2vh] pb-[7vh] ${light ? 'bg-[#f6f1e7] text-site-navy' : ''}`}>
       <div className="flex items-start justify-between gap-6">
         <div className="min-w-0">
           <p className="font-display text-[clamp(11px,1.1vw,16px)] font-bold uppercase tracking-[0.18em] text-site-ochre">{eyebrow}</p>
@@ -419,6 +493,103 @@ function Frame({ eyebrow, title, text, children, light = false }: { eyebrow: str
         <div className="hidden md:block shrink-0"><Brand /></div>
       </div>
       <div className="mt-[2.5vh] flex-1 min-h-0">{children}</div>
+    </div>
+  );
+}
+
+function PhotoCard({ pic, k, onOpen, className = '', big = false }: { pic: Pic; k: number; onOpen: () => void; className?: string; big?: boolean }) {
+  return (
+    <figure className={`${CARD} ${className}`} style={stagger(k)} onClick={onOpen}>
+      <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-contain p-[0.8vh] ${big ? 'pb-[6vh]' : 'pb-[4.6vh]'} ${ZOOM_IMG}`} />
+      {pic.caption && (
+        <figcaption
+          className={`absolute inset-x-0 bottom-0 bg-site-navy/90 px-2 text-center font-display font-semibold leading-tight text-white ${
+            big ? 'py-[1.2vh] text-[clamp(13px,1.4vw,22px)]' : 'py-[0.8vh] text-[clamp(10px,1vw,16px)]'
+          }`}
+        >
+          {pic.caption}
+        </figcaption>
+      )}
+    </figure>
+  );
+}
+
+function Gallery({ pics, layout, open }: { pics: Pic[]; layout: Layout; open: (pics: Pic[], k: number) => void }) {
+  const at = (k: number) => () => open(pics, k);
+
+  if (layout === 'mosaic') {
+    // First photo big (2x2), second wide (2x1), the rest in single cells: a 4x3 grid.
+    return (
+      <div className="grid h-full grid-cols-2 md:grid-cols-4 grid-rows-6 md:grid-rows-3 gap-[1.1vw]">
+        {pics.map((pic, k) => (
+          <PhotoCard key={pic.src} pic={pic} k={k} onOpen={at(k)} big={k === 0} className={k === 0 ? 'col-span-2 row-span-2' : k === 1 ? 'col-span-2' : ''} />
+        ))}
+      </div>
+    );
+  }
+
+  if (layout === 'spotlight') {
+    // One photo large on the left, the others in two columns beside it.
+    const [first, ...rest] = pics;
+    return (
+      <div className="grid h-full gap-[1.2vw] md:grid-cols-[1.25fr_1fr]">
+        <PhotoCard pic={first} k={0} onOpen={at(0)} big className="min-h-[30vh]" />
+        <div className="grid min-h-0 grid-cols-2 auto-rows-fr gap-[1.1vw]">
+          {rest.map((pic, k) => (
+            <PhotoCard key={pic.src} pic={pic} k={k + 1} onOpen={at(k + 1)} className={rest.length % 2 === 1 && k === rest.length - 1 ? 'col-span-2' : ''} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (layout === 'filmstrip') return <Filmstrip pics={pics} open={open} />;
+
+  const few = pics.length <= 6;
+  return (
+    <div className={`grid h-full gap-[1.2vw] ${few ? 'grid-cols-2 md:grid-cols-3 grid-rows-3 md:grid-rows-2' : 'grid-cols-2 md:grid-cols-4 grid-rows-4 md:grid-rows-2'}`}>
+      {pics.map((pic, k) => (
+        <PhotoCard key={pic.src} pic={pic} k={k} onOpen={at(k)} />
+      ))}
+    </div>
+  );
+}
+
+/** A large photo that changes every few seconds, with the slide's photos as a strip below. */
+function Filmstrip({ pics, open }: { pics: Pic[]; open: (pics: Pic[], k: number) => void }) {
+  const [cur, setCur] = useState(0);
+  const [hold, setHold] = useState(false);
+  useEffect(() => {
+    if (hold || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const t = setInterval(() => setCur((c) => (c + 1) % pics.length), 3500);
+    return () => clearInterval(t);
+  }, [hold, pics.length]);
+  const pic = pics[cur];
+  return (
+    <div className="flex h-full flex-col gap-[1.2vw]" onMouseEnter={() => setHold(true)} onMouseLeave={() => setHold(false)}>
+      <figure className="group relative min-h-0 flex-1 cursor-zoom-in overflow-hidden rounded-xl bg-white animate-[cardIn_.55s_ease-out_both]" onClick={() => open(pics, cur)}>
+        <img key={pic.src} src={pic.src} alt={pic.caption ?? ''} className="absolute inset-0 h-full w-full object-contain p-[1.2vh] pb-[7vh] animate-[zoomIn_.6s_ease-out] transition-transform duration-700 group-hover:scale-105" />
+        {pic.caption && (
+          <figcaption key={pic.caption} className="absolute inset-x-0 bottom-0 bg-site-navy/90 px-3 py-[1.3vh] text-center font-display text-[clamp(14px,1.6vw,26px)] font-bold text-white animate-[slideIn_.4s_ease-out]">
+            {pic.caption}
+          </figcaption>
+        )}
+        <span className="absolute left-3 top-3 rounded-full bg-site-navy/80 px-2.5 py-0.5 text-xs tabular-nums text-white">{cur + 1} / {pics.length}</span>
+      </figure>
+      <div className="grid h-[17vh] shrink-0 gap-[0.8vw]" style={{ gridTemplateColumns: `repeat(${pics.length}, minmax(0, 1fr))` }}>
+        {pics.map((x, k) => (
+          <button
+            key={x.src}
+            type="button"
+            onClick={() => setCur(k)}
+            className={`relative overflow-hidden rounded-lg bg-white transition duration-300 animate-[cardIn_.5s_ease-out_both] ${k === cur ? 'ring-4 ring-site-ochre -translate-y-1' : 'opacity-70 hover:opacity-100'}`}
+            style={stagger(k)}
+            aria-label={`Show ${x.caption ?? 'photo'}`}
+          >
+            <img src={x.src} alt="" className="absolute inset-0 h-full w-full object-contain p-1" />
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -452,6 +623,40 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
             className="relative h-[88vh] w-auto max-w-[92%] rounded-lg object-contain shadow-[0_30px_80px_-10px_rgba(0,0,0,.85),0_0_0_1px_rgba(212,163,115,.45),0_0_60px_rgba(212,163,115,.25)] transition-transform duration-500 group-hover:scale-[1.03] animate-[posterIn_.9s_cubic-bezier(.2,.8,.3,1)_both]"
           />
         </button>
+      </div>
+    );
+  }
+
+  if (s.kind === 'quote') {
+    // Each step of the chain arrives in turn; the key words are picked out in gold.
+    const KEY = /(teachers|learners|school|capitation|you)(?=[,.])/;
+    return (
+      <div className="relative h-full w-full overflow-hidden bg-[radial-gradient(ellipse_at_30%_20%,#3a2414_0%,#1a120b_45%,#0f172a_100%)]">
+        <img src={INVITE.src} alt="" className="absolute inset-0 h-full w-full scale-125 object-cover opacity-[.12] blur-2xl" />
+        <span className="pointer-events-none absolute left-[4vw] top-[2vh] font-serif text-[clamp(160px,22vw,380px)] leading-none text-[#d4a373]/15 animate-[zoomBg_1.2s_ease-out]">“</span>
+        <div className="relative flex h-full flex-col justify-center px-[9vw] py-[6vh]">
+          <div className="space-y-[1.6vh]">
+            {s.lines.map((line, k) => {
+              const [before, word, after] = line.split(KEY);
+              return (
+                <p
+                  key={line}
+                  className="font-serif text-[clamp(22px,3.3vw,58px)] leading-tight text-[#f3e6cf] animate-[slideIn_.8s_cubic-bezier(.2,.8,.3,1)_both]"
+                  style={{ animationDelay: `${300 + k * 900}ms`, paddingLeft: `${k * 2.2}vw` }}
+                >
+                  {before}
+                  {word && <span className="font-bold italic text-[#e9b872]">{word}</span>}
+                  {after}
+                </p>
+              );
+            })}
+          </div>
+          <div className="mt-[6vh] flex items-center gap-3 animate-[cardIn_.8s_ease-out_both]" style={{ animationDelay: `${300 + s.lines.length * 900}ms` }}>
+            <span className="h-px w-[8vw] bg-[#d4a373]/60" />
+            <Brand />
+            <span className="text-[clamp(12px,1.1vw,17px)] text-[#f3e6cf]/70">For Quality, For You</span>
+          </div>
+        </div>
       </div>
     );
   }
@@ -538,22 +743,48 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
     );
   }
 
-  if (s.kind === 'gallery') {
-    const few = s.pics.length <= 6;
+  if (s.kind === 'lists') {
     return (
       <Frame eyebrow={s.eyebrow} title={s.title} text={s.text}>
-        <div className={`grid h-full gap-[1.2vw] ${few ? 'grid-cols-2 md:grid-cols-3 grid-rows-3 md:grid-rows-2' : 'grid-cols-2 md:grid-cols-4 grid-rows-4 md:grid-rows-2'}`}>
-          {s.pics.map((pic, k) => (
-            <figure key={pic.src} className={CARD} style={stagger(k)} onClick={() => open(s.pics, k)}>
-              <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-contain p-[0.8vh] pb-[4.6vh] ${ZOOM_IMG}`} />
-              {pic.caption && (
-                <figcaption className="absolute inset-x-0 bottom-0 bg-site-navy/90 px-2 py-[0.8vh] text-center font-display text-[clamp(10px,1vw,16px)] font-semibold leading-tight text-white">
-                  {pic.caption}
-                </figcaption>
-              )}
-            </figure>
+        <div className="grid h-full gap-[1.4vw] md:grid-cols-[1fr_1fr_0.9fr]">
+          {s.lists.map((l, k) => (
+            <div key={l.title} className="flex flex-col rounded-xl bg-white/[.06] p-[1.4vw] ring-1 ring-white/10 animate-[cardIn_.55s_ease-out_both]" style={stagger(k)}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-display text-[clamp(16px,1.7vw,28px)] font-bold">{l.title}</h3>
+                {l.price && (
+                  <span className="rounded-lg bg-site-ochre px-2.5 py-1 font-display text-[clamp(12px,1.2vw,20px)] font-black animate-[pricePop_.5s_cubic-bezier(.2,.9,.3,1.4)_both,pricePulse_2.6s_ease-in-out_infinite]" style={{ animationDelay: '600ms, 1800ms' }}>
+                    {l.price}
+                  </span>
+                )}
+              </div>
+              <ul className="mt-[1.2vh] columns-2 gap-x-6 text-[clamp(12px,1.15vw,19px)] leading-snug">
+                {l.items.map((it, j) => (
+                  <li key={it} className="mb-[0.7vh] flex break-inside-avoid items-start gap-2 animate-[slideIn_.4s_ease-out_both]" style={{ animationDelay: `${250 + k * 200 + j * 35}ms` }}>
+                    <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-site-ochre" /> {it}
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
+          <div className="grid min-h-0 grid-rows-2 gap-[1.2vw]">
+            {s.pics.map((pic, k) => (
+              <figure key={pic.src} className={CARD} style={stagger(k + 2)} onClick={() => open(s.pics, k)}>
+                <img src={pic.src} alt={pic.caption ?? ''} className={`absolute inset-0 h-full w-full object-contain p-[0.8vh] pb-[4.6vh] ${ZOOM_IMG}`} />
+                {pic.caption && (
+                  <figcaption className="absolute inset-x-0 bottom-0 bg-site-ochre px-2 py-[0.8vh] text-center font-display text-[clamp(11px,1.1vw,17px)] font-bold leading-tight text-white">{pic.caption}</figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
         </div>
+      </Frame>
+    );
+  }
+
+  if (s.kind === 'gallery') {
+    return (
+      <Frame eyebrow={s.eyebrow} title={s.title} text={s.text} light={s.light}>
+        <Gallery pics={s.pics} layout={s.layout ?? 'grid'} open={open} />
       </Frame>
     );
   }
@@ -562,7 +793,7 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
     <div className="h-full w-full grid md:grid-cols-2">
       <div className="flex flex-col justify-center px-[6vw] py-10">
         <Brand />
-        <h2 className="mt-[4vh] font-display text-[clamp(30px,4.6vw,76px)] font-black leading-tight tracking-tight">Order for your school</h2>
+        <h2 className="mt-[4vh] font-display text-[clamp(30px,4.6vw,76px)] font-black leading-tight tracking-tight">Order for you, for your school</h2>
         <p className="mt-3 text-[clamp(15px,1.6vw,26px)] text-white/75">Send us your list: we quote, invoice and deliver.</p>
         <div className="mt-[4vh] space-y-[1.6vh] text-[clamp(16px,1.8vw,30px)]">
           {PHONES.map((ph) => (
