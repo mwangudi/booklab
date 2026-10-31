@@ -7,7 +7,7 @@ import { BRANCHES, EMAIL, PHONES } from '../components/PublicHeader';
  * from a browser. Arrow keys, space, swipe or the side buttons move; F toggles full screen;
  * the slide number is kept in the address (#3), so a link opens on that slide. Clicking a
  * photo opens it large (arrows step through the slide's photos, Esc closes).
- * Photos are in public/deck (originals in docs/product-photos/2026-10-30).
+ * Photos are in public/site/deck (not public/deck, which would shadow the /deck page) (originals in docs/product-photos/2026-10-30).
  */
 
 type Pic = { src: string; caption?: string };
@@ -20,7 +20,7 @@ type Slide =
   | { kind: 'gallery'; eyebrow: string; title: string; text: string; pics: Pic[] }
   | { kind: 'contact' };
 
-const img = (name: string) => `/deck/${name}.webp`;
+const img = (name: string) => `/site/deck/${name}.webp`;
 const p = (name: string, caption?: string): Pic => ({ src: img(name), caption });
 
 const CATEGORIES = [
