@@ -91,3 +91,14 @@ html { scroll-padding-top: 7.5rem; }
 
 /* /deck: each slide fades and rises in. */
 @keyframes deckIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+@keyframes cardIn { from { opacity: 0; transform: translateY(22px) scale(.95); } to { opacity: 1; transform: none; } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(-24px); } to { opacity: 1; transform: none; } }
+@keyframes pricePop { 0% { opacity: 0; transform: scale(.4) rotate(-8deg); } 100% { opacity: 1; transform: none; } }
+@keyframes pricePulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes kenBurns { from { transform: scale(1); } to { transform: scale(1.07) translate(-1%, -1%); } }
+@keyframes posterIn { from { opacity: 0; transform: translateY(30px) scale(.94) rotate(-1.5deg); } to { opacity: 1; transform: none; } }
+@keyframes zoomBg { from { opacity: 0; } to { opacity: 1; } }
+@keyframes zoomIn { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-["] { animation: none !important; }
+}
