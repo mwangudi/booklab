@@ -13,7 +13,7 @@ import { BRANCHES, EMAIL, PHONES } from '../components/PublicHeader';
 type Pic = { src: string; caption?: string };
 type Offer = { src: string; name: string; price?: string; price2?: string; note?: string };
 /** How a gallery slide arranges its photos; varied so consecutive slides look different. */
-type Layout = 'grid' | 'mosaic' | 'spotlight' | 'filmstrip' | 'shelf' | 'orbit';
+type Layout = 'grid' | 'mosaic' | 'spotlight' | 'filmstrip' | 'shelf' | 'orbit' | 'ribbons';
 
 type Slide =
   | { kind: 'cover' }
@@ -152,18 +152,17 @@ const SLIDES: Slide[] = [
   {
     kind: 'gallery',
     eyebrow: 'ICT & electronics',
-    layout: 'filmstrip',
+    layout: 'ribbons',
     title: 'Computers, printers & office electronics',
     text: 'Laptops and desktops, copiers and ink-tank printers, routers, dual SIM wireless desk phones (KES 8,000), chargers and power protection.',
     pics: [
       p('laptops-8th-gen', '8th Gen laptops · KES 40,000'),
-      p('desktop-computer', 'Desktop computers'),
-      p('kyocera-mfp-floor', 'Kyocera multifunction copiers'),
-      p('kyocera-copier', 'Kyocera photocopiers'),
-      p('epson-ink-tank-printer', 'Epson ink-tank printers'),
-      p('wifi-router-4g', '4G router · KES 12,000'),
-      p('desk-phone', 'Dual SIM desk phone · KES 8,000'),
-      p('laptop-chargers', 'Laptop chargers: all types'),
+      p('wifi-router-4g', '4G WiFi router · KES 12,000'),
+      p('desk-phone', 'Dual SIM wireless desk phone · KES 8,000'),
+      p('kyocera-mfp-floor', 'Kyocera copiers · Multifunction, floor-standing'),
+      p('epson-ink-tank-printer', 'Epson printers · Ink-tank, low cost per page'),
+      p('desktop-computer', 'Desktop computers · Complete sets'),
+      p('laptop-chargers', 'Laptop chargers · All types'),
       p('fridge-guard', 'Fridge guard · KES 2,500'),
     ],
   },
@@ -552,6 +551,8 @@ function Gallery({ pics, layout, open, light = false }: { pics: Pic[]; layout: L
 
   if (layout === 'orbit') return <Orbit pics={pics} open={open} light={light} />;
 
+  if (layout === 'ribbons') return <Ribbons pics={pics} open={open} />;
+
   if (layout === 'shelf') {
     // Portrait covers in portrait cards, so each cover fills its card. The first is featured large.
     const [first, ...rest] = pics;
@@ -608,6 +609,65 @@ const splitCaption = (c = '') => {
   const i = c.indexOf(' · ');
   return i < 0 ? [c, ''] : [c.slice(0, i), c.slice(i + 3)];
 };
+
+/**
+ * Infographic layout after a classic "applications of" slide: three feature rows on the left,
+ * each a ringed photo with a coloured ribbon label and a fading band, and a timeline of
+ * the other items on the right, each in a circle with a partial coloured arc.
+ */
+function Ribbons({ pics, open }: { pics: Pic[]; open: (pics: Pic[], k: number) => void }) {
+  const features = pics.slice(0, 3);
+  const timeline = pics.slice(3, 8);
+  const COLORS = ['#22c55e', '#f59e0b', '#3b82f6', '#22c55e', '#f59e0b'];
+  return (
+    <div className="grid h-full gap-[3vw] md:grid-cols-[1.4fr_1fr]">
+      <div className="flex min-h-0 flex-col justify-around">
+        {features.map((pic, k) => {
+          const [name, detail] = splitCaption(pic.caption);
+          const c = COLORS[k];
+          return (
+            <button key={pic.src} type="button" onClick={() => open(pics, k)} className="group flex items-center gap-[1.8vw] text-left animate-[slideIn_.6s_ease-out_both]" style={{ animationDelay: `${200 + k * 220}ms` }}>
+              <span className="relative aspect-square h-[19vh] shrink-0 rounded-full bg-white p-[0.6vh] ring-[0.8vh] ring-[#9ca3af] shadow-[0_14px_36px_-12px_rgba(0,0,0,.7)] transition duration-300 group-hover:scale-105">
+                <img src={pic.src} alt="" className="h-full w-full rounded-full object-cover transition-transform duration-500 group-hover:scale-110" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="relative inline-block py-[0.9vh] pl-[1.4vw] pr-[2.4vw] font-display text-[clamp(16px,2vw,34px)] font-black leading-tight text-white" style={{ background: c, clipPath: 'polygon(0 0, 100% 0, calc(100% - 1.2vw) 100%, 0 100%)' }}>
+                  {name}
+                </span>
+                {detail && (
+                  <span className="mt-[0.6vh] block py-[0.9vh] pl-[1.4vw] font-display text-[clamp(16px,1.9vw,32px)] font-black text-white" style={{ background: `linear-gradient(90deg, ${c}55, transparent 85%)` }}>
+                    {detail}
+                  </span>
+                )}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="relative flex min-h-0 flex-col justify-around">
+        <span className="absolute bottom-[8%] left-[6.5vh] top-[8%] border-l-2 border-dashed border-white/20" />
+        {timeline.map((pic, k) => {
+          const [name, detail] = splitCaption(pic.caption);
+          const c = COLORS[k];
+          return (
+            <button key={pic.src} type="button" onClick={() => open(pics, k + 3)} className="group relative flex items-center gap-[1.2vw] text-left animate-[slideIn_.6s_ease-out_both]" style={{ animationDelay: `${700 + k * 160}ms` }}>
+              <span className="relative aspect-square h-[13vh] shrink-0 rounded-full p-[0.55vh]" style={{ background: `conic-gradient(${c} 0 32%, rgba(255,255,255,.12) 32% 100%)` }}>
+                <span className="block h-full w-full overflow-hidden rounded-full bg-[#0b1d36] p-[0.5vh]">
+                  <img src={pic.src} alt="" className="h-full w-full rounded-full bg-white object-cover transition-transform duration-500 group-hover:scale-110" />
+                </span>
+              </span>
+              <span className="h-0 w-0 border-y-[0.9vh] border-l-[1.2vh] border-y-transparent" style={{ borderLeftColor: c }} />
+              <span className="min-w-0">
+                <span className="block font-display text-[clamp(14px,1.55vw,26px)] font-bold leading-tight text-white">{name}</span>
+                {detail && <span className={`block text-[clamp(12px,1.2vw,20px)] ${detail.startsWith('KES') ? 'font-display font-bold text-site-ochre' : 'text-white/75'}`}>{detail}</span>}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 /**
  * Infographic layout: the first photo in a big ringed circle in the centre, up to six
@@ -872,9 +932,9 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
   if (s.kind === 'lists') {
     return (
       <Frame eyebrow={s.eyebrow} title={s.title} text={s.text}>
-        <div className="grid h-full gap-[1.4vw] md:grid-cols-[1fr_1fr_0.9fr]">
+        <div className="grid h-full gap-[1.4vw] md:grid-cols-[1.45fr_1fr_0.8fr]">
           {s.lists.map((l, k) => (
-            <div key={l.title} className="flex flex-col rounded-xl bg-white/[.06] p-[1.4vw] ring-1 ring-white/10 animate-[cardIn_.55s_ease-out_both]" style={stagger(k)}>
+            <div key={l.title} className="flex min-h-0 flex-col rounded-xl bg-white/[.06] p-[1.4vw] ring-1 ring-white/10 animate-[cardIn_.55s_ease-out_both]" style={stagger(k)}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="font-display text-[clamp(16px,1.7vw,28px)] font-bold">{l.title}</h3>
                 {l.price && (
@@ -883,10 +943,19 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
                   </span>
                 )}
               </div>
-              <ul className="mt-[1.2vh] columns-2 gap-x-6 text-[clamp(12px,1.15vw,19px)] leading-snug">
+              {/* Rows share the panel's height, so the list reaches the bottom whatever its length. */}
+              <ul
+                className="mt-[1.6vh] grid min-h-0 flex-1 grid-flow-col gap-x-[1.2vw] gap-y-[0.8vh] text-[clamp(13px,1.35vw,23px)] leading-tight"
+                style={{ gridTemplateRows: `repeat(${l.items.length > 12 ? Math.ceil(l.items.length / 2) : l.items.length}, minmax(0, 1fr))` }}
+              >
                 {l.items.map((it, j) => (
-                  <li key={it} className="mb-[0.7vh] flex break-inside-avoid items-start gap-2 animate-[slideIn_.4s_ease-out_both]" style={{ animationDelay: `${250 + k * 200 + j * 35}ms` }}>
-                    <span className="mt-[0.45em] h-1.5 w-1.5 shrink-0 rounded-full bg-site-ochre" /> {it}
+                  <li
+                    key={it}
+                    className="flex items-center gap-[0.8vw] rounded-lg bg-white/[.05] px-[0.8vw] ring-1 ring-white/[.06] animate-[slideIn_.4s_ease-out_both]"
+                    style={{ animationDelay: `${250 + k * 200 + j * 35}ms` }}
+                  >
+                    <span className="grid h-[1.7em] w-[1.7em] shrink-0 place-items-center rounded-full bg-site-ochre/90 font-display text-[0.7em] font-bold text-white">{j + 1}</span>
+                    <span>{it}</span>
                   </li>
                 ))}
               </ul>
@@ -916,7 +985,7 @@ function SlideView({ s, open }: { s: Slide; open: (pics: Pic[], k: number) => vo
         text={s.text}
         light={s.light}
         bg={
-          s.layout === 'orbit'
+          s.layout === 'orbit' || s.layout === 'ribbons'
             ? s.light
               ? 'radial-gradient(ellipse at 12% 65%, #dcebf1 0%, transparent 42%), radial-gradient(ellipse at 88% 65%, #e2eee3 0%, transparent 42%), #ffffff'
               : 'linear-gradient(115deg, #04070d 0%, #0b1d36 45%, #1b5aa0 100%)'
