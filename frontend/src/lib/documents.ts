@@ -140,7 +140,8 @@ export async function printInvoice(inv: Invoice): Promise<void> {
   doc.setTextColor(...BRAND_RGB);
   doc.text((inv.customer?.name ?? '').toUpperCase(), 40, y + 4);
   y += 12;
-  const meta = [inv.customer?.contactPerson, inv.customer?.phone, inv.customer?.address].filter(Boolean).join(' · ');
+  // The contact person is for the shop's records, not printed on the invoice.
+  const meta = [inv.customer?.phone, inv.customer?.address].filter(Boolean).join(' · ');
   if (meta) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -150,20 +151,21 @@ export async function printInvoice(inv: Invoice): Promise<void> {
   }
 
   const vatShown = inv.chargeVat && num(inv.vatTotal) > 0;
+  // No row-number column: the lines are listed as they were entered.
   const head = vatShown
-    ? [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'VAT %', 'TOTAL']]
-    : [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'TOTAL']];
-  const body = (inv.items ?? []).map((i, n) =>
+    ? [['ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'VAT %', 'TOTAL']]
+    : [['ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT COST', 'TOTAL']];
+  const body = (inv.items ?? []).map((i) =>
     vatShown
-      ? [String(n + 1), i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), `${num(i.vatRate)}%`, money(i.total)]
-      : [String(n + 1), i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), money(i.total)],
+      ? [i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), `${num(i.vatRate)}%`, money(i.total)]
+      : [i.description, String(num(i.quantity)), i.unit, money(i.unitPrice), money(i.total)],
   );
   const cols: Record<number, { halign?: 'right' | 'center'; cellWidth: number }> = vatShown
-    ? { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 42 }, 3: { cellWidth: 52 }, 4: { halign: 'right', cellWidth: 62 }, 5: { halign: 'right', cellWidth: 44 }, 6: { halign: 'right', cellWidth: 72 } }
-    : { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 45 }, 3: { cellWidth: 60 }, 4: { halign: 'right', cellWidth: 70 }, 5: { halign: 'right', cellWidth: 80 } };
+    ? { 1: { halign: 'center', cellWidth: 42 }, 2: { cellWidth: 52 }, 3: { halign: 'right', cellWidth: 62 }, 4: { halign: 'right', cellWidth: 44 }, 5: { halign: 'right', cellWidth: 72 } }
+    : { 1: { halign: 'center', cellWidth: 45 }, 2: { cellWidth: 60 }, 3: { halign: 'right', cellWidth: 70 }, 4: { halign: 'right', cellWidth: 80 } };
 
   // The totals label spans every column ahead of the value.
-  const span = vatShown ? 6 : 5;
+  const span = vatShown ? 5 : 4;
   const foot: RowInput[] = [];
   if (vatShown) {
     foot.push(totalRow('SUBTOTAL', money(inv.subtotal), span));

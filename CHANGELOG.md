@@ -3,6 +3,14 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-07 — Printed invoice: no contact person, no row numbers
+
+- The printed invoice no longer shows the customer's contact person under the school's
+  name (it stays on the customer record); phone and address still print when set.
+- The item table has no "#" row-number column. The invoice number is unchanged. The
+  delivery note keeps its numbering.
+- Not yet deployed to production.
+
 ## 2026-11-07 — Invoices: out of stock is a notice, not a block
 
 - Every product can be invoiced. Out-of-stock and short lines are named in an amber notice
