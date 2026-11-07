@@ -103,3 +103,9 @@ html { scroll-padding-top: 7.5rem; }
   [class*="animate-["] { animation: none !important; }
 }
 @keyframes spinSlow { to { transform: rotate(360deg); } }
+
+/* Login carousel: the active dot fills while the slide is shown. */
+@keyframes login-progress {
+  from { width: 0%; }
+  to { width: 100%; }
+}

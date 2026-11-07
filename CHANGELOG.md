@@ -3,6 +3,18 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-07 — New staff sign-in page
+
+- The sign-in page is split 8 / 4: a large picture carousel on the left, the form on the
+  right. Pictures are shown whole (never cropped) — cut-outs on a soft tint, photos and
+  posters over a blurred copy of themselves — with the title and description beneath.
+- The carousel shows the slides from Administration → Login screen (the built-in poster
+  until there are any), then the website's four brochure photos. It turns every 6 seconds,
+  pauses while pointed at, and has arrows, dots with a timer bar, swipe and arrow keys;
+  no animation for reduced motion.
+- The form has larger inputs with icons, show/hide password, a Caps Lock warning, a
+  "Signing in…" state and a message for empty fields. Phones still see the form alone.
+
 ## 2026-11-07 — Invoices from stock, open until paid; cost in the price grid
 
 ### Invoices pick from stock
