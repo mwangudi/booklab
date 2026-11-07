@@ -3,6 +3,17 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-07 — Invoices: out of stock is a notice, not a block
+
+- Every product can be invoiced. Out-of-stock and short lines are named in an amber notice
+  ("Not enough stock at Luanda: …") and marked "No stock" on the line, but a draft or
+  issued invoice saves normally.
+- Stock is still required where goods leave the shelf: confirming delivery (the dialog
+  warns, the server refuses) and adding to an already-delivered invoice.
+- With no branch chosen the picker lists the whole catalogue, without stock levels,
+  instead of nothing.
+- Not yet deployed to production.
+
 ## 2026-11-07 — Cost editable in the price grid; invoice picker lists every product
 
 ### Cost in the products grid

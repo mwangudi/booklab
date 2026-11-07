@@ -9,7 +9,7 @@ import { useAuth } from '../../lib/auth';
 import { money, num, today } from '../../lib/format';
 import { PRODUCT_UNITS } from '../../lib/categories';
 import { printDeliveryNote, printInvoice } from '../../lib/documents';
-import type { Customer, Invoice, Stock } from '../../types';
+import type { Book, Customer, Invoice, Stock } from '../../types';
 import { BranchSelect, useBranches } from '../../components/BranchSelect';
 import { Alert, Button, Card, FormField, Input, Loading, Modal, PageHeader, Pill, SectionTitle, Textarea } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
@@ -51,8 +51,6 @@ export default function InvoiceEditorPage() {
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
-  /** Shown when a product with nothing on the branch's shelf is picked. */
-  const [stockNotice, setStockNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [received, setReceived] = useState({ receivedBy: '', receivedIdNo: '', receivedDesignation: '' });
@@ -60,6 +58,8 @@ export default function InvoiceEditorPage() {
   // Items are picked from what the invoicing branch has on its shelf.
   const stockBranch = branchId ?? user?.branchId ?? null;
   const { data: shelf, refresh: refreshShelf } = useApi<Stock[]>(stockBranch != null ? `/api/stock/branch/${stockBranch}` : null, [stockBranch]);
+  // With no branch (head office) there is no shelf to read, but every product can still be invoiced.
+  const { data: catalogueBooks } = useApi<Book[]>(stockBranch == null ? '/api/books' : null, [stockBranch]);
   const shelfByBook = useMemo(() => new Map((shelf ?? []).map((s) => [s.bookId, s])), [shelf]);
   const { data: branches } = useBranches();
   const branchName = branches?.find((b) => b.id === stockBranch)?.name ?? 'this branch';
@@ -120,18 +120,17 @@ export default function InvoiceEditorPage() {
     return retail;
   };
 
-  /** Picking a product from the shelf fills the description, unit, price and VAT rate. */
+  /** Picking a product fills the description, unit, price and VAT rate. */
   const chooseBook = (i: number, bookIdStr: string) => {
     if (!bookIdStr) return setLine(i, { bookId: null });
-    const s = shelfByBook.get(Number(bookIdStr));
+    const id = Number(bookIdStr);
+    const s = shelfByBook.get(id) ?? (() => {
+      const b = catalogueBooks?.find((x) => x.id === id);
+      return b ? ({ bookId: b.id, quantity: 0, price: null, book: b } as unknown as Stock) : undefined;
+    })();
     if (!s) return;
     const b = s.book;
     setLine(i, { bookId: b.id, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)), vatRate: String(num(b.vatRate)) });
-    setStockNotice(
-      s.quantity <= 0
-        ? `${b.title} has no stock at ${branchName}. Receive it first (Stock intake or a goods receipt), or choose another item — the invoice cannot be saved with it until there is stock.`
-        : null,
-    );
   };
 
   // Units each product still needs from the shelf: what is on the lines less what has gone out.
@@ -149,6 +148,12 @@ export default function InvoiceEditorPage() {
     return (needed.get(bookId) ?? 0) > onHand ? onHand : null;
   };
   const anyShort = lines.some((l) => shortOf(l.bookId) != null);
+  // Lines asking for more than the shelf holds — named in the notice, once each.
+  const shortLines = [...new Map(
+    lines
+      .filter((l) => l.bookId != null && shortOf(l.bookId) != null)
+      .map((l) => [l.bookId!, { name: l.description || `#${l.bookId}`, onHand: shortOf(l.bookId)!, need: needed.get(l.bookId!) ?? 0 }]),
+  ).values()];
   // Goods that will leave the shelf when a delivered invoice is saved.
   const toBookOut = delivered ? [...needed.values()].reduce((a, b) => a + b, 0) : 0;
 
@@ -194,7 +199,8 @@ export default function InvoiceEditorPage() {
     if (body.items.length === 0) return setError('Add at least one item with a description and quantity.');
     const below = lines.find((l) => l.delivered > 0 && num(l.quantity) < l.delivered);
     if (below) return setError(`${below.description}: ${below.delivered} already delivered, so the quantity cannot go below that.`);
-    if (anyShort) return setError('Some items need more than the branch has in stock. Lower the quantity or receive the stock first.');
+    // Only a delivered invoice moves stock when saved; any other is just a notice until delivery.
+    if (anyShort && delivered) return setError('Some items need more than the branch has in stock, and saving a delivered invoice books them out now. Lower the quantity or receive the stock first.');
     if (
       delivered &&
       toBookOut > 0 &&
@@ -238,16 +244,20 @@ export default function InvoiceEditorPage() {
     { value: '', label: 'Select a customer…' },
     ...(customers ?? []).map((c) => ({ value: String(c.id), label: c.name })),
   ];
-  // The whole catalogue, what the branch has on its shelf first; an out-of-stock item can
-  // be picked but is flagged, and the invoice will not save until there is stock.
+  // The whole catalogue, what the branch has on its shelf first. Out-of-stock items are
+  // flagged, not hidden: they can be invoiced, and need stock only to be delivered.
   const bookOptions = [
     { value: '', label: 'Free text (not from stock)' },
-    ...[...(shelf ?? [])]
-      .sort((a, b) => Number(b.quantity > 0) - Number(a.quantity > 0) || a.book.title.localeCompare(b.book.title))
-      .map((s) => ({
-        value: String(s.bookId),
-        label: `${s.book.title} — ${s.book.sku} · ${s.quantity > 0 ? `${s.quantity} in stock` : 'OUT OF STOCK'}`,
-      })),
+    ...(stockBranch == null
+      ? [...(catalogueBooks ?? [])]
+          .sort((a, b) => a.title.localeCompare(b.title))
+          .map((b) => ({ value: String(b.id), label: `${b.title} — ${b.sku}` }))
+      : [...(shelf ?? [])]
+          .sort((a, b) => Number(b.quantity > 0) - Number(a.quantity > 0) || a.book.title.localeCompare(b.book.title))
+          .map((s) => ({
+            value: String(s.bookId),
+            label: `${s.book.title} — ${s.book.sku} · ${s.quantity > 0 ? `${s.quantity} in stock` : 'OUT OF STOCK'}`,
+          }))),
   ];
 
   return (
@@ -284,8 +294,16 @@ export default function InvoiceEditorPage() {
       />
 
       {error && <Alert tone="red">{error}</Alert>}
-      {/* Gone once the line is changed, removed or the stock arrives. */}
-      {stockNotice && anyShort && <Alert tone="amber">{stockNotice}</Alert>}
+      {/* Lists every line short of stock; gone once the line changes or the stock arrives. */}
+      {!readOnly && shortLines.length > 0 && (
+        <Alert tone="amber">
+          <b>Not enough stock at {branchName}:</b>{' '}
+          {shortLines.map((x) => `${x.name} (${x.onHand <= 0 ? 'out of stock' : `${x.onHand} on hand`}, needs ${x.need})`).join('; ')}.{' '}
+          {delivered
+            ? 'This invoice is delivered, so saving would book them out now: receive the stock first or lower the quantity.'
+            : 'You can still save and issue the invoice; the stock must be received before it is delivered.'}
+        </Alert>
+      )}
       {unpriced.length > 0 && invoice?.status === 'DRAFT' && (
         <Alert tone="amber">
           Made from a website request. These items have no selling price yet, so they came in at 0. Enter their prices
@@ -308,7 +326,7 @@ export default function InvoiceEditorPage() {
         </Alert>
       )}
       {!readOnly && stockBranch == null && (
-        <Alert tone="amber">Choose a branch to pick items from its stock.</Alert>
+        <Alert tone="blue">No branch chosen: every product is listed, without stock levels. Choose a branch to see what it has on hand.</Alert>
       )}
 
       <Card className="p-4 space-y-4">
@@ -414,7 +432,7 @@ export default function InvoiceEditorPage() {
                       value={l.bookId == null ? '' : String(l.bookId)}
                       onChange={(v) => chooseBook(i, v)}
                       options={bookOptions}
-                      disabled={fixed || stockBranch == null}
+                      disabled={fixed}
                     />
                   </FormField>
                 </div>
@@ -557,6 +575,12 @@ export default function InvoiceEditorPage() {
         }
       >
         <div className="space-y-4">
+          {shortLines.length > 0 && (
+            <Alert tone="red">
+              Not enough stock to deliver yet: {shortLines.map((x) => `${x.name} (${x.onHand} on hand, needs ${x.need})`).join('; ')}. Receive
+              the stock first — delivery will be refused until it is on the shelf.
+            </Alert>
+          )}
           <Alert tone="amber">
             Catalogue items will be booked out of {invoice?.branch?.name ?? 'the selected branch'} as a sale, so stock,
             cost of goods and profit all update. Until it is paid, more goods can still be added to the invoice; they
