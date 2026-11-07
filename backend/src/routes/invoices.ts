@@ -1,4 +1,5 @@
 import type { FastifyInstance } from 'fastify';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
 import { can, requireAnyCapability, requireCapability } from '../middleware/permissions.js';
@@ -26,6 +27,8 @@ const customerSchema = z.object({
 const customerUpdateSchema = customerSchema.partial();
 
 const itemSchema = z.object({
+  /** The saved line this edits. Needed to keep track of what has already been delivered. */
+  id: z.number().int().optional(),
   bookId: z.number().int().nullable().optional(),
   description: z.string().min(1).max(190),
   unit: z.string().min(1).max(40).default('Piece'),
@@ -52,9 +55,140 @@ const invoiceUpdateSchema = invoiceSchema.partial();
 
 const n = (v: unknown) => Number(v ?? 0);
 
-/** Raised inside a delivery when the shelf emptied after the pre-check. */
+/** Raised inside a delivery when the shelf does not hold what is being booked out. */
 class DeliveryStockError extends Error {}
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+
+/** Statuses at which the goods on an invoice have (at least partly) left the shelf. */
+const DELIVERED_STATUSES = ['DELIVERED', 'PAID'];
+
+/**
+ * What has been delivered on each saved line. Invoices delivered on a branch laptop
+ * before lines tracked this carry 0 on every line although everything went out: a
+ * delivered invoice with nothing marked delivered is read as delivered in full.
+ */
+function deliveredByLine(
+  status: string,
+  items: Array<{ id: number; quantity: unknown; deliveredQty: unknown }>,
+): Map<number, number> {
+  const legacy = DELIVERED_STATUSES.includes(status) && items.every((i) => n(i.deliveredQty) === 0);
+  return new Map(items.map((i) => [i.id, legacy ? n(i.quantity) : n(i.deliveredQty)]));
+}
+
+/**
+ * Book out of the branch's shelf whatever on the invoice has not left it yet, as one
+ * sale, so stock, COGS and revenue flow through the normal reporting. Used by the
+ * first delivery and by every later edit of a delivered invoice — customers keep
+ * collecting against the same invoice until they pay. Runs inside the caller's
+ * transaction and throws DeliveryStockError (rolling everything back) when the
+ * shelf is short. Returns the new sale's id, or null when nothing was pending.
+ */
+async function bookOutPending(
+  tx: Prisma.TransactionClient,
+  inv: { id: number; number: string; priceTier: string },
+  branchId: number,
+  userId: number,
+): Promise<number | null> {
+  const items = await tx.invoiceItem.findMany({ where: { invoiceId: inv.id }, orderBy: { sortOrder: 'asc' } });
+  // Stock moves in whole units, as at the till.
+  const pending = items
+    .map((i) => {
+      const qty = n(i.quantity);
+      const done = n(i.deliveredQty);
+      const units = i.bookId != null ? Math.round(qty) - Math.round(done) : 0;
+      // Revenue for the part not yet booked out, net of VAT (VAT is owed to KRA, not earned).
+      const share = qty > 0 ? Math.max(0, qty - done) / qty : 0;
+      return { item: i, units, net: round2(n(i.netAmount) * share) };
+    })
+    .filter((p) => p.units > 0 || p.net > 0);
+  // Every line now counts as delivered in full, including any free (zero-priced) ones.
+  for (const i of items) {
+    if (n(i.deliveredQty) !== n(i.quantity)) await tx.invoiceItem.update({ where: { id: i.id }, data: { deliveredQty: i.quantity } });
+  }
+  if (pending.length === 0) return null;
+  const stockLines = pending.filter((p) => p.units > 0);
+
+  let saleId: number | null = null;
+  if (stockLines.length > 0) {
+    const ids = [...new Set(stockLines.map((p) => p.item.bookId!))];
+    const [books, shelf] = await Promise.all([
+      tx.book.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, costPrice: true } }),
+      tx.stock.findMany({ where: { branchId, bookId: { in: ids } }, select: { bookId: true, quantity: true, costPrice: true } }),
+    ]);
+    const bookById = new Map(books.map((b) => [b.id, b]));
+    const shelfByBook = new Map(shelf.map((x) => [x.bookId, x]));
+    // Goods cannot leave an empty shelf: receive them first.
+    const wanted = new Map<number, number>();
+    for (const p of stockLines) wanted.set(p.item.bookId!, (wanted.get(p.item.bookId!) ?? 0) + p.units);
+    const short = [...wanted].filter(([bookId, qty]) => (shelfByBook.get(bookId)?.quantity ?? 0) < qty);
+    if (short.length > 0) {
+      const detail = short
+        .map(([bookId, qty]) => `${bookById.get(bookId)?.title ?? `#${bookId}`} (needs ${qty}, on hand ${shelfByBook.get(bookId)?.quantity ?? 0})`)
+        .join('; ');
+      throw new DeliveryStockError(`Not enough stock to deliver — ${detail}.`);
+    }
+    // The same cost a till sale at this branch would use, so COGS agrees either way.
+    const costOf = (bookId: number) => Number(shelfByBook.get(bookId)?.costPrice ?? bookById.get(bookId)?.costPrice ?? 0);
+    // Lines with no catalogue product (e.g. a service) are revenue too, but move no stock.
+    const net = round2(pending.reduce((s, p) => s + p.net, 0));
+
+    const sale = await tx.sale.create({
+      data: {
+        branchId,
+        userId,
+        originBranchId: branchId,
+        paymentMethod: 'CASH',
+        priceTier: inv.priceTier as never,
+        subtotal: net,
+        total: net,
+        items: {
+          create: stockLines.map((p) => ({
+            bookId: p.item.bookId!,
+            quantity: p.units,
+            unitPrice: round2(p.net / p.units),
+            costPrice: costOf(p.item.bookId!),
+          })),
+        },
+      },
+      select: { id: true, uuid: true, createdAt: true, items: { select: { uuid: true, bookId: true, quantity: true, unitPrice: true, costPrice: true } } },
+    });
+    saleId = sale.id;
+
+    if (SYNC_ROLE === 'branch') {
+      const [b, u, bks] = await Promise.all([
+        tx.branch.findUnique({ where: { id: branchId }, select: { uuid: true } }),
+        tx.user.findUnique({ where: { id: userId }, select: { uuid: true } }),
+        tx.book.findMany({ where: { id: { in: sale.items.map((i) => i.bookId) } }, select: { id: true, uuid: true } }),
+      ]);
+      const bookUuid = new Map(bks.map((x) => [x.id, x.uuid]));
+      await enqueueOutbox(tx, 'sale', sale.uuid, {
+        branchUuid: b?.uuid, userUuid: u?.uuid,
+        subtotal: net, discount: 0, discountReason: null, total: net,
+        paymentMethod: 'CASH', priceTier: inv.priceTier, createdAt: sale.createdAt,
+        items: sale.items.map((i) => ({
+          uuid: i.uuid, bookUuid: bookUuid.get(i.bookId), quantity: i.quantity,
+          unitPrice: Number(i.unitPrice), costPrice: Number(i.costPrice),
+        })),
+      });
+    }
+
+    for (const p of stockLines) {
+      const { count: took } = await tx.stock.updateMany({
+        where: { branchId, bookId: p.item.bookId!, quantity: { gte: p.units } },
+        data: { quantity: { decrement: p.units } },
+      });
+      if (took === 0) throw new DeliveryStockError('Not enough stock to deliver — another sale took the units. Try again.');
+      // A plain movement, not recordMovement: on a branch the sale event above
+      // already carries this stock to the cloud, and a queued movement as well
+      // would take it off there twice.
+      await tx.stockMovement.create({
+        data: { branchId, bookId: p.item.bookId!, delta: -p.units, type: 'SALE', note: `Invoice ${inv.number}`, userId, originBranchId: branchId },
+      });
+    }
+  }
+
+  return saleId;
+}
 
 type LineInput = { bookId?: number | null; description: string; unit: string; quantity: number; unitPrice: number; vatRate: number };
 
@@ -306,70 +440,129 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const id = Number((req.params as { id: string }).id);
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const body = invoiceUpdateSchema.parse(req.body);
-    const before = await app.prisma.invoice.findUnique({ where: { id } });
+    const before = await app.prisma.invoice.findUnique({ where: { id }, include: { items: { orderBy: { sortOrder: 'asc' } } } });
     if (!before || before.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
     if (!ownsBranchRecord(req, before.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
-    // Once goods are booked out the document is a financial record.
-    if (before.status === 'DELIVERED' || before.status === 'PAID') {
-      return reply.code(409).send({ error: 'A delivered or paid invoice can no longer be edited.' });
+    // A paid invoice is settled; a cancelled one is gone.
+    if (before.status === 'PAID') return reply.code(409).send({ error: 'A paid invoice can no longer be edited.' });
+    if (before.status === 'CANCELLED') return reply.code(409).send({ error: 'A cancelled invoice can no longer be edited.' });
+
+    // A delivered invoice stays open: customers keep collecting goods against it until
+    // they pay. Whatever is added is booked out of stock on save, so editing one needs
+    // the right to deliver, and what has already left the shelf is fixed.
+    const delivered = before.status === 'DELIVERED';
+    const done = deliveredByLine(before.status, before.items);
+    if (delivered) {
+      if (!(await can(app.prisma, req.user, 'invoice.deliver'))) {
+        return reply.code(403).send({ error: 'Adding to a delivered invoice books goods out of stock. Ask someone who can confirm deliveries.' });
+      }
+      const changed = (k: string, now: unknown, was: unknown) => (now !== undefined && now !== was ? k : null);
+      const locked = [
+        changed('customer', body.customerId, before.customerId),
+        isAdmin(req) ? changed('branch', body.branchId, before.branchId) : null,
+        changed('price tier', body.priceTier, before.priceTier),
+        changed('VAT setting', body.chargeVat, before.chargeVat),
+        changed('VAT mode', body.vatMode, before.vatMode),
+      ].filter(Boolean);
+      if (locked.length) {
+        return reply.code(409).send({ error: `Goods on this invoice have been delivered, so its ${locked.join(', ')} can no longer change.` });
+      }
+      if (body.items) {
+        const sent = new Map(body.items.filter((i) => i.id != null).map((i) => [i.id!, i]));
+        const problems: string[] = [];
+        for (const old of before.items) {
+          const out = done.get(old.id) ?? 0;
+          if (out <= 0) continue;
+          const now = sent.get(old.id);
+          if (!now) problems.push(`${old.description} (already delivered — it cannot be removed)`);
+          else if ((now.bookId ?? null) !== old.bookId) problems.push(`${old.description} (already delivered — the product cannot change)`);
+          else if (now.quantity + 0.001 < out) problems.push(`${old.description} (${out} already delivered — the quantity cannot go below that)`);
+          else if (Math.abs(now.unitPrice - n(old.unitPrice)) > 0.001 || Math.abs((before.chargeVat ? now.vatRate : 0) - n(old.vatRate)) > 0.001) {
+            problems.push(`${old.description} (already delivered at ${n(old.unitPrice).toFixed(2)} — add a new line for a different price)`);
+          }
+        }
+        if (problems.length) return reply.code(409).send({ error: `These lines cannot change: ${problems.join('; ')}.` });
+      }
     }
+
     // Changing the lines or the tier must not take a cashier's invoice below the set price.
     if (req.user.role === 'CASHIER' && (body.items || body.priceTier)) {
-      const lines = body.items ?? (await app.prisma.invoiceItem.findMany({ where: { invoiceId: id }, select: { bookId: true, description: true, unitPrice: true } }));
+      const lines = body.items ?? before.items;
       const problem = await cashierPriceProblem(before.branchId, body.priceTier ?? before.priceTier, lines);
       if (problem) return reply.code(400).send({ error: problem });
     }
 
+    const branchId = before.branchId ?? req.user.branchId ?? null;
+    if (delivered && body.items && branchId == null) return reply.code(400).send({ error: 'Set a branch on the invoice before adding goods.' });
+
     // Re-price whenever the lines or the VAT settings change.
     const chargeVat = body.chargeVat ?? before.chargeVat;
     const vatMode = asVatMode(body.vatMode ?? before.vatMode);
-    let totals: { subtotal: number; vatTotal: number; total: number } | undefined;
-    if (body.items || body.chargeVat !== undefined || body.vatMode !== undefined) {
-      const source =
-        body.items ??
-        (await app.prisma.invoiceItem.findMany({ where: { invoiceId: id }, orderBy: { sortOrder: 'asc' } })).map((i) => ({
-          bookId: i.bookId,
-          description: i.description,
-          unit: i.unit,
-          quantity: n(i.quantity),
-          unitPrice: n(i.unitPrice),
-          vatRate: n(i.vatRate),
-        }));
-      const priced = priceLines(source, vatMode, chargeVat);
-      totals = { subtotal: priced.subtotal, vatTotal: priced.vatTotal, total: priced.total };
-      await app.prisma.$transaction([
-        app.prisma.invoiceItem.deleteMany({ where: { invoiceId: id } }),
-        ...(priced.lines.length
-          ? [app.prisma.invoiceItem.createMany({ data: priced.lines.map((l) => ({ ...l, invoiceId: id })) })]
-          : []),
-      ]);
-    }
+    const source: Array<LineInput & { id?: number }> | null =
+      body.items ??
+      (body.chargeVat !== undefined || body.vatMode !== undefined
+        ? before.items.map((i) => ({
+            id: i.id,
+            bookId: i.bookId,
+            description: i.description,
+            unit: i.unit,
+            quantity: n(i.quantity),
+            unitPrice: n(i.unitPrice),
+            vatRate: n(i.vatRate),
+          }))
+        : null);
+    const priced = source ? priceLines(source, vatMode, chargeVat) : null;
+    // A line keeps what has been delivered on it; a new line has delivered nothing yet.
+    const ownIds = new Set(before.items.map((i) => i.id));
+    const lineData = priced?.lines.map((l, i) => {
+      const lineId = source![i].id;
+      return { ...l, invoiceId: id, deliveredQty: lineId != null && ownIds.has(lineId) ? done.get(lineId) ?? 0 : 0 };
+    });
 
-    const updated = await app.prisma.invoice.update({
-      where: { id },
-      data: {
-        ...(body.customerId !== undefined ? { customerId: body.customerId } : {}),
-        ...(body.branchId !== undefined && isAdmin(req) ? { branchId: body.branchId } : {}),
-        ...(body.priceTier !== undefined ? { priceTier: body.priceTier } : {}),
-        ...(body.chargeVat !== undefined ? { chargeVat } : {}),
-        ...(body.vatMode !== undefined ? { vatMode } : {}),
-        ...(body.issueDate !== undefined ? { issueDate: new Date(body.issueDate) } : {}),
-        ...(body.dueDate !== undefined ? { dueDate: body.dueDate ? new Date(body.dueDate) : null } : {}),
-        ...(body.deliveryNoteNo !== undefined ? { deliveryNoteNo: body.deliveryNoteNo } : {}),
-        ...(body.notes !== undefined ? { notes: body.notes } : {}),
-        ...(body.receivedBy !== undefined ? { receivedBy: body.receivedBy } : {}),
-        ...(body.receivedIdNo !== undefined ? { receivedIdNo: body.receivedIdNo } : {}),
-        ...(body.receivedDesignation !== undefined ? { receivedDesignation: body.receivedDesignation } : {}),
-        ...(totals ?? {}),
-      },
-      include: withItems,
+    const outcome = await app.prisma.$transaction(async (tx) => {
+      if (lineData) {
+        await tx.invoiceItem.deleteMany({ where: { invoiceId: id } });
+        if (lineData.length) await tx.invoiceItem.createMany({ data: lineData });
+      }
+      const updated = await tx.invoice.update({
+        where: { id },
+        data: {
+          ...(body.customerId !== undefined ? { customerId: body.customerId } : {}),
+          ...(body.branchId !== undefined && isAdmin(req) ? { branchId: body.branchId } : {}),
+          ...(body.priceTier !== undefined ? { priceTier: body.priceTier } : {}),
+          ...(body.chargeVat !== undefined ? { chargeVat } : {}),
+          ...(body.vatMode !== undefined ? { vatMode } : {}),
+          ...(body.issueDate !== undefined ? { issueDate: new Date(body.issueDate) } : {}),
+          ...(body.dueDate !== undefined ? { dueDate: body.dueDate ? new Date(body.dueDate) : null } : {}),
+          ...(body.deliveryNoteNo !== undefined ? { deliveryNoteNo: body.deliveryNoteNo } : {}),
+          ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          ...(body.receivedBy !== undefined ? { receivedBy: body.receivedBy } : {}),
+          ...(body.receivedIdNo !== undefined ? { receivedIdNo: body.receivedIdNo } : {}),
+          ...(body.receivedDesignation !== undefined ? { receivedDesignation: body.receivedDesignation } : {}),
+          ...(priced ? { subtotal: priced.subtotal, vatTotal: priced.vatTotal, total: priced.total } : {}),
+        },
+      });
+      // On a delivered invoice, what was just added leaves the shelf now.
+      const saleId = delivered && lineData ? await bookOutPending(tx, updated, branchId!, req.user.id) : null;
+      if (saleId != null && updated.saleId == null) await tx.invoice.update({ where: { id }, data: { saleId } });
+      await queueInvoice(tx, id);
+      const full = await tx.invoice.findUniqueOrThrow({ where: { id }, include: withItems });
+      return { invoice: full, saleId };
+    }).catch((e) => {
+      if (e instanceof DeliveryStockError) return e;
+      throw e;
     });
-    await queueInvoice(app.prisma, id);
+    if (outcome instanceof DeliveryStockError) return reply.code(400).send({ error: outcome.message });
+
     await auditRequest(app.prisma, req, {
-      entity: 'invoice', entityId: id, branchId: updated.branchId, action: 'UPDATE',
-      details: { number: updated.number, total: n(updated.total) },
+      entity: 'invoice', entityId: id, branchId: outcome.invoice.branchId, action: 'UPDATE',
+      details: {
+        number: outcome.invoice.number,
+        total: n(outcome.invoice.total),
+        ...(delivered ? { totalBefore: n(before.total), addedAfterDelivery: outcome.saleId != null, saleId: outcome.saleId } : {}),
+      },
     });
-    return updated;
+    return outcome.invoice;
   });
 
   app.delete('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
@@ -547,32 +740,6 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const branchId = inv.branchId ?? req.user.branchId;
     if (branchId == null) return reply.code(400).send({ error: 'Set a branch on the invoice before delivering.' });
 
-    const stockLines = inv.items.filter((i) => i.bookId != null && Number(i.quantity) > 0);
-    const [books, shelf] = await Promise.all([
-      app.prisma.book.findMany({ where: { id: { in: stockLines.map((i) => i.bookId!) } }, select: { id: true, title: true, costPrice: true } }),
-      app.prisma.stock.findMany({ where: { branchId, bookId: { in: stockLines.map((i) => i.bookId!) } }, select: { bookId: true, quantity: true, costPrice: true } }),
-    ]);
-    const bookById = new Map(books.map((b) => [b.id, b]));
-    const shelfByBook = new Map(shelf.map((s) => [s.bookId, s]));
-    // The same cost a till sale at this branch would use, so COGS agrees either way.
-    const costOf = (bookId: number) => Number(shelfByBook.get(bookId)?.costPrice ?? bookById.get(bookId)?.costPrice ?? 0);
-
-    // Goods cannot be delivered from an empty shelf: receive them first.
-    const wanted = new Map<number, number>();
-    for (const i of stockLines) wanted.set(i.bookId!, (wanted.get(i.bookId!) ?? 0) + Math.round(Number(i.quantity)));
-    const short = [...wanted].filter(([bookId, qty]) => (shelfByBook.get(bookId)?.quantity ?? 0) < qty);
-    if (short.length > 0) {
-      const detail = short
-        .map(([bookId, qty]) => `${bookById.get(bookId)?.title ?? `#${bookId}`} (needs ${qty}, on hand ${shelfByBook.get(bookId)?.quantity ?? 0})`)
-        .join('; ');
-      return reply.code(400).send({ error: `Not enough stock to deliver — ${detail}.` });
-    }
-
-    // Revenue is the invoice net of VAT: VAT is owed to KRA, not earned. Lines with no
-    // catalogue product (e.g. a service) are revenue too, but move no stock.
-    const net = round2(inv.items.reduce((s, i) => s + n(i.netAmount), 0));
-    const netUnit = (i: { netAmount: unknown; quantity: unknown }) => round2(n(i.netAmount) / Math.max(1, Math.round(Number(i.quantity))));
-
     const result = await app.prisma.$transaction(async (tx) => {
       // Claim the delivery first, so a double click cannot book the goods out twice.
       const { count } = await tx.invoice.updateMany({
@@ -580,63 +747,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
         data: { status: 'DELIVERED' },
       });
       if (count === 0) return null;
-      let saleId: number | null = null;
-      if (stockLines.length > 0) {
-        const sale = await tx.sale.create({
-          data: {
-            branchId,
-            userId: req.user.id,
-            originBranchId: branchId,
-            paymentMethod: 'CASH',
-            priceTier: inv.priceTier,
-            subtotal: net,
-            total: net,
-            items: {
-              create: stockLines.map((i) => ({
-                bookId: i.bookId!,
-                quantity: Math.round(Number(i.quantity)),
-                unitPrice: netUnit(i),
-                costPrice: costOf(i.bookId!),
-              })),
-            },
-          },
-          select: { id: true, uuid: true, createdAt: true, items: { select: { uuid: true, bookId: true, quantity: true, unitPrice: true, costPrice: true } } },
-        });
-        saleId = sale.id;
-
-        if (SYNC_ROLE === 'branch') {
-          const [b, u, bks] = await Promise.all([
-            tx.branch.findUnique({ where: { id: branchId }, select: { uuid: true } }),
-            tx.user.findUnique({ where: { id: req.user.id }, select: { uuid: true } }),
-            tx.book.findMany({ where: { id: { in: sale.items.map((i) => i.bookId) } }, select: { id: true, uuid: true } }),
-          ]);
-          const bookUuid = new Map(bks.map((x) => [x.id, x.uuid]));
-          await enqueueOutbox(tx, 'sale', sale.uuid, {
-            branchUuid: b?.uuid, userUuid: u?.uuid,
-            subtotal: net, discount: 0, discountReason: null, total: net,
-            paymentMethod: 'CASH', priceTier: inv.priceTier, createdAt: sale.createdAt,
-            items: sale.items.map((i) => ({
-              uuid: i.uuid, bookUuid: bookUuid.get(i.bookId), quantity: i.quantity,
-              unitPrice: Number(i.unitPrice), costPrice: Number(i.costPrice),
-            })),
-          });
-        }
-
-        for (const i of stockLines) {
-          const qty = Math.round(Number(i.quantity));
-          const { count: took } = await tx.stock.updateMany({
-            where: { branchId, bookId: i.bookId!, quantity: { gte: qty } },
-            data: { quantity: { decrement: qty } },
-          });
-          if (took === 0) throw new DeliveryStockError();
-          // A plain movement, not recordMovement: on a branch the sale event above
-          // already carries this stock to the cloud, and a queued movement as well
-          // would take it off there twice.
-          await tx.stockMovement.create({
-            data: { branchId, bookId: i.bookId!, delta: -qty, type: 'SALE', note: `Invoice ${inv.number}`, userId: req.user.id, originBranchId: branchId },
-          });
-        }
-      }
+      const saleId = await bookOutPending(tx, inv, branchId, req.user.id);
       const delivered = await tx.invoice.update({
         where: { id },
         data: {
@@ -654,10 +765,10 @@ export async function invoiceRoutes(app: FastifyInstance) {
       await queueInvoice(tx, id);
       return delivered;
     }).catch((e) => {
-      if (e instanceof DeliveryStockError) return 'short' as const;
+      if (e instanceof DeliveryStockError) return e;
       throw e;
     });
-    if (result === 'short') return reply.code(400).send({ error: 'Not enough stock to deliver — another sale took the units. Try again.' });
+    if (result instanceof DeliveryStockError) return reply.code(400).send({ error: result.message });
     if (!result) return reply.code(409).send({ error: 'This invoice has already been delivered.' });
 
     await auditRequest(app.prisma, req, {

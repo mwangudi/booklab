@@ -3,6 +3,32 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-07 — Invoices from stock, open until paid; cost in the price grid
+
+### Invoices pick from stock
+- The product picker on an invoice lists only what the invoicing branch has on hand,
+  with "N in stock" beside each, at that branch's price for the invoice's tier. A line
+  asking for more than the shelf holds is outlined in red and the invoice will not save.
+  Free-text lines (services, delivery charges) are unchanged.
+
+### Delivered invoices stay open until paid
+- Customers who keep collecting before they pay are added to the same invoice. On a
+  delivered invoice, new lines and extra quantities are booked out of the branch's stock
+  when it is saved, as a further sale, so stock, COGS and the P&L follow the invoice.
+- What has already left the shelf is fixed: a delivered line cannot be removed, reduced
+  below what went out, or repriced (add a new line for a different price). Customer,
+  branch, price tier and VAT settings are locked after delivery. A short shelf rolls the
+  whole edit back.
+- Needs *Confirm deliveries*; paid and cancelled invoices stay locked.
+- New column `InvoiceItem.deliveredQty` (migration `20261107120000_invoice_delivered_qty`
+  marks lines of already-delivered invoices as delivered in full). Branch sync carries it;
+  laptops not yet updated keep syncing. **Update the cloud before the branch laptops.**
+
+### Price grid shows cost
+- The inline product grid has a read-only **Cost** column (the branch's purchase cost,
+  else the catalogue's) and, under each Retail / Wholesale / School price, its margin
+  over cost as amount and percentage — amber under 10%, red below cost.
+
 ## 2026-10-28 — New products get the next SKU in a series
 - **Products → New product** fills in the next free code in a SKU series: `BS-` (Bhavinn
   stationery), `PL-` (brochure price list), `ST` (older codes) or any other series in use.

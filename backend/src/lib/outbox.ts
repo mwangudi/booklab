@@ -115,6 +115,7 @@ export async function queueInvoice(tx: Tx, invoiceId: number): Promise<void> {
       netAmount: Number(i.netAmount),
       vatAmount: Number(i.vatAmount),
       total: Number(i.total),
+      deliveredQty: Number(i.deliveredQty),
       sortOrder: i.sortOrder,
     })),
   });

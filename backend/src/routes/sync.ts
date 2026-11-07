@@ -378,6 +378,8 @@ async function ingestInvoice(tx: Tx, uuid: string, data: Record<string, any>, al
         uuid: it.uuid, invoiceId: inv.id, bookId, description: it.description, unit: it.unit ?? 'Piece',
         quantity: it.quantity, unitPrice: it.unitPrice, vatRate: it.vatRate ?? 0,
         netAmount: it.netAmount ?? 0, vatAmount: it.vatAmount ?? 0, total: it.total ?? 0,
+        // A laptop not yet updated sends no deliveredQty: its delivered invoices went out in full.
+        deliveredQty: it.deliveredQty ?? (['DELIVERED', 'PAID'].includes(fields.status) ? it.quantity : 0),
         sortOrder: it.sortOrder ?? i,
       },
     });

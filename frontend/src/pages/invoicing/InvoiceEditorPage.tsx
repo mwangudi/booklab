@@ -5,15 +5,20 @@ import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useLocation } from 'react-router-dom';
 import { useCan } from '../../lib/permissions';
+import { useAuth } from '../../lib/auth';
 import { money, num, today } from '../../lib/format';
 import { PRODUCT_UNITS } from '../../lib/categories';
 import { printDeliveryNote, printInvoice } from '../../lib/documents';
-import type { Book, Customer, Invoice } from '../../types';
+import type { Customer, Invoice, Stock } from '../../types';
 import { BranchSelect } from '../../components/BranchSelect';
 import { Alert, Button, Card, FormField, Input, Loading, Modal, PageHeader, Pill, SectionTitle, Textarea } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
 
 interface Line {
+  /** The saved line this is; absent on a line added since the last save. */
+  id?: number;
+  /** Units of this line that have already left the shelf. */
+  delivered: number;
   bookId: number | null;
   description: string;
   unit: string;
@@ -22,7 +27,7 @@ interface Line {
   vatRate: string;
 }
 
-const blankLine = (): Line => ({ bookId: null, description: '', unit: 'Piece', quantity: '1', unitPrice: '0', vatRate: '16' });
+const blankLine = (): Line => ({ delivered: 0, bookId: null, description: '', unit: 'Piece', quantity: '1', unitPrice: '0', vatRate: '16' });
 
 export default function InvoiceEditorPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,7 +39,7 @@ export default function InvoiceEditorPage() {
 
   const { data: invoice, loading, refresh } = useApi<Invoice>(isEdit ? `/api/invoices/${id}` : null, [id]);
   const { data: customers } = useApi<Customer[]>('/api/invoices/customers');
-  const { data: books } = useApi<Book[]>('/api/books');
+  const { user } = useAuth();
 
   const [customerId, setCustomerId] = useState<number | null>(null);
   const [branchId, setBranchId] = useState<number | null>(null);
@@ -50,8 +55,19 @@ export default function InvoiceEditorPage() {
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [received, setReceived] = useState({ receivedBy: '', receivedIdNo: '', receivedDesignation: '' });
 
+  // Items are picked from what the invoicing branch has on its shelf.
+  const stockBranch = branchId ?? user?.branchId ?? null;
+  const { data: shelf, refresh: refreshShelf } = useApi<Stock[]>(stockBranch != null ? `/api/stock/branch/${stockBranch}` : null, [stockBranch]);
+  const shelfByBook = useMemo(() => new Map((shelf ?? []).map((s) => [s.bookId, s])), [shelf]);
+
   const customer = useMemo(() => customers?.find((c) => c.id === customerId) ?? null, [customers, customerId]);
-  const readOnly = !!invoice && (invoice.status === 'DELIVERED' || invoice.status === 'PAID' || invoice.status === 'CANCELLED');
+  // A delivered invoice stays open until it is paid: customers keep collecting against
+  // it, and whatever is added leaves the shelf when it is saved.
+  const delivered = invoice?.status === 'DELIVERED';
+  const readOnly =
+    !!invoice && (invoice.status === 'PAID' || invoice.status === 'CANCELLED' || (delivered && !can('invoice.deliver')));
+  // Who the invoice is for and how it is priced are fixed once goods have gone out.
+  const termsLocked = readOnly || delivered;
 
   useEffect(() => {
     if (!invoice) return;
@@ -65,6 +81,8 @@ export default function InvoiceEditorPage() {
     setNotes(invoice.notes ?? '');
     setLines(
       (invoice.items ?? []).map((i) => ({
+        id: i.id,
+        delivered: num(i.deliveredQty),
         bookId: i.bookId,
         description: i.description,
         unit: i.unit,
@@ -89,17 +107,41 @@ export default function InvoiceEditorPage() {
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
-  /** Picking a catalogue product fills the description, unit, price and VAT rate. */
+  /** The branch's price for the invoice's tier, falling back to the catalogue — as the server does. */
+  const tierPrice = (s: Stock) => {
+    const b = s.book;
+    const retail = num(s.price ?? b.unitPrice);
+    if (priceTier === 'WHOLESALE') return num(s.priceWholesale ?? b.priceWholesale ?? retail);
+    if (priceTier === 'SCHOOL') return num(s.priceSchool ?? b.priceSchool ?? retail);
+    return retail;
+  };
+
+  /** Picking a product from the shelf fills the description, unit, price and VAT rate. */
   const chooseBook = (i: number, bookIdStr: string) => {
     if (!bookIdStr) return setLine(i, { bookId: null });
-    const b = books?.find((x) => x.id === Number(bookIdStr));
-    if (!b) return;
-    const price =
-      priceTier === 'WHOLESALE' ? num(b.priceWholesale ?? b.unitPrice)
-      : priceTier === 'SCHOOL' ? num(b.priceSchool ?? b.unitPrice)
-      : num(b.unitPrice);
-    setLine(i, { bookId: b.id, description: b.title, unit: b.unit || 'Piece', unitPrice: String(price), vatRate: String(num(b.vatRate)) });
+    const s = shelfByBook.get(Number(bookIdStr));
+    if (!s) return;
+    const b = s.book;
+    setLine(i, { bookId: b.id, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)), vatRate: String(num(b.vatRate)) });
   };
+
+  // Units each product still needs from the shelf: what is on the lines less what has gone out.
+  const needed = useMemo(() => {
+    const m = new Map<number, number>();
+    for (const l of lines) {
+      if (l.bookId == null) continue;
+      m.set(l.bookId, (m.get(l.bookId) ?? 0) + Math.max(0, Math.round(num(l.quantity)) - Math.round(l.delivered)));
+    }
+    return m;
+  }, [lines]);
+  const shortOf = (bookId: number | null) => {
+    if (bookId == null || !shelf) return null;
+    const onHand = shelfByBook.get(bookId)?.quantity ?? 0;
+    return (needed.get(bookId) ?? 0) > onHand ? onHand : null;
+  };
+  const anyShort = lines.some((l) => shortOf(l.bookId) != null);
+  // Goods that will leave the shelf when a delivered invoice is saved.
+  const toBookOut = delivered ? [...needed.values()].reduce((a, b) => a + b, 0) : 0;
 
   const computed = useMemo(() => {
     let net = 0;
@@ -124,8 +166,9 @@ export default function InvoiceEditorPage() {
     dueDate: dueDate || null,
     notes: notes.trim() || null,
     items: lines
-      .filter((l) => l.description.trim() && num(l.quantity) > 0)
+      .filter((l) => l.description.trim() && (num(l.quantity) > 0 || l.delivered > 0))
       .map((l) => ({
+        ...(l.id != null ? { id: l.id } : {}),
         bookId: l.bookId,
         description: l.description.trim(),
         unit: l.unit,
@@ -140,11 +183,20 @@ export default function InvoiceEditorPage() {
     if (!customerId) return setError('Choose a customer.');
     const body = payload();
     if (body.items.length === 0) return setError('Add at least one item with a description and quantity.');
+    const below = lines.find((l) => l.delivered > 0 && num(l.quantity) < l.delivered);
+    if (below) return setError(`${below.description}: ${below.delivered} already delivered, so the quantity cannot go below that.`);
+    if (anyShort) return setError('Some items need more than the branch has in stock. Lower the quantity or receive the stock first.');
+    if (
+      delivered &&
+      toBookOut > 0 &&
+      !window.confirm(`This invoice has been delivered. Saving books ${toBookOut} more unit${toBookOut === 1 ? '' : 's'} out of stock now. Continue?`)
+    ) return;
     setSaving(true);
     try {
       if (isEdit) {
         await api.patch(`/api/invoices/${id}`, body);
         refresh();
+        refreshShelf();
       } else {
         const created = await api.post<Invoice>('/api/invoices', body);
         navigate(`/invoices/${created.id}`, { replace: true });
@@ -163,6 +215,7 @@ export default function InvoiceEditorPage() {
       await api.post(path, body);
       setDeliverOpen(false);
       refresh();
+      refreshShelf();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : fail);
     } finally {
@@ -176,9 +229,13 @@ export default function InvoiceEditorPage() {
     { value: '', label: 'Select a customer…' },
     ...(customers ?? []).map((c) => ({ value: String(c.id), label: c.name })),
   ];
+  // Only what is on the shelf can be picked; a product already on a line stays listed.
+  const onLines = new Set(lines.map((l) => l.bookId).filter((x): x is number => x != null));
   const bookOptions = [
-    { value: '', label: 'Free text (not from catalogue)' },
-    ...(books ?? []).map((b) => ({ value: String(b.id), label: `${b.title} — ${b.sku}` })),
+    { value: '', label: 'Free text (not from stock)' },
+    ...(shelf ?? [])
+      .filter((s) => s.quantity > 0 || onLines.has(s.bookId))
+      .map((s) => ({ value: String(s.bookId), label: `${s.book.title} — ${s.book.sku} · ${s.quantity} in stock` })),
   ];
 
   return (
@@ -223,8 +280,21 @@ export default function InvoiceEditorPage() {
       )}
       {readOnly && (
         <Alert tone="blue">
-          This invoice is {invoice?.status.toLowerCase()} and can no longer be edited. It remains available to print.
+          {delivered
+            ? 'This invoice has been delivered. Adding goods to it needs the right to confirm deliveries.'
+            : `This invoice is ${invoice?.status.toLowerCase()} and can no longer be edited.`}{' '}
+          It remains available to print.
         </Alert>
+      )}
+      {delivered && !readOnly && (
+        <Alert tone="amber">
+          Delivered, not yet paid: the customer can keep collecting against this invoice. New lines and extra quantities
+          are booked out of {invoice?.branch?.name ?? 'the branch'}&apos;s stock when you save. Lines already delivered keep
+          their price and cannot go below what has gone out.
+        </Alert>
+      )}
+      {!readOnly && stockBranch == null && (
+        <Alert tone="amber">Choose a branch to pick items from its stock.</Alert>
       )}
 
       <Card className="p-4 space-y-4">
@@ -236,12 +306,12 @@ export default function InvoiceEditorPage() {
                 value={customerId == null ? '' : String(customerId)}
                 onChange={(v) => setCustomerId(v ? Number(v) : null)}
                 options={customerOptions}
-                disabled={readOnly}
+                disabled={termsLocked}
               />
             </FormField>
           </div>
           <FormField label="Branch">
-            <BranchSelect value={branchId} onChange={setBranchId} includeAll />
+            <BranchSelect value={branchId} onChange={setBranchId} includeAll disabled={termsLocked} />
           </FormField>
           <FormField label="Price tier">
             <Select2
@@ -253,7 +323,7 @@ export default function InvoiceEditorPage() {
                 { value: 'RETAIL', label: 'Retail price' },
               ]}
               searchable={false}
-              disabled={readOnly}
+              disabled={termsLocked}
             />
           </FormField>
           <FormField label="Invoice date">
@@ -273,7 +343,7 @@ export default function InvoiceEditorPage() {
               type="checkbox"
               checked={chargeVat}
               onChange={(e) => setChargeVat(e.target.checked)}
-              disabled={readOnly}
+              disabled={termsLocked}
               className="h-4 w-4 mt-0.5 rounded border-border"
             />
             <span>
@@ -292,7 +362,7 @@ export default function InvoiceEditorPage() {
                 { value: 'INCLUSIVE', label: 'Inclusive of VAT' },
               ]}
               searchable={false}
-              disabled={readOnly || !chargeVat}
+              disabled={termsLocked || !chargeVat}
             />
           </FormField>
           <div className="text-xs text-muted-foreground sm:col-span-2 lg:col-span-2">
@@ -318,6 +388,10 @@ export default function InvoiceEditorPage() {
         <div className="space-y-2">
           {lines.map((l, i) => {
             const raw = num(l.quantity) * num(l.unitPrice);
+            // What has already gone out is fixed: its product, price and VAT, and the quantity's floor.
+            const fixed = readOnly || l.delivered > 0;
+            const short = readOnly ? null : shortOf(l.bookId);
+            const onHand = l.bookId != null ? shelfByBook.get(l.bookId)?.quantity : undefined;
             return (
               <div key={i} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-border p-2.5">
                 <div className="col-span-12 lg:col-span-3">
@@ -326,19 +400,34 @@ export default function InvoiceEditorPage() {
                       value={l.bookId == null ? '' : String(l.bookId)}
                       onChange={(v) => chooseBook(i, v)}
                       options={bookOptions}
-                      disabled={readOnly}
+                      disabled={fixed || stockBranch == null}
                     />
                   </FormField>
                 </div>
                 <div className="col-span-12 lg:col-span-3">
                   <FormField label={i === 0 ? 'Description' : ''}>
-                    <Input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Item description" disabled={readOnly} />
+                    <Input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Item description" disabled={fixed} />
                   </FormField>
                 </div>
                 <div className="col-span-4 lg:col-span-1">
                   <FormField label={i === 0 ? 'Qty' : ''}>
-                    <Input type="number" min="0" step="0.01" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} className="font-mono" disabled={readOnly} />
+                    <Input
+                      type="number"
+                      min={l.delivered > 0 ? String(l.delivered) : '0'}
+                      step="0.01"
+                      value={l.quantity}
+                      onChange={(e) => setLine(i, { quantity: e.target.value })}
+                      className={`font-mono ${short != null ? 'border-[#9b2626]' : ''}`}
+                      disabled={readOnly}
+                    />
                   </FormField>
+                  {short != null ? (
+                    <div className="mt-0.5 text-[11px] text-[#9b2626]">Only {short} in stock</div>
+                  ) : l.delivered > 0 ? (
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">{l.delivered} delivered</div>
+                  ) : !readOnly && onHand != null ? (
+                    <div className="mt-0.5 text-[11px] text-muted-foreground">{onHand} in stock</div>
+                  ) : null}
                 </div>
                 <div className="col-span-4 lg:col-span-1">
                   <FormField label={i === 0 ? 'Unit' : ''}>
@@ -347,18 +436,18 @@ export default function InvoiceEditorPage() {
                       onChange={(v) => setLine(i, { unit: v })}
                       options={PRODUCT_UNITS.map((u) => ({ value: u, label: u }))}
                       searchable={false}
-                      disabled={readOnly}
+                      disabled={fixed}
                     />
                   </FormField>
                 </div>
                 <div className="col-span-4 lg:col-span-1">
                   <FormField label={i === 0 ? 'Unit cost' : ''}>
-                    <Input type="number" min="0" step="0.01" value={l.unitPrice} onChange={(e) => setLine(i, { unitPrice: e.target.value })} className="font-mono" disabled={readOnly} />
+                    <Input type="number" min="0" step="0.01" value={l.unitPrice} onChange={(e) => setLine(i, { unitPrice: e.target.value })} className="font-mono" disabled={fixed} />
                   </FormField>
                 </div>
                 <div className="col-span-4 lg:col-span-1">
                   <FormField label={i === 0 ? 'VAT %' : ''}>
-                    <Input type="number" min="0" max="100" step="0.5" value={l.vatRate} onChange={(e) => setLine(i, { vatRate: e.target.value })} className="font-mono" disabled={readOnly || !chargeVat} />
+                    <Input type="number" min="0" max="100" step="0.5" value={l.vatRate} onChange={(e) => setLine(i, { vatRate: e.target.value })} className="font-mono" disabled={fixed || !chargeVat} />
                   </FormField>
                 </div>
                 <div className="col-span-6 lg:col-span-1 text-right">
@@ -366,7 +455,7 @@ export default function InvoiceEditorPage() {
                   <div className="font-mono text-sm font-semibold">{money(raw)}</div>
                 </div>
                 <div className="col-span-2 lg:col-span-1 text-right">
-                  {!readOnly && lines.length > 1 && (
+                  {!fixed && lines.length > 1 && (
                     <button
                       onClick={() => setLines((p) => p.filter((_, idx) => idx !== i))}
                       className="inline-grid h-8 w-8 place-items-center rounded-lg text-[#9b2626] hover:bg-[#9b2626]/10"
@@ -430,7 +519,9 @@ export default function InvoiceEditorPage() {
           </div>
           {invoice.saleId && (
             <p className="mt-3 text-xs text-muted-foreground">
-              Delivered goods were booked out as sale #{invoice.saleId}, so stock and profit already reflect this invoice.
+              Delivered goods were booked out as sale #{invoice.saleId}
+              {delivered ? ' (goods added later go out as further sales)' : ''}, so stock and profit already reflect this
+              invoice.
             </p>
           )}
         </Card>
@@ -454,7 +545,8 @@ export default function InvoiceEditorPage() {
         <div className="space-y-4">
           <Alert tone="amber">
             Catalogue items will be booked out of {invoice?.branch?.name ?? 'the selected branch'} as a sale, so stock,
-            cost of goods and profit all update. The invoice can no longer be edited afterwards.
+            cost of goods and profit all update. Until it is paid, more goods can still be added to the invoice; they
+            leave the shelf when it is saved.
           </Alert>
           <FormField label="Received by">
             <Input value={received.receivedBy} onChange={(e) => setReceived((p) => ({ ...p, receivedBy: e.target.value }))} placeholder="Name of the person receiving" />

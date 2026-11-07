@@ -172,6 +172,8 @@ export interface InvoiceItem {
   netAmount: Money;
   vatAmount: Money;
   total: Money;
+  /** How much of the quantity has already left the shelf (delivered invoices stay open). */
+  deliveredQty?: Money;
   sortOrder?: number;
 }
 

@@ -72,6 +72,26 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   };
 
   const valueOf = (b: Book, col: Col) => drafts[key(b.id, col)] ?? original(b, col);
+
+  /** What the goods cost: this branch's purchase cost when it has one, else the catalogue's. */
+  const costOf = (b: Book): number => num((catalogue ? null : shelf.get(b.id)?.costPrice) ?? b.costPrice);
+  /**
+   * Margin of the price a cell will sell at (its typed value, or the fallback shown in
+   * grey when blank) over cost, so a price can be set knowing what it earns.
+   */
+  const marginOf = (b: Book, col: Col): { text: string; tone: string } | null => {
+    if (col === 'quantity') return null;
+    const cost = costOf(b);
+    const typed = clean(valueOf(b, col));
+    const price = Number(typed !== '' ? typed : clean(hint(b, col)));
+    if (!(cost > 0) || !Number.isFinite(price) || price <= 0) return null;
+    const gain = price - cost;
+    const pct = Math.round((gain / price) * 100);
+    return {
+      text: `${gain >= 0 ? '+' : '−'}${fmt(Math.abs(Math.round(gain)))} · ${pct}%`,
+      tone: gain < 0 ? 'text-[#9b2626]' : pct < 10 ? 'text-[#a26a00]' : 'text-muted-foreground',
+    };
+  };
   const problem = (b: Book, col: Col): string | null => {
     const v = clean(valueOf(b, col));
     if (col === 'quantity') return /^\d+$/.test(v) ? null : 'A whole number, 0 or more';
@@ -246,6 +266,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             grey. Quantities are set exactly, like a stock take.
           </>
         )}{' '}
+        Cost is what the goods were bought for; under each price is its margin over cost (amount · % of the price).{' '}
         Use the arrow keys or Enter to move, Esc to undo a cell, and paste a block straight from Excel.
       </Alert>
 
@@ -286,6 +307,9 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             <tr>
               <th className="px-2 py-2 text-left font-semibold w-24">SKU</th>
               <th className="px-2 py-2 text-left font-semibold">Product</th>
+              <th className="px-2 py-2 text-right font-semibold w-24" title="Purchase cost (cost of goods). Each price shows its margin over this.">
+                Cost
+              </th>
               {cols.map((c) => (
                 <th key={c} className="px-2 py-2 text-right font-semibold w-28">
                   {LABEL[c]}
@@ -300,11 +324,15 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                 <td className="px-2 py-1">
                   <div className="truncate max-w-[340px]" title={b.title}>{b.title}</div>
                 </td>
+                <td className="px-2 py-1 text-right font-mono text-muted-foreground whitespace-nowrap">
+                  {costOf(b) > 0 ? costOf(b).toLocaleString('en-KE', { maximumFractionDigits: 2 }) : <span title="No purchase cost recorded">—</span>}
+                </td>
                 {cols.map((col, c) => {
                   const changed = isChanged(b, col);
                   const bad = changed && problem(b, col);
+                  const margin = marginOf(b, col);
                   return (
-                    <td key={col} className="p-0.5">
+                    <td key={col} className="p-0.5 align-top">
                       <input
                         data-r={r}
                         data-c={c}
@@ -323,6 +351,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                           'focus:border-primary focus:bg-background placeholder:text-muted-foreground/60',
                         ].join(' ')}
                       />
+                      {margin && (
+                        <div className={`px-2 text-right font-mono text-[10px] leading-tight ${margin.tone}`} title="Margin over cost">
+                          {margin.text}
+                        </div>
+                      )}
                     </td>
                   );
                 })}
@@ -330,7 +363,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={2 + cols.length} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={3 + cols.length} className="px-3 py-6 text-center text-muted-foreground">
                   {changedOnly ? 'No changes yet.' : 'No products match.'}
                 </td>
               </tr>

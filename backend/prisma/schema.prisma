@@ -534,7 +534,8 @@ model CustomerPayment {
 }
 
 /// An invoice raised against a customer, with the delivery note printed from
-/// the same lines. Editable while it is still a draft.
+/// the same lines. Editable until it is paid; once delivered, new lines are booked
+/// out of stock as they are added.
 model Invoice {
   id                  Int           @id @default(autoincrement())
   uuid                String        @unique @default(uuid())
@@ -591,6 +592,10 @@ model InvoiceItem {
   vatAmount   Decimal @default(0) @db.Decimal(12, 2)
   /// Net + VAT.
   total       Decimal @default(0) @db.Decimal(12, 2)
+  /// How much of `quantity` has already left the shelf. An invoice stays open
+  /// after delivery (customers keep collecting before they pay); only the part
+  /// not yet delivered is booked out the next time the invoice is saved.
+  deliveredQty Decimal @default(0) @db.Decimal(12, 2)
   sortOrder   Int     @default(0)
   invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   book        Book?   @relation(fields: [bookId], references: [id])
