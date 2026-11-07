@@ -50,6 +50,8 @@ const gridSchema = z.object({
       price: gridPrice,
       priceWholesale: gridPrice,
       priceSchool: gridPrice,
+      /** Purchase cost. Catalogue: what the goods cost. Branch: this branch's own cost; null falls back to the catalogue's. */
+      costPrice: gridPrice,
       quantity: z.number().int().min(0).max(10_000_000).optional(),
     }))
     .min(1)
@@ -510,8 +512,8 @@ export async function stockRoutes(app: FastifyInstance) {
   });
 
   /**
-   * Save a batch of edits from the products grid: retail, wholesale and school prices,
-   * and quantities. With a branch, prices are that branch's own (blank clears them back
+   * Save a batch of edits from the products grid: purchase cost, retail, wholesale and
+   * school prices, and quantities. With a branch, prices are that branch's own (blank clears them back
    * to the catalogue) and quantities are set like a stock take. Without one, the
    * catalogue prices are edited — admins only, since they apply to every branch.
    * All or nothing: a batch that fails part-way changes nothing.
@@ -529,11 +531,18 @@ export async function stockRoutes(app: FastifyInstance) {
     if (catalogue && body.rows.some((r) => r.price === null)) {
       return reply.code(400).send({ error: 'Every product needs a retail price in the catalogue.' });
     }
+    if (catalogue && body.rows.some((r) => r.costPrice === null)) {
+      return reply.code(400).send({ error: 'A catalogue cost cannot be cleared. Enter what the product costs.' });
+    }
+    // Same rule as the stock page: cost drives COGS and profit, so it is a manager's figure.
+    if (req.user.role === 'CASHIER' && body.rows.some((r) => r.costPrice !== undefined)) {
+      return reply.code(403).send({ error: 'Only a manager can set cost prices.' });
+    }
 
     const ids = [...new Set(body.rows.map((r) => r.bookId))];
     const books = await app.prisma.book.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, sku: true, unitPrice: true, priceWholesale: true, priceSchool: true },
+      select: { id: true, sku: true, unitPrice: true, priceWholesale: true, priceSchool: true, costPrice: true },
     });
     const bookById = new Map(books.map((b) => [b.id, b]));
     const missing = ids.filter((id) => !bookById.has(id));
@@ -541,7 +550,7 @@ export async function stockRoutes(app: FastifyInstance) {
 
     const money = (v: unknown) => (v == null ? null : Number(v));
     const same = (a: unknown, b: unknown) => money(a) === money(b);
-    const summary = { products: 0, prices: 0, quantities: 0, netUnits: 0 };
+    const summary = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0 };
 
     await app.prisma.$transaction(async (tx) => {
       const shelf = branchId == null ? [] : await tx.stock.findMany({ where: { branchId, bookId: { in: ids } } });
@@ -555,17 +564,25 @@ export async function stockRoutes(app: FastifyInstance) {
           if (row.price !== undefined && !same(row.price, b.unitPrice)) patch.unitPrice = row.price;
           if (row.priceWholesale !== undefined && !same(row.priceWholesale, b.priceWholesale)) patch.priceWholesale = row.priceWholesale;
           if (row.priceSchool !== undefined && !same(row.priceSchool, b.priceSchool)) patch.priceSchool = row.priceSchool;
+          const costChanges = row.costPrice != null && !same(row.costPrice, b.costPrice);
+          if (costChanges) patch.costPrice = row.costPrice!;
           if (Object.keys(patch).length) {
             await tx.book.update({ where: { id: b.id }, data: patch });
             await writeAudit(tx, {
               ...actor(req), entity: 'book', entityId: b.id, action: 'GRID_SET_PRICE',
               details: {
                 sku: b.sku,
-                from: { retail: money(b.unitPrice), wholesale: money(b.priceWholesale), school: money(b.priceSchool) },
-                to: { retail: money(patch.unitPrice ?? b.unitPrice), wholesale: money('priceWholesale' in patch ? patch.priceWholesale : b.priceWholesale), school: money('priceSchool' in patch ? patch.priceSchool : b.priceSchool) },
+                from: { cost: money(b.costPrice), retail: money(b.unitPrice), wholesale: money(b.priceWholesale), school: money(b.priceSchool) },
+                to: {
+                  cost: money(patch.costPrice ?? b.costPrice),
+                  retail: money(patch.unitPrice ?? b.unitPrice),
+                  wholesale: money('priceWholesale' in patch ? patch.priceWholesale : b.priceWholesale),
+                  school: money('priceSchool' in patch ? patch.priceSchool : b.priceSchool),
+                },
               },
             });
-            summary.prices += 1;
+            if (costChanges) summary.costs += 1;
+            if (Object.keys(patch).some((k) => k !== 'costPrice')) summary.prices += 1;
             touched = true;
           }
         } else {
@@ -574,6 +591,8 @@ export async function stockRoutes(app: FastifyInstance) {
           if (row.price !== undefined && !same(row.price, existing?.price)) patch.price = row.price;
           if (row.priceWholesale !== undefined && !same(row.priceWholesale, existing?.priceWholesale)) patch.priceWholesale = row.priceWholesale;
           if (row.priceSchool !== undefined && !same(row.priceSchool, existing?.priceSchool)) patch.priceSchool = row.priceSchool;
+          const costChanges = row.costPrice !== undefined && !same(row.costPrice, existing?.costPrice);
+          if (costChanges) patch.costPrice = row.costPrice ?? null;
           const before = existing?.quantity ?? 0;
           const qtyChanges = row.quantity !== undefined && row.quantity !== before;
           if (!Object.keys(patch).length && !qtyChanges) continue;
@@ -588,15 +607,17 @@ export async function stockRoutes(app: FastifyInstance) {
               ...actor(req), branchId, entity: 'stock.price', entityId: row.bookId, action: 'GRID_SET_PRICE',
               details: {
                 sku: bookById.get(row.bookId)!.sku,
-                from: { retail: money(existing?.price), wholesale: money(existing?.priceWholesale), school: money(existing?.priceSchool) },
+                from: { cost: money(existing?.costPrice), retail: money(existing?.price), wholesale: money(existing?.priceWholesale), school: money(existing?.priceSchool) },
                 to: {
+                  cost: money('costPrice' in patch ? patch.costPrice : existing?.costPrice),
                   retail: money('price' in patch ? patch.price : existing?.price),
                   wholesale: money('priceWholesale' in patch ? patch.priceWholesale : existing?.priceWholesale),
                   school: money('priceSchool' in patch ? patch.priceSchool : existing?.priceSchool),
                 },
               },
             });
-            summary.prices += 1;
+            if (costChanges) summary.costs += 1;
+            if (Object.keys(patch).some((k) => k !== 'costPrice')) summary.prices += 1;
           }
           if (qtyChanges) {
             const delta = row.quantity! - before;

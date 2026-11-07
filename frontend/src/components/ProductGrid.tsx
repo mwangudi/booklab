@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { ChevronLeft, ChevronRight, Save, Search, Undo2, X } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
+import { useAuth } from '../lib/auth';
 import { fmt, num } from '../lib/format';
 import type { Book, Stock } from '../types';
 import { Alert, Button } from './ui';
 
-type Col = 'price' | 'priceWholesale' | 'priceSchool' | 'quantity';
+type Col = 'costPrice' | 'price' | 'priceWholesale' | 'priceSchool' | 'quantity';
 /** Rows per page: a few thousand live inputs would make every keystroke slow. */
 const PAGE = 100;
-const LABEL: Record<Col, string> = { price: 'Retail', priceWholesale: 'Wholesale', priceSchool: 'School', quantity: 'Quantity' };
+const LABEL: Record<Col, string> = { costPrice: 'Cost', price: 'Retail', priceWholesale: 'Wholesale', priceSchool: 'School', quantity: 'Quantity' };
 
 interface Props {
   /** Live (not archived) products to show, already filtered by category. */
@@ -38,12 +39,22 @@ const clean = (s: string) => s.replace(/KES|Ksh|,|\s/gi, '');
  */
 export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClose, onDirty, resetKey }: Props) {
   const catalogue = branchId == null;
-  const cols: Col[] = catalogue ? ['price', 'priceWholesale', 'priceSchool'] : ['price', 'priceWholesale', 'priceSchool', 'quantity'];
+  // Cost drives COGS and profit, so (as on the stock page) a cashier sees it but cannot change it.
+  const { role } = useAuth();
+  const costEditable = role !== 'CASHIER';
+  const cols: Col[] = [
+    ...(costEditable ? (['costPrice'] as Col[]) : []),
+    'price',
+    'priceWholesale',
+    'priceSchool',
+    ...(catalogue ? [] : (['quantity'] as Col[])),
+  ];
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [search, setSearch] = useState('');
   const [changedOnly, setChangedOnly] = useState(false);
   const [unpricedOnly, setUnpricedOnly] = useState(false);
+  const [noCostOnly, setNoCostOnly] = useState(false);
   const [page, setPage] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +64,9 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   // The value a cell starts from, and the greyed hint shown when it is blank.
   const original = (b: Book, col: Col): string => {
     if (catalogue) {
-      // An unpriced product (retail 0) shows a blank cell waiting for its price.
+      // An unpriced product (retail or cost 0) shows a blank cell waiting for its figure.
       if (col === 'price') return num(b.unitPrice) > 0 ? text(b.unitPrice) : '';
+      if (col === 'costPrice') return num(b.costPrice) > 0 ? text(b.costPrice) : '';
       if (col === 'priceWholesale') return text(b.priceWholesale);
       return text(b.priceSchool);
     }
@@ -65,6 +77,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const hint = (b: Book, col: Col): string => {
     const retail = catalogue ? num(b.unitPrice) : num(shelf.get(b.id)?.price ?? b.unitPrice);
     const shown = (v: unknown) => (num(v) > 0 ? text(v) : '');
+    if (col === 'costPrice') return catalogue ? 'no cost' : shown(b.costPrice) || 'no cost';
     if (col === 'price') return catalogue ? 'no price' : shown(b.unitPrice) || 'no price';
     if (col === 'priceWholesale') return shown((catalogue ? null : b.priceWholesale) ?? retail);
     if (col === 'priceSchool') return shown((catalogue ? null : b.priceSchool) ?? retail);
@@ -73,14 +86,23 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
 
   const valueOf = (b: Book, col: Col) => drafts[key(b.id, col)] ?? original(b, col);
 
-  /** What the goods cost: this branch's purchase cost when it has one, else the catalogue's. */
-  const costOf = (b: Book): number => num((catalogue ? null : shelf.get(b.id)?.costPrice) ?? b.costPrice);
+  /**
+   * What the goods cost, as it will be once saved: the cost being typed, else this
+   * branch's own cost, else the catalogue's (the grey hint in a blank branch cell).
+   */
+  const costOf = (b: Book): number => {
+    const typed = clean(valueOf(b, 'costPrice'));
+    if (typed !== '') return Number(typed);
+    return catalogue ? 0 : num(b.costPrice);
+  };
+  /** Saved cost only — so a row does not drop out of "No cost yet" while it is being typed into. */
+  const savedCost = (b: Book): number => num((catalogue ? null : shelf.get(b.id)?.costPrice) ?? b.costPrice);
   /**
    * Margin of the price a cell will sell at (its typed value, or the fallback shown in
    * grey when blank) over cost, so a price can be set knowing what it earns.
    */
   const marginOf = (b: Book, col: Col): { text: string; tone: string } | null => {
-    if (col === 'quantity') return null;
+    if (col === 'quantity' || col === 'costPrice') return null;
     const cost = costOf(b);
     const typed = clean(valueOf(b, col));
     const price = Number(typed !== '' ? typed : clean(hint(b, col)));
@@ -95,7 +117,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const problem = (b: Book, col: Col): string | null => {
     const v = clean(valueOf(b, col));
     if (col === 'quantity') return /^\d+$/.test(v) ? null : 'A whole number, 0 or more';
-    if (v === '') return catalogue && col === 'price' ? 'Every product needs a retail price' : null;
+    if (v === '') {
+      if (catalogue && col === 'price') return 'Every product needs a retail price';
+      if (catalogue && col === 'costPrice') return 'A catalogue cost cannot be cleared';
+      return null;
+    }
     const n = Number(v);
     return Number.isFinite(n) && n > 0 && n <= 10_000_000 ? null : 'A price above 0';
   };
@@ -122,6 +148,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const visible = books.filter((b) => {
     if (changedOnly && !cols.some((col) => isChanged(b, col))) return false;
     if (unpricedOnly && !unpriced(b)) return false;
+    if (noCostOnly && savedCost(b) > 0) return false;
     return !q || `${b.title} ${b.sku} ${b.category ?? ''}`.toLowerCase().includes(q);
   });
   const pageCount = Math.max(1, Math.ceil(visible.length / PAGE));
@@ -129,7 +156,8 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const start = safePage * PAGE;
   const rows = visible.slice(start, start + PAGE);
   const unpricedCount = books.filter(unpriced).length;
-  useEffect(() => setPage(0), [search, changedOnly, unpricedOnly, branchId, resetKey]);
+  const noCostCount = books.filter((b) => savedCost(b) <= 0).length;
+  useEffect(() => setPage(0), [search, changedOnly, unpricedOnly, noCostOnly, branchId, resetKey]);
 
   useEffect(() => onDirty?.(changedCells), [changedCells, onDirty]);
 
@@ -224,18 +252,20 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
         }
         return row;
       });
-      const total = { products: 0, prices: 0, quantities: 0, netUnits: 0 };
+      const total = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0 };
       // Each batch is all-or-nothing on the server.
       for (let i = 0; i < rows.length; i += 1000) {
         const r = await api.post<typeof total>('/api/stock/grid', { branchId, rows: rows.slice(i, i + 1000) });
         total.products += r.products;
         total.prices += r.prices;
+        total.costs += r.costs ?? 0;
         total.quantities += r.quantities;
         total.netUnits += r.netUnits;
       }
       setDrafts({});
       setDone(
         `Saved ${fmt(total.products)} product${total.products === 1 ? '' : 's'}: ${fmt(total.prices)} price change${total.prices === 1 ? '' : 's'}` +
+          (total.costs ? `, ${fmt(total.costs)} cost${total.costs === 1 ? '' : 's'}` : '') +
           (catalogue ? '' : `, ${fmt(total.quantities)} quantit${total.quantities === 1 ? 'y' : 'ies'} (net ${total.netUnits > 0 ? '+' : ''}${fmt(total.netUnits)} units)`) +
           '. Every change is in the audit log' + (catalogue ? '.' : ' and the stock history.'),
       );
@@ -266,7 +296,12 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             grey. Quantities are set exactly, like a stock take.
           </>
         )}{' '}
-        Cost is what the goods were bought for; under each price is its margin over cost (amount · % of the price).{' '}
+        {costEditable
+          ? catalogue
+            ? 'Cost is what the goods were bought for; '
+            : 'Cost is what this branch paid — blank uses the catalogue cost shown in grey; '
+          : 'Cost is what the goods were bought for (a manager sets it); '}
+        under each price is its margin over cost (amount · % of the price).{' '}
         Use the arrow keys or Enter to move, Esc to undo a cell, and paste a block straight from Excel.
       </Alert>
 
@@ -289,6 +324,9 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
         <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <input type="checkbox" checked={unpricedOnly} onChange={(e) => setUnpricedOnly(e.target.checked)} /> No price yet ({fmt(unpricedCount)})
         </label>
+        <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+          <input type="checkbox" checked={noCostOnly} onChange={(e) => setNoCostOnly(e.target.checked)} /> No cost yet ({fmt(noCostCount)})
+        </label>
         <Button variant="outline" onClick={() => setDrafts({})} disabled={changedCells === 0 || saving}>
           <Undo2 className="h-4 w-4" /> Discard
         </Button>
@@ -307,11 +345,17 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             <tr>
               <th className="px-2 py-2 text-left font-semibold w-24">SKU</th>
               <th className="px-2 py-2 text-left font-semibold">Product</th>
-              <th className="px-2 py-2 text-right font-semibold w-24" title="Purchase cost (cost of goods). Each price shows its margin over this.">
-                Cost
-              </th>
+              {!costEditable && (
+                <th className="px-2 py-2 text-right font-semibold w-24" title="Purchase cost (cost of goods). Each price shows its margin over this.">
+                  Cost
+                </th>
+              )}
               {cols.map((c) => (
-                <th key={c} className="px-2 py-2 text-right font-semibold w-28">
+                <th
+                  key={c}
+                  className={`px-2 py-2 text-right font-semibold w-28 ${c === 'costPrice' ? 'bg-muted/70' : ''}`}
+                  title={c === 'costPrice' ? 'Purchase cost (cost of goods). Each price shows its margin over this.' : undefined}
+                >
                   {LABEL[c]}
                 </th>
               ))}
@@ -324,15 +368,17 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                 <td className="px-2 py-1">
                   <div className="truncate max-w-[340px]" title={b.title}>{b.title}</div>
                 </td>
-                <td className="px-2 py-1 text-right font-mono text-muted-foreground whitespace-nowrap">
-                  {costOf(b) > 0 ? costOf(b).toLocaleString('en-KE', { maximumFractionDigits: 2 }) : <span title="No purchase cost recorded">—</span>}
-                </td>
+                {!costEditable && (
+                  <td className="px-2 py-1 text-right font-mono text-muted-foreground whitespace-nowrap">
+                    {savedCost(b) > 0 ? savedCost(b).toLocaleString('en-KE', { maximumFractionDigits: 2 }) : <span title="No purchase cost recorded">—</span>}
+                  </td>
+                )}
                 {cols.map((col, c) => {
                   const changed = isChanged(b, col);
                   const bad = changed && problem(b, col);
                   const margin = marginOf(b, col);
                   return (
-                    <td key={col} className="p-0.5 align-top">
+                    <td key={col} className={`p-0.5 align-top ${col === 'costPrice' ? 'bg-muted/30' : ''}`}>
                       <input
                         data-r={r}
                         data-c={c}
@@ -363,7 +409,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             ))}
             {visible.length === 0 && (
               <tr>
-                <td colSpan={3 + cols.length} className="px-3 py-6 text-center text-muted-foreground">
+                <td colSpan={2 + (costEditable ? 0 : 1) + cols.length} className="px-3 py-6 text-center text-muted-foreground">
                   {changedOnly ? 'No changes yet.' : 'No products match.'}
                 </td>
               </tr>

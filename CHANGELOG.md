@@ -3,6 +3,23 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-07 — Cost editable in the price grid; invoice picker lists every product
+
+### Cost in the products grid
+- **Cost** is now an editable column in the products grid, before the three prices. With
+  no branch chosen it sets the catalogue cost; with a branch, that branch's own cost (blank
+  falls back to the catalogue cost shown in grey). A catalogue cost cannot be cleared.
+- The margins under each price follow the cost as it is typed. A **No cost yet** filter
+  lists the products still missing one.
+- Cashiers still cannot set costs, even when granted the grid (as on the stock page).
+  Cost changes are in the audit log with before and after, and the save message counts them.
+
+### Invoice product picker
+- Lists the whole catalogue again: what the branch has on hand first ("N in stock"), then
+  the rest marked **OUT OF STOCK**. Picking one with no stock shows a notice naming the
+  branch and a red "No stock" under its quantity; the invoice still cannot be saved with
+  more than the shelf holds.
+
 ## 2026-11-07 — New staff sign-in page
 
 - The sign-in page is split 8 / 4: a large picture carousel on the left, the form on the
