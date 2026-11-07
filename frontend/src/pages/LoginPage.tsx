@@ -126,7 +126,8 @@ function Showcase({ slides }: { slides: Slide[] }) {
             <img
               src={sl.src}
               alt={sl.alt}
-              loading={k === 0 ? 'eager' : 'lazy'}
+              // Loaded up front (a few hundred KB in all), so no slide turns to an empty frame on a slow line.
+              decoding="async"
               className={cn(
                 'absolute inset-0 h-full w-full object-contain transition-transform duration-[1400ms] ease-out',
                 sl.photo ? 'p-6 drop-shadow-2xl' : 'p-10 drop-shadow-xl xl:p-16',
