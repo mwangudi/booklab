@@ -18,6 +18,10 @@ interface Select2Props {
   clearable?: boolean;
   className?: string;
   id?: string;
+  /** Shown on the closed control instead of the selected option's label (e.g. a full product name). */
+  displayLabel?: string;
+  /** Let the closed control's text wrap onto more lines instead of being cut off. */
+  wrap?: boolean;
 }
 
 /**
@@ -34,6 +38,8 @@ export function Select2({
   clearable = false,
   className,
   id,
+  displayLabel,
+  wrap = false,
 }: Select2Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -108,8 +114,8 @@ export function Select2({
           open ? 'border-primary ring-2 ring-primary/20' : 'focus:border-primary focus:ring-2 focus:ring-primary/20',
         )}
       >
-        <span className={cn('truncate text-left', !selected && 'text-muted-foreground')}>
-          {selected ? selected.label : placeholder}
+        <span className={cn(wrap ? 'whitespace-normal break-words text-left' : 'truncate text-left', !selected && !displayLabel && 'text-muted-foreground')}>
+          {displayLabel ?? (selected ? selected.label : placeholder)}
         </span>
         <span className="flex items-center gap-1 shrink-0">
           {clearable && selected && (

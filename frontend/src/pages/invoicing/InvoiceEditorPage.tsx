@@ -19,6 +19,8 @@ interface Line {
   id?: number;
   /** Units of this line that have already left the shelf. */
   delivered: number;
+  /** A free-text line (a service, a delivery charge) rather than a catalogue product. */
+  free?: boolean;
   bookId: number | null;
   description: string;
   unit: string;
@@ -26,6 +28,9 @@ interface Line {
   unitPrice: string;
   vatRate: string;
 }
+
+/** The picker's "type your own" choice. */
+const FREE_TEXT = '__free__';
 
 const blankLine = (): Line => ({ delivered: 0, bookId: null, description: '', unit: 'Piece', quantity: '1', unitPrice: '0', vatRate: '16' });
 
@@ -87,6 +92,7 @@ export default function InvoiceEditorPage() {
       (invoice.items ?? []).map((i) => ({
         id: i.id,
         delivered: num(i.deliveredQty),
+        free: i.bookId == null,
         bookId: i.bookId,
         description: i.description,
         unit: i.unit,
@@ -122,7 +128,8 @@ export default function InvoiceEditorPage() {
 
   /** Picking a product fills the description, unit, price and VAT rate. */
   const chooseBook = (i: number, bookIdStr: string) => {
-    if (!bookIdStr) return setLine(i, { bookId: null });
+    if (bookIdStr === FREE_TEXT) return setLine(i, { bookId: null, free: true, description: '' });
+    if (!bookIdStr) return setLine(i, { bookId: null, free: false, description: '' });
     const id = Number(bookIdStr);
     const s = shelfByBook.get(id) ?? (() => {
       const b = catalogueBooks?.find((x) => x.id === id);
@@ -130,7 +137,7 @@ export default function InvoiceEditorPage() {
     })();
     if (!s) return;
     const b = s.book;
-    setLine(i, { bookId: b.id, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)), vatRate: String(num(b.vatRate)) });
+    setLine(i, { bookId: b.id, free: false, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)), vatRate: String(num(b.vatRate)) });
   };
 
   // Units each product still needs from the shelf: what is on the lines less what has gone out.
@@ -247,7 +254,7 @@ export default function InvoiceEditorPage() {
   // The whole catalogue, what the branch has on its shelf first. Out-of-stock items are
   // flagged, not hidden: they can be invoiced, and need stock only to be delivered.
   const bookOptions = [
-    { value: '', label: 'Free text (not from stock)' },
+    { value: FREE_TEXT, label: 'Free text — type your own description (a service, delivery…)' },
     ...(stockBranch == null
       ? [...(catalogueBooks ?? [])]
           .sort((a, b) => a.title.localeCompare(b.title))
@@ -426,19 +433,43 @@ export default function InvoiceEditorPage() {
             const onHand = l.bookId != null ? shelfByBook.get(l.bookId)?.quantity : undefined;
             return (
               <div key={i} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-border p-2.5">
-                <div className="col-span-12 lg:col-span-3">
-                  <FormField label={i === 0 ? 'Product' : ''}>
-                    <Select2
-                      value={l.bookId == null ? '' : String(l.bookId)}
-                      onChange={(v) => chooseBook(i, v)}
-                      options={bookOptions}
-                      disabled={fixed}
-                    />
-                  </FormField>
-                </div>
-                <div className="col-span-12 lg:col-span-3">
-                  <FormField label={i === 0 ? 'Description' : ''}>
-                    <Input value={l.description} onChange={(e) => setLine(i, { description: e.target.value })} placeholder="Item description" disabled={fixed} />
+                {/* One column: pick a product (its full name is shown) or type a free-text line. */}
+                <div className="col-span-12 lg:col-span-6">
+                  <FormField label={i === 0 ? 'Item description' : ''}>
+                    {l.bookId == null && l.free ? (
+                      <div className="flex items-center gap-2">
+                        <Input
+                          value={l.description}
+                          onChange={(e) => setLine(i, { description: e.target.value })}
+                          placeholder="Type the item description, e.g. Delivery charge"
+                          className="flex-1"
+                          autoFocus={!l.description}
+                          disabled={fixed}
+                        />
+                        {!fixed && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (l.description.trim() && !window.confirm(`Replace "${l.description.trim()}" with a product from the list?`)) return;
+                              setLine(i, { free: false, description: '' });
+                            }}
+                            className="whitespace-nowrap text-xs font-medium text-primary hover:underline"
+                          >
+                            Pick a product
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <Select2
+                        value={l.bookId == null ? '' : String(l.bookId)}
+                        onChange={(v) => chooseBook(i, v)}
+                        options={bookOptions}
+                        placeholder="Search for a product…"
+                        displayLabel={l.bookId != null && l.description ? l.description : undefined}
+                        wrap
+                        disabled={fixed}
+                      />
+                    )}
                   </FormField>
                 </div>
                 <div className="col-span-4 lg:col-span-1">

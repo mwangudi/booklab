@@ -2,14 +2,15 @@ import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } 
 import { ChevronLeft, ChevronRight, Save, Search, Undo2, X } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useCan } from '../lib/permissions';
 import { fmt, num } from '../lib/format';
 import type { Book, Stock } from '../types';
 import { Alert, Button } from './ui';
 
-type Col = 'costPrice' | 'price' | 'priceWholesale' | 'priceSchool' | 'quantity';
+type Col = 'costPrice' | 'price' | 'priceWholesale' | 'priceSchool' | 'quantity' | 'add';
 /** Rows per page: a few thousand live inputs would make every keystroke slow. */
 const PAGE = 100;
-const LABEL: Record<Col, string> = { costPrice: 'Cost', price: 'Retail', priceWholesale: 'Wholesale', priceSchool: 'School', quantity: 'Quantity' };
+const LABEL: Record<Col, string> = { costPrice: 'Cost', price: 'Retail', priceWholesale: 'Wholesale', priceSchool: 'School', quantity: 'Quantity', add: 'Add stock' };
 
 interface Props {
   /** Live (not archived) products to show, already filtered by category. */
@@ -42,12 +43,15 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   // Cost drives COGS and profit, so (as on the stock page) a cashier sees it but cannot change it.
   const { role } = useAuth();
   const costEditable = role !== 'CASHIER';
+  // Adding stock is receiving goods, so it needs the same right as the stock intake page.
+  const canReceive = useCan()('stock.intake');
   const cols: Col[] = [
     ...(costEditable ? (['costPrice'] as Col[]) : []),
     'price',
     'priceWholesale',
     'priceSchool',
     ...(catalogue ? [] : (['quantity'] as Col[])),
+    ...(!catalogue && canReceive ? (['add'] as Col[]) : []),
   ];
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -72,6 +76,8 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
     }
     const s = shelf.get(b.id);
     if (col === 'quantity') return String(s?.quantity ?? 0);
+    // "Add stock" starts empty: it is what arrived, not a stored figure.
+    if (col === 'add') return '';
     return text(s?.[col]);
   };
   const hint = (b: Book, col: Col): string => {
@@ -81,6 +87,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
     if (col === 'price') return catalogue ? 'no price' : shown(b.unitPrice) || 'no price';
     if (col === 'priceWholesale') return shown((catalogue ? null : b.priceWholesale) ?? retail);
     if (col === 'priceSchool') return shown((catalogue ? null : b.priceSchool) ?? retail);
+    if (col === 'add') return '+';
     return '';
   };
 
@@ -102,7 +109,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
    * grey when blank) over cost, so a price can be set knowing what it earns.
    */
   const marginOf = (b: Book, col: Col): { text: string; tone: string } | null => {
-    if (col === 'quantity' || col === 'costPrice') return null;
+    if (col === 'quantity' || col === 'costPrice' || col === 'add') return null;
     const cost = costOf(b);
     const typed = clean(valueOf(b, col));
     const price = Number(typed !== '' ? typed : clean(hint(b, col)));
@@ -117,6 +124,13 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const problem = (b: Book, col: Col): string | null => {
     const v = clean(valueOf(b, col));
     if (col === 'quantity') return /^\d+$/.test(v) ? null : 'A whole number, 0 or more';
+    if (col === 'add') {
+      if (v === '') return null;
+      if (!/^\d+$/.test(v) || Number(v) <= 0) return 'Units received: a whole number above 0';
+      if (Number(v) > 1_000_000) return 'At most 1,000,000 units at a time';
+      if (isChanged(b, 'quantity')) return 'Set the quantity or add stock, not both';
+      return null;
+    }
     if (v === '') {
       if (catalogue && col === 'price') return 'Every product needs a retail price';
       if (catalogue && col === 'costPrice') return 'A catalogue cost cannot be cleared';
@@ -240,6 +254,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   };
 
   const save = async () => {
+    let savedSoFar = 0;
     setSaving(true);
     setError(null);
     setDone(null);
@@ -248,30 +263,47 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
         const row: Record<string, number | null> & { bookId: number } = { bookId: book.id };
         for (const col of cs) {
           const v = clean(valueOf(book, col));
-          row[col] = col === 'quantity' ? Number(v) : v === '' ? null : Math.round(Number(v) * 100) / 100;
+          row[col] = col === 'quantity' || col === 'add' ? Number(v) : v === '' ? null : Math.round(Number(v) * 100) / 100;
         }
         return row;
       });
-      const total = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0 };
-      // Each batch is all-or-nothing on the server.
+      const total = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0, received: 0, receivedUnits: 0 };
+      // Each batch is all-or-nothing on the server, but batches commit one by one. A saved
+      // batch's edits are cleared at once: "Add stock" adds, so sending it again on a
+      // retry would receive the same goods twice.
       for (let i = 0; i < rows.length; i += 1000) {
-        const r = await api.post<typeof total>('/api/stock/grid', { branchId, rows: rows.slice(i, i + 1000) });
+        const batch = rows.slice(i, i + 1000);
+        const r = await api.post<typeof total>('/api/stock/grid', { branchId, rows: batch });
+        const done = new Set(batch.map((x) => x.bookId));
+        setDrafts((d) => Object.fromEntries(Object.entries(d).filter(([k]) => !done.has(Number(k.split(':')[0])))));
+        savedSoFar += batch.length;
         total.products += r.products;
         total.prices += r.prices;
         total.costs += r.costs ?? 0;
         total.quantities += r.quantities;
         total.netUnits += r.netUnits;
+        total.received += r.received ?? 0;
+        total.receivedUnits += r.receivedUnits ?? 0;
       }
       setDrafts({});
       setDone(
         `Saved ${fmt(total.products)} product${total.products === 1 ? '' : 's'}: ${fmt(total.prices)} price change${total.prices === 1 ? '' : 's'}` +
           (total.costs ? `, ${fmt(total.costs)} cost${total.costs === 1 ? '' : 's'}` : '') +
           (catalogue ? '' : `, ${fmt(total.quantities)} quantit${total.quantities === 1 ? 'y' : 'ies'} (net ${total.netUnits > 0 ? '+' : ''}${fmt(total.netUnits)} units)`) +
+          (total.received ? `, stock received for ${fmt(total.received)} product${total.received === 1 ? '' : 's'} (+${fmt(total.receivedUnits)} units)` : '') +
           '. Every change is in the audit log' + (catalogue ? '.' : ' and the stock history.'),
       );
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not save. Nothing was changed — check the connection and try again.');
+      const why = err instanceof ApiError ? err.message : 'Check the connection and try again.';
+      setError(
+        savedSoFar > 0
+          ? `${fmt(savedSoFar)} product${savedSoFar === 1 ? ' was' : 's were'} saved and cleared from the grid; the rest were not. ${why}`
+          : err instanceof ApiError
+            ? err.message
+            : 'Could not save. Nothing was changed — check the connection and try again.',
+      );
+      if (savedSoFar > 0) onSaved();
     } finally {
       setSaving(false);
     }
@@ -287,13 +319,20 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
       <Alert tone="blue">
         {catalogue ? (
           <>
-            Editing <b>catalogue prices</b>, which every branch uses unless it sets its own. Pick a branch above to edit that
-            branch’s prices and quantities instead.
+            Editing <b>catalogue prices</b>, which every branch uses unless it sets its own. <b>To add stock</b>, pick a
+            branch above: its prices, quantities and an Add stock column appear.
           </>
         ) : (
           <>
             Editing <b>{branchName}</b>: its own prices and its quantities. A blank price uses the catalogue price shown in
-            grey. Quantities are set exactly, like a stock take.
+            grey. <b>Quantity</b> is the exact count, set like a stock take
+            {canReceive ? (
+              <>
+                ; <b>Add stock</b> is what arrived — it is added to what is on hand and recorded as a stock intake.
+              </>
+            ) : (
+              '.'
+            )}
           </>
         )}{' '}
         {costEditable
@@ -353,8 +392,16 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
               {cols.map((c) => (
                 <th
                   key={c}
-                  className={`px-2 py-2 text-right font-semibold w-28 ${c === 'costPrice' ? 'bg-muted/70' : ''}`}
-                  title={c === 'costPrice' ? 'Purchase cost (cost of goods). Each price shows its margin over this.' : undefined}
+                  className={`px-2 py-2 text-right font-semibold w-28 ${c === 'costPrice' || c === 'add' ? 'bg-muted/70' : ''}`}
+                  title={
+                    c === 'costPrice'
+                      ? 'Purchase cost (cost of goods). Each price shows its margin over this.'
+                      : c === 'add'
+                        ? 'Units received: added to what is on hand and recorded as a stock intake.'
+                        : c === 'quantity'
+                          ? 'The exact count on hand, set like a stock take.'
+                          : undefined
+                  }
                 >
                   {LABEL[c]}
                 </th>
@@ -378,11 +425,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                   const bad = changed && problem(b, col);
                   const margin = marginOf(b, col);
                   return (
-                    <td key={col} className={`p-0.5 align-top ${col === 'costPrice' ? 'bg-muted/30' : ''}`}>
+                    <td key={col} className={`p-0.5 align-top ${col === 'costPrice' || col === 'add' ? 'bg-muted/30' : ''}`}>
                       <input
                         data-r={r}
                         data-c={c}
-                        inputMode={col === 'quantity' ? 'numeric' : 'decimal'}
+                        inputMode={col === 'quantity' || col === 'add' ? 'numeric' : 'decimal'}
                         value={valueOf(b, col)}
                         placeholder={hint(b, col)}
                         title={bad || (changed ? `Was ${original(b, col) || 'blank'} — Esc to undo` : undefined)}
@@ -400,6 +447,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                       {margin && (
                         <div className={`px-2 text-right font-mono text-[10px] leading-tight ${margin.tone}`} title="Margin over cost">
                           {margin.text}
+                        </div>
+                      )}
+                      {col === 'add' && changed && !bad && (
+                        <div className="px-2 text-right font-mono text-[10px] leading-tight text-[#15803d]" title="On hand after saving">
+                          → {fmt(num(shelf.get(b.id)?.quantity ?? 0) + Number(clean(valueOf(b, 'add'))))}
                         </div>
                       )}
                     </td>

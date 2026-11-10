@@ -3,13 +3,29 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-10 — One "Item description" column on invoices; Add stock in the grid
+
+### Invoice lines
+- Product and Description are one wide **Item description** column: a searchable product
+  picker that shows the product's full name (wrapping if long). Its first option, **Free
+  text**, turns the line into a text box for services and charges, with "Pick a product"
+  to go back (it asks before discarding typed text).
+- A catalogue line's description is the product's name; it can no longer be retyped.
+
+### Products grid: Add stock
+- With a branch chosen, an **Add stock** column takes the units that arrived. They are
+  added to what is on hand and recorded as a stock intake (stock history "Grid intake:
+  16 + 7", audit log), needing the same right as the Stock intake page. Quantity still
+  sets the exact count; a product cannot have both in one save.
+- Saving clears each batch's edits as it is stored, so a retry after a partial failure
+  never receives the same goods twice.
+
 ## 2026-11-07 — Printed invoice: no contact person, no row numbers
 
 - The printed invoice no longer shows the customer's contact person under the school's
   name (it stays on the customer record); phone and address still print when set.
 - The item table has no "#" row-number column. The invoice number is unchanged. The
   delivery note keeps its numbering.
-- Not yet deployed to production.
 
 ## 2026-11-07 — Invoices: out of stock is a notice, not a block
 
@@ -20,7 +36,6 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   warns, the server refuses) and adding to an already-delivered invoice.
 - With no branch chosen the picker lists the whole catalogue, without stock levels,
   instead of nothing.
-- Not yet deployed to production.
 
 ## 2026-11-07 — Cost editable in the price grid; invoice picker lists every product
 

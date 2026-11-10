@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { authGuard, requireRole, branchScope, enforceWriteBranch, isAdmin } from '../middleware/authGuard.js';
-import { requireCapability } from '../middleware/permissions.js';
+import { can, requireCapability } from '../middleware/permissions.js';
 import { SYNC_ROLE, enqueueOutbox, recordMovement } from '../lib/outbox.js';
 import { actor, auditRequest, writeAudit } from '../lib/audit.js';
 import { DUE_WINDOW_DAYS, FULL_COUNT_SHARE, daysUntil, nextDueAfter, scheduleStatus, startOfDay } from '../lib/stockTakeSchedule.js';
@@ -53,6 +53,8 @@ const gridSchema = z.object({
       /** Purchase cost. Catalogue: what the goods cost. Branch: this branch's own cost; null falls back to the catalogue's. */
       costPrice: gridPrice,
       quantity: z.number().int().min(0).max(10_000_000).optional(),
+      /** Units received: added to what is on hand, as a stock intake. */
+      add: z.number().int().positive().max(1_000_000).optional(),
     }))
     .min(1)
     .max(2000),
@@ -525,8 +527,15 @@ export async function stockRoutes(app: FastifyInstance) {
       return reply.code(403).send({ error: 'Catalogue prices apply to every branch, so only an administrator can change them. Choose your branch.' });
     }
     const branchId = catalogue ? null : enforceWriteBranch(req, reply, body.branchId);
-    if (catalogue && body.rows.some((r) => r.quantity !== undefined)) {
+    if (catalogue && body.rows.some((r) => r.quantity !== undefined || r.add !== undefined)) {
       return reply.code(400).send({ error: 'Quantities belong to a branch. Choose a branch to edit them.' });
+    }
+    if (body.rows.some((r) => r.quantity !== undefined && r.add !== undefined)) {
+      return reply.code(400).send({ error: 'A product can have its quantity set or stock added in one save, not both.' });
+    }
+    // Adding stock is receiving goods: the same right as the stock intake page.
+    if (body.rows.some((r) => r.add !== undefined) && !(await can(app.prisma, req.user, 'stock.intake'))) {
+      return reply.code(403).send({ error: 'You do not have permission to receive stock.' });
     }
     if (catalogue && body.rows.some((r) => r.price === null)) {
       return reply.code(400).send({ error: 'Every product needs a retail price in the catalogue.' });
@@ -550,7 +559,7 @@ export async function stockRoutes(app: FastifyInstance) {
 
     const money = (v: unknown) => (v == null ? null : Number(v));
     const same = (a: unknown, b: unknown) => money(a) === money(b);
-    const summary = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0 };
+    const summary = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0, received: 0, receivedUnits: 0 };
 
     await app.prisma.$transaction(async (tx) => {
       const shelf = branchId == null ? [] : await tx.stock.findMany({ where: { branchId, bookId: { in: ids } } });
@@ -595,13 +604,31 @@ export async function stockRoutes(app: FastifyInstance) {
           if (costChanges) patch.costPrice = row.costPrice ?? null;
           const before = existing?.quantity ?? 0;
           const qtyChanges = row.quantity !== undefined && row.quantity !== before;
-          if (!Object.keys(patch).length && !qtyChanges) continue;
+          const adds = row.add ?? 0;
+          if (!Object.keys(patch).length && !qtyChanges && adds === 0) continue;
 
-          await tx.stock.upsert({
+          const saved = await tx.stock.upsert({
             where: { branchId_bookId: { branchId: branchId!, bookId: row.bookId } },
-            create: { branchId: branchId!, bookId: row.bookId, quantity: qtyChanges ? row.quantity! : 0, ...patch },
-            update: { ...patch, ...(qtyChanges ? { quantity: row.quantity } : {}) },
+            create: { branchId: branchId!, bookId: row.bookId, quantity: qtyChanges ? row.quantity! : adds, ...patch },
+            update: {
+              ...patch,
+              ...(qtyChanges ? { quantity: row.quantity } : adds > 0 ? { quantity: { increment: adds } } : {}),
+            },
           });
+          if (adds > 0) {
+            // Read back from the increment itself, so a sale landing meanwhile cannot make the note wrong.
+            const after = saved.quantity;
+            await recordMovement(tx, {
+              branchId: branchId!, bookId: row.bookId, delta: adds, type: 'INTAKE',
+              note: `Grid intake: ${after - adds} + ${adds}`, userId: req.user.id,
+            });
+            await writeAudit(tx, {
+              ...actor(req), branchId, entity: 'stock.quantity', entityId: row.bookId, action: 'INTAKE',
+              details: { sku: bookById.get(row.bookId)!.sku, quantity: adds, from: after - adds, to: after, via: 'grid' },
+            });
+            summary.received += 1;
+            summary.receivedUnits += adds;
+          }
           if (Object.keys(patch).length) {
             await writeAudit(tx, {
               ...actor(req), branchId, entity: 'stock.price', entityId: row.bookId, action: 'GRID_SET_PRICE',
