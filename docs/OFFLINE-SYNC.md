@@ -50,12 +50,14 @@ delivering an invoice writes its own `StockMovement` and `Sale` events, which
 travel separately — applying stock here as well would count the goods twice.
 
 ### Document numbering
-Documents are numbered per branch — `INV-KAP-0007`, `DN-KAP-0007`, `GRN-KAP-0007`
-— using `Branch.code`. The old scheme derived the number from the cloud
-autoincrement, so two branches working offline would both have minted `INV-0007`.
-The sequence is read back from the numbers already issued for that branch, which
-is exactly what a branch database holds. Documents raised centrally, with no
-branch, use the `HQ` code.
+Invoices and delivery notes raised on the cloud are one company-wide series a
+year — `INV-2026-0007`, `DN-2026-0007` — so customers do not see a branch or town
+in the number (from November 2026; earlier ones keep their `INV-LUA-0001` form).
+A **branch laptop** keeps its `Branch.code` inside the number, `INV-2026-KAP-0007`,
+so what it mints while offline can never collide with the cloud's series. Goods
+receipts stay per branch, `GRN-KAP-0007`. Each sequence is read back from the
+numbers already issued with that stem; two cloud saves racing for the same invoice
+number retry with the next one.
 
 ### Why stock is a snapshot, not a cursor
 `Stock` is a derived table with no `uuid` or `updatedAt`, so it cannot be pulled

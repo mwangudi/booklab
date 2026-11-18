@@ -47,6 +47,8 @@ const gridSchema = z.object({
   rows: z
     .array(z.object({
       bookId: z.number().int(),
+      /** New product name. Shared by every branch; at most 190 so it still fits an invoice line. */
+      title: z.string().trim().min(1, 'A product needs a name').max(190).optional(),
       price: gridPrice,
       priceWholesale: gridPrice,
       priceSchool: gridPrice,
@@ -530,6 +532,10 @@ export async function stockRoutes(app: FastifyInstance) {
     if (catalogue && body.rows.some((r) => r.quantity !== undefined || r.add !== undefined)) {
       return reply.code(400).send({ error: 'Quantities belong to a branch. Choose a branch to edit them.' });
     }
+    // A name is the catalogue's, shown at every branch: an administrator's change, as catalogue prices are.
+    if (body.rows.some((r) => r.title !== undefined) && !isAdmin(req)) {
+      return reply.code(403).send({ error: 'Product names are shared by every branch, so only an administrator can rename products.' });
+    }
     if (body.rows.some((r) => r.quantity !== undefined && r.add !== undefined)) {
       return reply.code(400).send({ error: 'A product can have its quantity set or stock added in one save, not both.' });
     }
@@ -551,7 +557,7 @@ export async function stockRoutes(app: FastifyInstance) {
     const ids = [...new Set(body.rows.map((r) => r.bookId))];
     const books = await app.prisma.book.findMany({
       where: { id: { in: ids }, deletedAt: null },
-      select: { id: true, sku: true, unitPrice: true, priceWholesale: true, priceSchool: true, costPrice: true },
+      select: { id: true, sku: true, title: true, unitPrice: true, priceWholesale: true, priceSchool: true, costPrice: true },
     });
     const bookById = new Map(books.map((b) => [b.id, b]));
     const missing = ids.filter((id) => !bookById.has(id));
@@ -559,7 +565,7 @@ export async function stockRoutes(app: FastifyInstance) {
 
     const money = (v: unknown) => (v == null ? null : Number(v));
     const same = (a: unknown, b: unknown) => money(a) === money(b);
-    const summary = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0, received: 0, receivedUnits: 0 };
+    const summary = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0, received: 0, receivedUnits: 0, renamed: 0 };
 
     await app.prisma.$transaction(async (tx) => {
       const shelf = branchId == null ? [] : await tx.stock.findMany({ where: { branchId, bookId: { in: ids } } });
@@ -567,6 +573,17 @@ export async function stockRoutes(app: FastifyInstance) {
 
       for (const row of body.rows) {
         let touched = false;
+        // The name lives on the product itself, whichever branch the grid is showing.
+        const book = bookById.get(row.bookId)!;
+        if (row.title !== undefined && row.title !== book.title) {
+          await tx.book.update({ where: { id: book.id }, data: { title: row.title } });
+          await writeAudit(tx, {
+            ...actor(req), entity: 'book', entityId: book.id, action: 'GRID_RENAME',
+            details: { sku: book.sku, from: book.title, to: row.title },
+          });
+          summary.renamed += 1;
+          touched = true;
+        }
         if (catalogue) {
           const b = bookById.get(row.bookId)!;
           const patch: Record<string, number | null> = {};
@@ -605,7 +622,10 @@ export async function stockRoutes(app: FastifyInstance) {
           const before = existing?.quantity ?? 0;
           const qtyChanges = row.quantity !== undefined && row.quantity !== before;
           const adds = row.add ?? 0;
-          if (!Object.keys(patch).length && !qtyChanges && adds === 0) continue;
+          if (!Object.keys(patch).length && !qtyChanges && adds === 0) {
+            if (touched) summary.products += 1; // a rename only
+            continue;
+          }
 
           const saved = await tx.stock.upsert({
             where: { branchId_bookId: { branchId: branchId!, bookId: row.bookId } },

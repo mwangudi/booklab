@@ -8,7 +8,7 @@ export type Money = number | string;
 export interface Branch {
   id: number;
   name: string;
-  /** Prefixes documents raised here, e.g. INV-KAP-0007. */
+  /** Short code used in goods receipt numbers (GRN-KAP-0007) and in invoices raised on this branch's laptop (INV-2026-KAP-0007). */
   code: string;
   location: string;
   createdAt?: string;

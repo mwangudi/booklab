@@ -68,7 +68,7 @@ export default function BranchUpsertPage() {
             <FormField label="Location *">
               <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="e.g. Westlands, Nairobi" />
             </FormField>
-            <FormField label="Branch code *" hint="Prefixes documents raised here, e.g. INV-KAP-0007. Keep it short and never reuse one.">
+            <FormField label="Branch code *" hint="Used in goods receipt numbers (GRN-KAP-0007) and in invoices raised on this branch's laptop. Keep it short and never reuse one.">
               <Input
                 value={code}
                 onChange={(e) => setCode(e.target.value.toUpperCase())}

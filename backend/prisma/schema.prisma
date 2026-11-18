@@ -540,7 +540,8 @@ model Invoice {
   id                  Int           @id @default(autoincrement())
   uuid                String        @unique @default(uuid())
   number              String        @unique
-  deliveryNoteNo      String?
+  /// Unique, so two invoices issued at the same moment can never share one.
+  deliveryNoteNo      String?       @unique
   customerId          Int
   branchId            Int?
   status              InvoiceStatus @default(DRAFT)

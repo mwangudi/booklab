@@ -1,8 +1,12 @@
 /**
- * Trading documents are numbered per branch — INV-KAP-0007, not INV-0007 — so two
- * branches working offline can never mint the same number. The sequence is read
- * back from the numbers already issued for that branch, which is what a branch
- * database holds: only its own documents.
+ * Document numbers are `PREFIX-CODE-NNNN`, the sequence read back from the numbers
+ * already issued with that stem.
+ *
+ * Invoices and delivery notes use the year as the code on the main system
+ * (INV-2026-0007: one company-wide series a year, no branch shown to customers) and
+ * year + branch code on a branch laptop (INV-2026-KAP-0007), so a number minted
+ * offline can never collide. Goods receipts keep the branch code (GRN-KAP-0007).
+ * Older invoices (INV-LUA-0001) keep the numbers they were issued with.
  */
 
 /** Code used when a document is raised centrally rather than at a branch. */

@@ -3,6 +3,27 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-18 — Rename products in the grid; invoice numbers by year
+
+### Product names in the grid
+- Admins can edit **Product name** in the products grid (with or without a branch). A
+  **Find & replace names** bar changes text across the products shown (search, category
+  and filters apply), e.g. "EXE BOOK" → "EXERCISE BOOK"; the replacement is used exactly
+  as typed. Changes are drafts until Save; Esc undoes a cell.
+- Names cannot be blank and are at most 190 characters (what an invoice line holds).
+  Every rename is in the audit log (GRID_RENAME, old and new). Past invoices keep the
+  name they were raised with. Other roles see names read-only.
+
+### Invoice and delivery-note numbers
+- New invoices are **INV-2026-0001**, one company-wide series a year (Kenya time), so the
+  number no longer shows the branch or town. Delivery notes follow: **DN-2026-0001**.
+  Numbers already issued (INV-LUA-0001) are unchanged; goods receipts keep GRN-<branch>.
+- A branch laptop working offline keeps its branch code in the number
+  (INV-2026-KAP-0001), so offline numbers never collide with the main system's.
+- Delivery-note numbers are now unique in the database (migration
+  `20261118120000_unique_delivery_note_no`); invoices or delivery notes saved at the same
+  moment take the next free number instead of failing or sharing one.
+
 ## 2026-11-10 — One "Item description" column on invoices; Add stock in the grid
 
 ### Invoice lines

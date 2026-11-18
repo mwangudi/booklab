@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
-import { ChevronLeft, ChevronRight, Save, Search, Undo2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Replace, Save, Search, Undo2, X } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useCan } from '../lib/permissions';
@@ -7,10 +7,10 @@ import { fmt, num } from '../lib/format';
 import type { Book, Stock } from '../types';
 import { Alert, Button } from './ui';
 
-type Col = 'costPrice' | 'price' | 'priceWholesale' | 'priceSchool' | 'quantity' | 'add';
+type Col = 'title' | 'costPrice' | 'price' | 'priceWholesale' | 'priceSchool' | 'quantity' | 'add';
 /** Rows per page: a few thousand live inputs would make every keystroke slow. */
 const PAGE = 100;
-const LABEL: Record<Col, string> = { costPrice: 'Cost', price: 'Retail', priceWholesale: 'Wholesale', priceSchool: 'School', quantity: 'Quantity', add: 'Add stock' };
+const LABEL: Record<Col, string> = { title: 'Product name', costPrice: 'Cost', price: 'Retail', priceWholesale: 'Wholesale', priceSchool: 'School', quantity: 'Quantity', add: 'Add stock' };
 
 interface Props {
   /** Live (not archived) products to show, already filtered by category. */
@@ -31,6 +31,9 @@ const key = (bookId: number, col: Col) => `${bookId}:${col}`;
 const text = (v: unknown) => (v == null || v === '' ? '' : String(num(v)));
 /** Accept what people paste from a spreadsheet: "KES 1,200.00" → "1200.00". */
 const clean = (s: string) => s.replace(/KES|Ksh|,|\s/gi, '');
+/** Product names are kept to what an invoice line can hold. */
+const TITLE_MAX = 190;
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 /**
  * Spreadsheet-style editing of prices and quantities for many products at once.
@@ -43,9 +46,12 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   // Cost drives COGS and profit, so (as on the stock page) a cashier sees it but cannot change it.
   const { role } = useAuth();
   const costEditable = role !== 'CASHIER';
+  // A name is shown at every branch, so (like catalogue prices) only an administrator renames.
+  const titleEditable = role === 'ADMIN';
   // Adding stock is receiving goods, so it needs the same right as the stock intake page.
   const canReceive = useCan()('stock.intake');
   const cols: Col[] = [
+    ...(titleEditable ? (['title'] as Col[]) : []),
     ...(costEditable ? (['costPrice'] as Col[]) : []),
     'price',
     'priceWholesale',
@@ -59,6 +65,10 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const [changedOnly, setChangedOnly] = useState(false);
   const [unpricedOnly, setUnpricedOnly] = useState(false);
   const [noCostOnly, setNoCostOnly] = useState(false);
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [findText, setFindText] = useState('');
+  const [replaceWith, setReplaceWith] = useState('');
+  const [matchCase, setMatchCase] = useState(false);
   const [page, setPage] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,6 +77,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
 
   // The value a cell starts from, and the greyed hint shown when it is blank.
   const original = (b: Book, col: Col): string => {
+    if (col === 'title') return b.title;
     if (catalogue) {
       // An unpriced product (retail or cost 0) shows a blank cell waiting for its figure.
       if (col === 'price') return num(b.unitPrice) > 0 ? text(b.unitPrice) : '';
@@ -88,7 +99,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
     if (col === 'priceWholesale') return shown((catalogue ? null : b.priceWholesale) ?? retail);
     if (col === 'priceSchool') return shown((catalogue ? null : b.priceSchool) ?? retail);
     if (col === 'add') return '+';
-    return '';
+    return '';  // title: a name is never blank
   };
 
   const valueOf = (b: Book, col: Col) => drafts[key(b.id, col)] ?? original(b, col);
@@ -109,7 +120,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
    * grey when blank) over cost, so a price can be set knowing what it earns.
    */
   const marginOf = (b: Book, col: Col): { text: string; tone: string } | null => {
-    if (col === 'quantity' || col === 'costPrice' || col === 'add') return null;
+    if (col === 'quantity' || col === 'costPrice' || col === 'add' || col === 'title') return null;
     const cost = costOf(b);
     const typed = clean(valueOf(b, col));
     const price = Number(typed !== '' ? typed : clean(hint(b, col)));
@@ -122,6 +133,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
     };
   };
   const problem = (b: Book, col: Col): string | null => {
+    if (col === 'title') {
+      const t = valueOf(b, 'title').trim();
+      if (!t) return 'A product needs a name';
+      return t.length > TITLE_MAX ? `At most ${TITLE_MAX} characters (now ${t.length})` : null;
+    }
     const v = clean(valueOf(b, col));
     if (col === 'quantity') return /^\d+$/.test(v) ? null : 'A whole number, 0 or more';
     if (col === 'add') {
@@ -142,6 +158,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
   const isChanged = (b: Book, col: Col) => {
     const d = drafts[key(b.id, col)];
     if (d === undefined) return false;
+    if (col === 'title') return d.trim() !== b.title;
     const a = clean(d);
     const o = original(b, col);
     return a === '' || o === '' ? a !== o : Number(a) !== Number(o);
@@ -246,11 +263,33 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
         if (!b) return;
         cells.forEach((cell, j) => {
           const col = cols[c + j];
-          if (col) next[key(b.id, col)] = clean(cell);
+          if (col) next[key(b.id, col)] = col === 'title' ? cell.trim() : clean(cell);
         });
       });
       return next;
     });
+  };
+
+  /**
+   * Find & replace in names, over the products currently shown (search, category and
+   * filters apply). It only fills the cells — nothing is saved until Save, and each
+   * cell can still be undone with Esc.
+   */
+  const findRe = findText ? new RegExp(escapeRe(findText), matchCase ? 'g' : 'gi') : null;
+  const nameMatches = findRe ? visible.filter((b) => valueOf(b, 'title').search(new RegExp(findRe.source, findRe.flags.replace('g', ''))) >= 0) : [];
+  const applyReplace = () => {
+    if (!findRe || nameMatches.length === 0) return;
+    setDrafts((d) => {
+      const next = { ...d };
+      for (const b of nameMatches) {
+        const cur = next[key(b.id, 'title')] ?? b.title;
+        // A function replacer, so "$" in the replacement (KES$100) is used literally.
+        const updated = cur.replace(findRe, () => replaceWith).trim();
+        if (updated !== cur) next[key(b.id, 'title')] = updated;
+      }
+      return next;
+    });
+    setDone(`Replaced in ${fmt(nameMatches.length)} name${nameMatches.length === 1 ? '' : 's'} — check them, then Save (Esc undoes a cell).`);
   };
 
   const save = async () => {
@@ -260,14 +299,18 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
     setDone(null);
     try {
       const rows = changes.map(({ book, cols: cs }) => {
-        const row: Record<string, number | null> & { bookId: number } = { bookId: book.id };
+        const row: Record<string, number | string | null> & { bookId: number } = { bookId: book.id };
         for (const col of cs) {
+          if (col === 'title') {
+            row.title = valueOf(book, 'title').trim();
+            continue;
+          }
           const v = clean(valueOf(book, col));
           row[col] = col === 'quantity' || col === 'add' ? Number(v) : v === '' ? null : Math.round(Number(v) * 100) / 100;
         }
         return row;
       });
-      const total = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0, received: 0, receivedUnits: 0 };
+      const total = { products: 0, prices: 0, costs: 0, quantities: 0, netUnits: 0, received: 0, receivedUnits: 0, renamed: 0 };
       // Each batch is all-or-nothing on the server, but batches commit one by one. A saved
       // batch's edits are cleared at once: "Add stock" adds, so sending it again on a
       // retry would receive the same goods twice.
@@ -283,12 +326,14 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
         total.quantities += r.quantities;
         total.netUnits += r.netUnits;
         total.received += r.received ?? 0;
+        total.renamed += r.renamed ?? 0;
         total.receivedUnits += r.receivedUnits ?? 0;
       }
       setDrafts({});
       setDone(
         `Saved ${fmt(total.products)} product${total.products === 1 ? '' : 's'}: ${fmt(total.prices)} price change${total.prices === 1 ? '' : 's'}` +
           (total.costs ? `, ${fmt(total.costs)} cost${total.costs === 1 ? '' : 's'}` : '') +
+          (total.renamed ? `, ${fmt(total.renamed)} renamed` : '') +
           (catalogue ? '' : `, ${fmt(total.quantities)} quantit${total.quantities === 1 ? 'y' : 'ies'} (net ${total.netUnits > 0 ? '+' : ''}${fmt(total.netUnits)} units)`) +
           (total.received ? `, stock received for ${fmt(total.received)} product${total.received === 1 ? '' : 's'} (+${fmt(total.receivedUnits)} units)` : '') +
           '. Every change is in the audit log' + (catalogue ? '.' : ' and the stock history.'),
@@ -366,6 +411,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
         <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
           <input type="checkbox" checked={noCostOnly} onChange={(e) => setNoCostOnly(e.target.checked)} /> No cost yet ({fmt(noCostCount)})
         </label>
+        {titleEditable && (
+          <Button variant={replaceOpen ? 'primary' : 'outline'} onClick={() => setReplaceOpen((o) => !o)}>
+            <Replace className="h-4 w-4" /> Find &amp; replace names
+          </Button>
+        )}
         <Button variant="outline" onClick={() => setDrafts({})} disabled={changedCells === 0 || saving}>
           <Undo2 className="h-4 w-4" /> Discard
         </Button>
@@ -376,6 +426,34 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
           <X className="h-4 w-4" /> Close grid
         </Button>
       </div>
+      {titleEditable && replaceOpen && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/40 p-2.5">
+          <input
+            value={findText}
+            onChange={(e) => setFindText(e.target.value)}
+            placeholder="Find in names, e.g. EXE BOOK"
+            aria-label="Find in product names"
+            className="min-w-[200px] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          />
+          <input
+            value={replaceWith}
+            onChange={(e) => setReplaceWith(e.target.value)}
+            placeholder="Replace with, e.g. EXERCISE BOOK"
+            aria-label="Replace with"
+            className="min-w-[200px] flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          />
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <input type="checkbox" checked={matchCase} onChange={(e) => setMatchCase(e.target.checked)} /> Match case
+          </label>
+          <Button onClick={applyReplace} disabled={!findText || nameMatches.length === 0}>
+            Replace in {fmt(nameMatches.length)} name{nameMatches.length === 1 ? '' : 's'}
+          </Button>
+          <span className="w-full text-xs text-muted-foreground">
+            Works on the products shown below — narrow them first with the search box or category. Nothing is saved until
+            you press Save; Esc on a cell undoes it.
+          </span>
+        </div>
+      )}
       {invalid && <p className="text-xs text-[#9b2626]">Fix the cells outlined in red before saving.</p>}
 
       <div className="max-h-[65vh] overflow-auto rounded-md border border-border">
@@ -383,7 +461,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
           <thead className="sticky top-0 z-[2] bg-muted">
             <tr>
               <th className="px-2 py-2 text-left font-semibold w-24">SKU</th>
-              <th className="px-2 py-2 text-left font-semibold">Product</th>
+              {!titleEditable && <th className="px-2 py-2 text-left font-semibold">Product</th>}
               {!costEditable && (
                 <th className="px-2 py-2 text-right font-semibold w-24" title="Purchase cost (cost of goods). Each price shows its margin over this.">
                   Cost
@@ -392,7 +470,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
               {cols.map((c) => (
                 <th
                   key={c}
-                  className={`px-2 py-2 text-right font-semibold w-28 ${c === 'costPrice' || c === 'add' ? 'bg-muted/70' : ''}`}
+                  className={
+                    c === 'title'
+                      ? 'px-2 py-2 text-left font-semibold min-w-[260px]'
+                      : `px-2 py-2 text-right font-semibold w-28 ${c === 'costPrice' || c === 'add' ? 'bg-muted/70' : ''}`
+                  }
                   title={
                     c === 'costPrice'
                       ? 'Purchase cost (cost of goods). Each price shows its margin over this.'
@@ -412,9 +494,11 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
             {rows.map((b, r) => (
               <tr key={b.id} className="border-t border-border">
                 <td className="px-2 py-1 font-mono text-xs text-muted-foreground whitespace-nowrap">{b.sku}</td>
-                <td className="px-2 py-1">
-                  <div className="truncate max-w-[340px]" title={b.title}>{b.title}</div>
-                </td>
+                {!titleEditable && (
+                  <td className="px-2 py-1">
+                    <div className="truncate max-w-[340px]" title={b.title}>{b.title}</div>
+                  </td>
+                )}
                 {!costEditable && (
                   <td className="px-2 py-1 text-right font-mono text-muted-foreground whitespace-nowrap">
                     {savedCost(b) > 0 ? savedCost(b).toLocaleString('en-KE', { maximumFractionDigits: 2 }) : <span title="No purchase cost recorded">—</span>}
@@ -429,7 +513,8 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                       <input
                         data-r={r}
                         data-c={c}
-                        inputMode={col === 'quantity' || col === 'add' ? 'numeric' : 'decimal'}
+                        inputMode={col === 'title' ? 'text' : col === 'quantity' || col === 'add' ? 'numeric' : 'decimal'}
+                        maxLength={col === 'title' ? TITLE_MAX + 20 : undefined}
                         value={valueOf(b, col)}
                         placeholder={hint(b, col)}
                         title={bad || (changed ? `Was ${original(b, col) || 'blank'} — Esc to undo` : undefined)}
@@ -439,7 +524,7 @@ export function ProductGrid({ books, branchId, branchName, shelf, onSaved, onClo
                         onPaste={(e) => onPaste(e, r, c)}
                         aria-label={`${LABEL[col]} for ${b.title}`}
                         className={[
-                          'w-full rounded px-2 py-1 text-right font-mono outline-none border',
+                          col === 'title' ? 'w-full rounded px-2 py-1 text-left outline-none border' : 'w-full rounded px-2 py-1 text-right font-mono outline-none border',
                           bad ? 'border-[#9b2626] bg-[#fdf0f0]' : changed ? 'border-[#d9a441] bg-[#fdf3e0]' : 'border-transparent bg-transparent',
                           'focus:border-primary focus:bg-background placeholder:text-muted-foreground/60',
                         ].join(' ')}

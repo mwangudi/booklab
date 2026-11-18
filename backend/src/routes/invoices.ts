@@ -59,6 +59,31 @@ const n = (v: unknown) => Number(v ?? 0);
 class DeliveryStockError extends Error {}
 const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
+/** True when a write failed only because another save took the same invoice or delivery-note number first. */
+const isNumberClash = (e: unknown) => {
+  if ((e as { code?: string })?.code !== 'P2002') return false;
+  const target = String((e as { meta?: { target?: unknown } }).meta?.target ?? '');
+  return target.includes('number') || target.includes('deliveryNoteNo');
+};
+
+/** The calendar year in Kenya, whatever the server clock's own timezone. */
+const kenyaYear = () => new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', year: 'numeric' }).format(new Date());
+
+/**
+ * Run a create that mints an invoice number, taking the next free one if saves race.
+ * A short random pause between attempts spreads out saves that arrive together.
+ */
+async function withFreshNumber<T>(create: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await create();
+    } catch (e) {
+      if (attempt >= 12 || !isNumberClash(e)) throw e;
+      await new Promise((r) => setTimeout(r, 5 + Math.random() * 25 * attempt));
+    }
+  }
+}
+
 /** Statuses at which the goods on an invoice have (at least partly) left the shelf. */
 const DELIVERED_STATUSES = ['DELIVERED', 'PAID'];
 
@@ -267,15 +292,22 @@ export async function invoiceRoutes(app: FastifyInstance) {
   // customers and raise invoices by default; delivery, payments and customer edits
   // are manager defaults an admin can grant to a person.
 
-  /** Next document number for the branch raising it, e.g. INV-KAP-0007. */
   async function branchCode(branchId: number | null): Promise<string> {
     if (branchId == null) return HEAD_OFFICE_CODE;
     const b = await app.prisma.branch.findUnique({ where: { id: branchId }, select: { code: true } });
     return b?.code ?? HEAD_OFFICE_CODE;
   }
 
+  /**
+   * Next invoice or delivery-note number: one company-wide series a year, INV-2026-0007,
+   * so the number says nothing about which branch (or town) raised it. A branch laptop,
+   * which may be working offline, keeps its branch code inside the number —
+   * INV-2026-KAP-0007 — so what it mints can never collide with the main system's.
+   * Numbers issued before this scheme (INV-LUA-0001) are left as they are.
+   */
   async function nextNumber(prefix: 'INV' | 'DN', branchId: number | null): Promise<string> {
-    const code = await branchCode(branchId);
+    const year = kenyaYear();
+    const code = SYNC_ROLE === 'branch' ? `${year}-${await branchCode(branchId)}` : year;
     const stem = seriesStem(prefix, code);
     if (prefix === 'INV') {
       const rows = await app.prisma.invoice.findMany({ where: { number: { startsWith: stem } }, select: { number: true } });
@@ -408,7 +440,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       if (problem) return reply.code(400).send({ error: problem });
     }
 
-    const created = await app.prisma.invoice.create({
+    const created = await withFreshNumber(async () => app.prisma.invoice.create({
       data: {
         number: await nextNumber('INV', branchId),
         customerId: body.customerId,
@@ -427,7 +459,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
         items: { create: priced.lines },
       },
       include: withItems,
-    });
+    }));
     await queueInvoice(app.prisma, created.id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: created.id, branchId: created.branchId, action: 'CREATE',
@@ -550,9 +582,11 @@ export async function invoiceRoutes(app: FastifyInstance) {
       return { invoice: full, saleId };
     }).catch((e) => {
       if (e instanceof DeliveryStockError) return e;
+      // A delivery-note number typed by hand that another invoice already has.
+      if (isNumberClash(e)) return new DeliveryStockError('That delivery note number is already used on another invoice.');
       throw e;
     });
-    if (outcome instanceof DeliveryStockError) return reply.code(400).send({ error: outcome.message });
+    if (outcome instanceof DeliveryStockError) return reply.code(outcome.message.startsWith('That delivery note') ? 409 : 400).send({ error: outcome.message });
 
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId: outcome.invoice.branchId, action: 'UPDATE',
@@ -567,6 +601,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
   app.delete('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
     const id = Number((req.params as { id: string }).id);
+    if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
     if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
@@ -656,7 +691,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const vatMode = asVatMode(customer.vatMode);
     const priced = priceLines(lines, vatMode, chargeVat);
 
-    const created = await app.prisma.$transaction(async (tx) => {
+    const created = await withFreshNumber(() => app.prisma.$transaction(async (tx) => {
       const inv = await tx.invoice.create({
         data: {
           number: await nextNumber('INV', branchId),
@@ -686,7 +721,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       });
       if (count === 0) throw Object.assign(new Error('This request already has an invoice.'), { statusCode: 409 });
       return inv;
-    });
+    }));
     await queueInvoice(app.prisma, created.id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: created.id, branchId: created.branchId, action: 'CREATE',
@@ -706,11 +741,11 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const free = inv.items.filter((i) => i.bookId != null && Number(i.unitPrice) <= 0).map((i) => i.description);
     if (free.length) return reply.code(400).send({ error: `Set a price before issuing: ${free.join('; ')}.` });
 
-    const updated = await app.prisma.invoice.update({
+    const updated = await withFreshNumber(async () => app.prisma.invoice.update({
       where: { id },
       data: { status: 'ISSUED', deliveryNoteNo: inv.deliveryNoteNo ?? (await nextNumber('DN', inv.branchId)) },
       include: withItems,
-    });
+    }));
     await queueInvoice(app.prisma, id);
     await auditRequest(app.prisma, req, {
       entity: 'invoice', entityId: id, branchId: inv.branchId, action: 'ISSUE',
