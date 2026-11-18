@@ -151,6 +151,10 @@ call then fails as if the file differed.
    ```
    A mismatch means someone changed the server, or an earlier deploy skipped the file.
    Find out which before overwriting.
+
+   For a long list, loop over a file with `while read f; …; done < files.txt`. In that
+   case use **`ssh -n`**: without it ssh swallows the rest of the list, and only the
+   first file is checked. Always confirm the count checked matches the count expected.
 2. **Back up** the database (nightly script, run now) and the files being replaced:
    ```bash
    # on the droplet
