@@ -8,6 +8,7 @@ import { downloadCsv, downloadPdfReport } from '../../lib/reportExport';
 import type { PayrollRun } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill } from '../../components/ui';
+import { useCanonicalAddress } from '../../lib/recordLink';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
@@ -17,6 +18,7 @@ const slipName = (s: Slip) => `${s.employee?.firstName ?? ''} ${s.employee?.last
 export default function PayrollRunPage() {
   const { id } = useParams<{ id: string }>();
   const { data: run, loading, refresh } = useApi<PayrollRun>(`/api/payroll/runs/${id}`, [id]);
+  useCanonicalAddress(id, run);
   const [confirmClose, setConfirmClose] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

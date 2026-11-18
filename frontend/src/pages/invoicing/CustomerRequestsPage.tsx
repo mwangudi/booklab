@@ -4,9 +4,12 @@ import { Inbox } from 'lucide-react';
 import { useApi } from '../../lib/useApi';
 import { dateTime, fmt } from '../../lib/format';
 import { Card, KpiCard, Loading, PageHeader, Pill, Select, Table, Td, Th } from '../../components/ui';
+import { recordKey } from '../../lib/recordLink';
 
 export interface CustomerRequestRow {
   id: number;
+  /** Short random code used in the request's page address. */
+  ref?: string | null;
   number: string;
   name: string;
   phone: string;
@@ -80,7 +83,7 @@ export default function CustomerRequestsPage() {
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <Td>
-                      <Link to={`/requests/${r.id}`} className="font-mono font-medium text-primary hover:underline">{r.number}</Link>
+                      <Link to={`/requests/${recordKey(r)}`} className="font-mono font-medium text-primary hover:underline">{r.number}</Link>
                     </Td>
                     <Td>{dateTime(r.createdAt)}</Td>
                     <Td>

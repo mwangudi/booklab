@@ -6,7 +6,7 @@ import { can, requireAnyCapability, requireCapability } from '../middleware/perm
 import { asVatMode, type InvoiceStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { SYNC_ROLE, enqueueOutbox, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
-import { HEAD_OFFICE_CODE, newRef, nextInSeries, seriesStem } from '../lib/docNumber.js';
+import { HEAD_OFFICE_CODE, idFromParam, newRef, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const customerSchema = z.object({
   name: z.string().min(1).max(160),
@@ -356,6 +356,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const created = await app.prisma.customer.create({
       data: {
         ...body,
+        ref: newRef(),
         email: body.email || null,
         openingBalanceDate: body.openingBalanceDate ? new Date(body.openingBalanceDate) : null,
       },
@@ -367,7 +368,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.patch('/customers/:id', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customer.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Customer not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid customer id' });
     const body = customerUpdateSchema.parse(req.body);
     const before = await app.prisma.customer.findUnique({ where: { id } });
@@ -390,7 +392,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.delete('/customers/:id', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customer.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Customer not found' });
     const cust = await app.prisma.customer.findUnique({ where: { id } });
     if (!cust) return reply.code(404).send({ error: 'Customer not found' });
     if (cust.deletedAt) return reply.code(409).send({ error: 'This customer is already archived.' });
@@ -400,7 +403,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.post('/customers/:id/restore', { preHandler: requireCapability('customer.manage') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customer.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Customer not found' });
     const cust = await app.prisma.customer.findUnique({ where: { id } });
     if (!cust) return reply.code(404).send({ error: 'Customer not found' });
     if (!cust.deletedAt) return reply.code(409).send({ error: 'This customer is not archived.' });
@@ -647,7 +651,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
    * product with no selling price yet comes in at 0 and must be priced before issuing.
    */
   app.post('/from-request/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customerRequest.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Request not found' });
     const body = z.object({
       customerId: z.number().int().optional(),
       createCustomer: z.boolean().optional(),
@@ -668,6 +673,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       }
       customer = await app.prisma.customer.create({
         data: {
+          ref: newRef(),
           name: request.organisation || request.name,
           type: request.organisation ? 'SCHOOL' : 'INDIVIDUAL',
           contactPerson: request.name,
@@ -936,7 +942,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
    * ageing buckets.
    */
   app.get('/customers/:id/statement', { preHandler: requireCapability('customer.view') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customer.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Customer not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid customer id' });
     const { from, to } = req.query as { from?: string; to?: string };
 
@@ -1044,6 +1051,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       const received = c.payments.reduce((s, p) => s + n(p.amount), 0);
       return {
         id: c.id,
+        ref: c.ref,
         name: c.name,
         type: c.type,
         phone: c.phone,

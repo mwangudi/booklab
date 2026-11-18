@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { writeAudit } from '../lib/audit.js';
+import { newRef } from '../lib/docNumber.js';
 
 /**
  * The website's catalogue and order requests. PUBLIC — no sign-in.
@@ -73,6 +74,7 @@ export async function publicCatalogueRoutes(app: FastifyInstance) {
         const created = await app.prisma.customerRequest.create({
           data: {
             number,
+            ref: newRef(),
             name: body.name,
             phone: body.phone,
             email: body.email || null,

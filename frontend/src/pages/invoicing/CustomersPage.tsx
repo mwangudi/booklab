@@ -9,6 +9,7 @@ import { downloadCsv } from '../../lib/reportExport';
 import type { Customer, CustomerBalance } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
+import { recordKey } from '../../lib/recordLink';
 
 export default function CustomersPage() {
   const canManageCustomers = useCan()('customer.manage');
@@ -91,10 +92,10 @@ export default function CustomersPage() {
             />
           ) : (
             <>
-              <RowAction to={`/customers/${c.id}/statement`} icon={<FileText className="h-4 w-4" />} label="Statement of account" />
+              <RowAction to={`/customers/${recordKey(c)}/statement`} icon={<FileText className="h-4 w-4" />} label="Statement of account" />
               {canManageCustomers && (
                 <>
-                  <RowAction to={`/customers/${c.id}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit customer" />
+                  <RowAction to={`/customers/${recordKey(c)}/edit`} icon={<Pencil className="h-4 w-4" />} label="Edit customer" />
                   <RowAction
                     onClick={() => act(() => api.delete(`/api/invoices/customers/${c.id}`), 'Could not archive.')}
                     icon={<Archive className="h-4 w-4" />}

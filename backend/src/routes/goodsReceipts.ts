@@ -5,7 +5,7 @@ import { requireCapability } from '../middleware/permissions.js';
 import type { GoodsReceiptStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { recordMovement, queueGoodsReceipt, queueSupplierPayment } from '../lib/outbox.js';
-import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
+import { HEAD_OFFICE_CODE, idFromParam, newRef, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const supplierSchema = z.object({
   name: z.string().min(1).max(160),
@@ -70,6 +70,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     const created = await app.prisma.supplier.create({
       data: {
         ...body,
+        ref: newRef(),
         email: body.email || null,
         openingBalanceDate: body.openingBalanceDate ? new Date(body.openingBalanceDate) : null,
       },
@@ -79,7 +80,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   app.patch('/suppliers/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.supplier.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Supplier not found' });
     const body = supplierSchema.partial().parse(req.body);
     const before = await app.prisma.supplier.findUnique({ where: { id } });
     if (!before) return reply.code(404).send({ error: 'Supplier not found' });
@@ -101,7 +103,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   app.delete('/suppliers/:id', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.supplier.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Supplier not found' });
     const s = await app.prisma.supplier.findUnique({ where: { id } });
     if (!s) return reply.code(404).send({ error: 'Supplier not found' });
     if (s.deletedAt) return reply.code(409).send({ error: 'This supplier is already archived.' });
@@ -111,7 +114,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   app.post('/suppliers/:id/restore', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.supplier.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Supplier not found' });
     const s = await app.prisma.supplier.findUnique({ where: { id } });
     if (!s) return reply.code(404).send({ error: 'Supplier not found' });
     const restored = await app.prisma.supplier.update({ where: { id }, data: { deletedAt: null, active: true } });
@@ -149,7 +153,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.goodsReceipt.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Goods receipt not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid receipt id' });
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id }, include: withItems });
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
@@ -182,6 +187,7 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
     const created = await app.prisma.goodsReceipt.create({
       data: {
         number: await nextNumber(branchId),
+        ref: newRef(),
         supplierId: body.supplierId,
         branchId,
         deliveryNoteNo: body.deliveryNoteNo ?? null,
@@ -203,7 +209,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.goodsReceipt.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Goods receipt not found' });
     const body = receiptSchema.partial().parse(req.body);
     const before = await app.prisma.goodsReceipt.findUnique({ where: { id } });
     if (!before || before.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
@@ -257,7 +264,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
 
   /** Post the receipt: stock goes up and each line becomes an intake movement. */
   app.post('/:id/post', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.goodsReceipt.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Goods receipt not found' });
     const { updateCost } = z.object({ updateCost: z.boolean().default(true) }).parse(req.body ?? {});
 
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id }, include: { items: true, supplier: true } });
@@ -318,7 +326,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: requireCapability('goods.receive') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.goodsReceipt.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Goods receipt not found' });
     const grn = await app.prisma.goodsReceipt.findUnique({ where: { id } });
     if (!grn || grn.deletedAt) return reply.code(404).send({ error: 'Goods receipt not found' });
     if (!ownsBranchRecord(req, grn.branchId)) return reply.code(404).send({ error: 'Goods receipt not found' });
@@ -402,7 +411,8 @@ export async function goodsReceiptRoutes(app: FastifyInstance) {
    * Only posted receipts are debts; drafts have not been accepted yet.
    */
   app.get('/suppliers/:id/statement', { preHandler: requireRole('ADMIN', 'MANAGER') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.supplier.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Supplier not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid supplier id' });
     const { from, to } = req.query as { from?: string; to?: string };
 

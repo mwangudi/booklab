@@ -83,6 +83,8 @@ export interface Employee {
 
 export interface PayrollRun {
   id: number;
+  /** Short random code used in this record's page address, e.g. XR56LK. */
+  ref?: string | null;
   year: number;
   month: number;
   status: 'DRAFT' | 'CLOSED';
@@ -131,6 +133,8 @@ export interface PayeBand {
 
 export interface Customer {
   id: number;
+  /** Short random code used in this record's page address, e.g. XR56LK. */
+  ref?: string | null;
   name: string;
   type: CustomerType;
   contactPerson: string | null;
@@ -151,6 +155,8 @@ export interface Customer {
 
 export interface CustomerBalance {
   id: number;
+  /** Short random code used in this record's page address, e.g. XR56LK. */
+  ref?: string | null;
   name: string;
   type: CustomerType;
   phone: string | null;
@@ -232,6 +238,8 @@ export interface Statement {
 
 export interface Supplier {
   id: number;
+  /** Short random code used in this record's page address, e.g. XR56LK. */
+  ref?: string | null;
   name: string;
   contactPerson: string | null;
   phone: string | null;
@@ -271,6 +279,8 @@ export interface GoodsReceiptItem {
 
 export interface GoodsReceipt {
   id: number;
+  /** Short random code used in this record's page address, e.g. XR56LK. */
+  ref?: string | null;
   number: string;
   supplierId: number;
   branchId: number;

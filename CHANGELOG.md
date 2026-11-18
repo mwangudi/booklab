@@ -3,6 +3,16 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-18 — Link codes for customers, suppliers, receipts, requests and payroll
+
+- The pages of customers (edit and statement), supplier statements, goods receipts,
+  website requests and payroll runs are addressed by a short random code, like invoices:
+  /customers/YRUMCN/statement, /goods-receipts/V2GFWG, /payroll/W4PECU. Old numeric
+  links still open and switch to the code.
+- Existing records get codes in migration `20261118160000_record_refs`, which also marks
+  customers and suppliers as changed so branch laptops pick up their codes on next sync.
+  Goods receipts carry their code from laptops to the cloud.
+
 ## 2026-11-18 — Invoice links use a short code; change runbook
 
 - Invoice pages are addressed by a short random code, **/invoices/XR56LK**, instead of

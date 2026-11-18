@@ -12,6 +12,7 @@ import { Select2 } from '../../components/Select2';
 import { Alert, Button, Card, FormField, Loading, PageHeader, Pill, SectionTitle, Select, Table, Td, Th } from '../../components/ui';
 import { REQUEST_TONE, type CustomerRequestRow } from './CustomerRequestsPage';
 import { invoicePath } from '../../lib/invoiceLink';
+import { useCanonicalAddress } from '../../lib/recordLink';
 
 interface Detail extends CustomerRequestRow {
   handledBy: string | null;
@@ -26,6 +27,7 @@ export default function CustomerRequestPage() {
   const { isAdmin, branchId: myBranch } = useAuth();
   const can = useCan();
   const { data: r, loading, refresh } = useApi<Detail>(`/api/requests/${id}`, [id]);
+  useCanonicalAddress(id, r);
   const { data: customers } = useApi<Customer[]>('/api/invoices/customers');
   const [customerId, setCustomerId] = useState<string>('');
   const [branchId, setBranchId] = useState<number | null>(isAdmin ? null : myBranch);

@@ -8,6 +8,7 @@ import { CUSTOMER_TYPES, titleCase } from '../../lib/categories';
 import type { Customer } from '../../types';
 import { Alert, Button, Card, FormField, Input, Loading, PageHeader, SectionTitle, Textarea } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { useCanonicalAddress } from '../../lib/recordLink';
 
 export default function CustomerUpsertPage() {
   const { id } = useParams<{ id: string }>();
@@ -15,7 +16,12 @@ export default function CustomerUpsertPage() {
   const navigate = useNavigate();
 
   const { data: customers, loading } = useApi<Customer[]>(isEdit ? '/api/invoices/customers?archived=all' : null);
-  const existing = useMemo(() => customers?.find((c) => String(c.id) === id) ?? null, [customers, id]);
+  // The address holds the customer's link code, or its id on an old link.
+  const existing = useMemo(
+    () => customers?.find((c) => (c.ref && c.ref === id?.toUpperCase()) || String(c.id) === id) ?? null,
+    [customers, id],
+  );
+  useCanonicalAddress(id, existing);
 
   const [f, setF] = useState({
     name: '',
@@ -80,7 +86,7 @@ export default function CustomerUpsertPage() {
     };
     setSaving(true);
     try {
-      if (isEdit) await api.patch(`/api/invoices/customers/${id}`, payload);
+      if (isEdit) await api.patch(`/api/invoices/customers/${existing?.id ?? id}`, payload);
       else await api.post('/api/invoices/customers', payload);
       navigate('/customers');
     } catch (err) {

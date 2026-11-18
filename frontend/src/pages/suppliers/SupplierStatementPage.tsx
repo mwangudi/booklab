@@ -10,6 +10,7 @@ import { printSupplierStatement } from '../../lib/documents';
 import type { GoodsReceipt, SupplierStatement } from '../../types';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill, SectionTitle, Table, Td, Th } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { useCanonicalAddress } from '../../lib/recordLink';
 
 const startOfYear = () => `${new Date().getFullYear()}-01-01`;
 
@@ -26,7 +27,10 @@ export default function SupplierStatementPage() {
   }, [id, from, to]);
 
   const { data, loading, refresh } = useApi<SupplierStatement>(query, [query]);
-  const { data: receipts } = useApi<GoodsReceipt[]>(`/api/goods-receipts?supplierId=${id}`, [id]);
+  // The address may hold a link code; the receipt filter and payments need the numeric id.
+  const supplierId = data?.supplier.id;
+  useCanonicalAddress(id, data?.supplier);
+  const { data: receipts } = useApi<GoodsReceipt[]>(supplierId ? `/api/goods-receipts?supplierId=${supplierId}` : null, [supplierId]);
 
   const [payOpen, setPayOpen] = useState(false);
   const [pay, setPay] = useState({ amount: '', paidAt: today(), method: 'BANK_TRANSFER', reference: '', receiptId: '' });
@@ -38,7 +42,7 @@ export default function SupplierStatementPage() {
     setError(null);
     try {
       await api.post('/api/goods-receipts/payments', {
-        supplierId: Number(id),
+        supplierId,
         receiptId: pay.receiptId ? Number(pay.receiptId) : null,
         amount: Number(pay.amount),
         paidAt: pay.paidAt,

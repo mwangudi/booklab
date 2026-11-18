@@ -8,6 +8,7 @@ import { downloadCsv } from '../../lib/reportExport';
 import type { Supplier, SupplierBalance } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, RowAction, RowActions, Textarea } from '../../components/ui';
+import { recordKey } from '../../lib/recordLink';
 
 const blank = {
   name: '',
@@ -159,7 +160,7 @@ export default function SuppliersPage() {
             />
           ) : (
             <>
-              <RowAction to={`/suppliers/${s.id}/statement`} icon={<FileText className="h-4 w-4" />} label="Statement / reconciliation" />
+              <RowAction to={`/suppliers/${recordKey(s)}/statement`} icon={<FileText className="h-4 w-4" />} label="Statement / reconciliation" />
               <RowAction onClick={() => openEdit(s)} icon={<Pencil className="h-4 w-4" />} label="Edit supplier" />
               <RowAction
                 onClick={() => act(() => api.delete(`/api/goods-receipts/suppliers/${s.id}`), 'Could not archive.')}

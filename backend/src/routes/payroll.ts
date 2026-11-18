@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authGuard, requireRole } from '../middleware/authGuard.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { computePay, DEFAULT_PAYE_BANDS, periodLabel, type PayeBand, type PayrollRates } from '../lib/payroll.js';
+import { idFromParam, newRef } from '../lib/docNumber.js';
 
 const employeeSchema = z.object({
   staffNo: z.string().min(1).max(40),
@@ -249,7 +250,8 @@ export async function payrollRoutes(app: FastifyInstance) {
   );
 
   app.get('/runs/:id', async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.payrollRun.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Payroll run not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid run id' });
     const run = await app.prisma.payrollRun.findUnique({
       where: { id },
@@ -273,7 +275,7 @@ export async function payrollRoutes(app: FastifyInstance) {
     if (staff === 0) return reply.code(400).send({ error: 'Add at least one active employee before running payroll.' });
 
     const run = await app.prisma.payrollRun.create({
-      data: { year: body.year, month: body.month, note: body.note, createdById: req.user.id },
+      data: { ref: newRef(), year: body.year, month: body.month, note: body.note, createdById: req.user.id },
     });
     const count = await buildPayslips(run.id);
     await auditRequest(app.prisma, req, {
@@ -286,7 +288,8 @@ export async function payrollRoutes(app: FastifyInstance) {
   });
 
   app.post('/runs/:id/recalculate', async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.payrollRun.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Payroll run not found' });
     const run = await app.prisma.payrollRun.findUnique({ where: { id } });
     if (!run) return reply.code(404).send({ error: 'Payroll run not found' });
     if (run.status === 'CLOSED') return reply.code(409).send({ error: 'This payroll is closed and can no longer be recalculated.' });
@@ -302,7 +305,8 @@ export async function payrollRoutes(app: FastifyInstance) {
 
   // Closing locks the figures and posts one SALARY expense per branch.
   app.post('/runs/:id/close', async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.payrollRun.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Payroll run not found' });
     const run = await app.prisma.payrollRun.findUnique({ where: { id }, include: { payslips: true } });
     if (!run) return reply.code(404).send({ error: 'Payroll run not found' });
     if (run.status === 'CLOSED') return reply.code(409).send({ error: 'This payroll has already been closed.' });
@@ -355,7 +359,8 @@ export async function payrollRoutes(app: FastifyInstance) {
 
   // A draft can be discarded; a closed payroll is permanent.
   app.delete('/runs/:id', async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.payrollRun.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Payroll run not found' });
     const run = await app.prisma.payrollRun.findUnique({ where: { id } });
     if (!run) return reply.code(404).send({ error: 'Payroll run not found' });
     if (run.status === 'CLOSED') return reply.code(409).send({ error: 'A closed payroll cannot be deleted.' });

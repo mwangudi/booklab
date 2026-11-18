@@ -9,6 +9,7 @@ import type { Book, GoodsReceipt, Supplier } from '../../types';
 import { BranchSelect } from '../../components/BranchSelect';
 import { Alert, Button, Card, FormField, Input, Loading, Modal, PageHeader, Pill, SectionTitle, Textarea } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { recordKey, useCanonicalAddress } from '../../lib/recordLink';
 
 interface Line {
   bookId: string;
@@ -26,6 +27,7 @@ export default function GoodsReceiptEditorPage() {
   const navigate = useNavigate();
 
   const { data: grn, loading, refresh } = useApi<GoodsReceipt>(isEdit ? `/api/goods-receipts/${id}` : null, [id]);
+  useCanonicalAddress(isEdit ? id : undefined, grn);
   const { data: suppliers } = useApi<Supplier[]>('/api/goods-receipts/suppliers');
   const { data: books } = useApi<Book[]>('/api/books');
 
@@ -95,7 +97,7 @@ export default function GoodsReceiptEditorPage() {
         refresh();
       } else {
         const created = await api.post<GoodsReceipt>('/api/goods-receipts', body);
-        navigate(`/goods-receipts/${created.id}`, { replace: true });
+        navigate(`/goods-receipts/${recordKey(created)}`, { replace: true });
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the goods receipt.');

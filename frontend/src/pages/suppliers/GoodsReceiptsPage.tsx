@@ -8,6 +8,7 @@ import type { GoodsReceipt } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { recordKey } from '../../lib/recordLink';
 
 // Deliveries arrive in bursts each term, so default to the year rather than the month.
 const startOfYear = () => `${new Date().getFullYear()}-01-01`;
@@ -49,7 +50,7 @@ export default function GoodsReceiptsPage() {
       sortable: true,
       render: (r) => (
         <div>
-          <Link to={`/goods-receipts/${r.id}`} className="font-medium text-primary hover:underline">
+          <Link to={`/goods-receipts/${recordKey(r)}`} className="font-medium text-primary hover:underline">
             {r.number}
           </Link>
           {r.deliveryNoteNo && <div className="text-[11px] text-muted-foreground font-mono">DN {r.deliveryNoteNo}</div>}
@@ -74,7 +75,7 @@ export default function GoodsReceiptsPage() {
       align: 'right',
       render: (r) => (
         <RowActions>
-          <RowAction to={`/goods-receipts/${r.id}`} icon={<Eye className="h-4 w-4" />} label={r.status === 'DRAFT' ? 'Edit receipt' : 'View receipt'} />
+          <RowAction to={`/goods-receipts/${recordKey(r)}`} icon={<Eye className="h-4 w-4" />} label={r.status === 'DRAFT' ? 'Edit receipt' : 'View receipt'} />
           {r.status === 'DRAFT' && (
             <RowAction onClick={() => remove(r.id)} icon={<Trash2 className="h-4 w-4" />} label="Delete draft" tone="danger" />
           )}

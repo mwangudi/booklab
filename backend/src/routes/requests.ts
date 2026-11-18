@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { authGuard } from '../middleware/authGuard.js';
 import { requireAnyCapability, requireCapability } from '../middleware/permissions.js';
 import { auditRequest } from '../lib/audit.js';
+import { idFromParam } from '../lib/docNumber.js';
 
 /**
  * Requests customers sent from the website catalogue. Anyone who can see customers
@@ -29,7 +30,8 @@ export async function requestRoutes(app: FastifyInstance) {
   }));
 
   app.get('/:id', read, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customerRequest.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Request not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid request id' });
     const r = await app.prisma.customerRequest.findUnique({
       where: { id },
@@ -52,7 +54,8 @@ export async function requestRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await idFromParam((req.params as { id: string }).id, (ref) => app.prisma.customerRequest.findUnique({ where: { ref }, select: { id: true } }));
+    if (id == null) return reply.code(404).send({ error: 'Request not found' });
     const body = z.object({ status: z.enum(['NEW', 'CONTACTED', 'CLOSED', 'CANCELLED']) }).parse(req.body);
     const before = await app.prisma.customerRequest.findUnique({ where: { id } });
     if (!before) return reply.code(404).send({ error: 'Request not found' });

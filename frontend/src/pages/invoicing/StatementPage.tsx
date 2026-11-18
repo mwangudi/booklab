@@ -12,6 +12,7 @@ import { printStatement } from '../../lib/documents';
 import type { Invoice, Statement } from '../../types';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill, SectionTitle, Table, Td, Th } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { useCanonicalAddress } from '../../lib/recordLink';
 
 const startOfYear = () => `${new Date().getFullYear()}-01-01`;
 
@@ -29,7 +30,10 @@ export default function StatementPage() {
   }, [id, from, to]);
 
   const { data, loading, refresh } = useApi<Statement>(query, [query]);
-  const { data: invoices } = useApi<Invoice[]>(`/api/invoices?customerId=${id}`, [id]);
+  // The address may hold a link code; the invoice filter and payments need the numeric id.
+  const customerId = data?.customer.id;
+  useCanonicalAddress(id, data?.customer);
+  const { data: invoices } = useApi<Invoice[]>(customerId ? `/api/invoices?customerId=${customerId}` : null, [customerId]);
 
   const [payOpen, setPayOpen] = useState(false);
   const [pay, setPay] = useState({ amount: '', paidAt: today(), method: 'BANK_TRANSFER', reference: '', invoiceId: '' });
@@ -41,7 +45,7 @@ export default function StatementPage() {
     setError(null);
     try {
       await api.post('/api/invoices/payments', {
-        customerId: Number(id),
+        customerId,
         invoiceId: pay.invoiceId ? Number(pay.invoiceId) : null,
         amount: Number(pay.amount),
         paidAt: pay.paidAt,

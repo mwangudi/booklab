@@ -135,6 +135,7 @@ export async function queueGoodsReceipt(tx: Tx, receiptId: number): Promise<void
   if (!grn) return;
   await enqueueOutbox(tx, 'goodsReceipt', grn.uuid, {
     number: grn.number,
+    ref: grn.ref,
     branchUuid: grn.branch.uuid,
     supplierUuid: grn.supplier.uuid,
     deliveryNoteNo: grn.deliveryNoteNo,

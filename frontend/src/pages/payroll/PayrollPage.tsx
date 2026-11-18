@@ -8,6 +8,7 @@ import type { PayrollRun } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, FormField, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { recordKey } from '../../lib/recordLink';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const period = (r: PayrollRun) => `${MONTHS[r.month - 1]} ${r.year}`;
@@ -33,7 +34,7 @@ export default function PayrollPage() {
       const run = await api.post<PayrollRun>('/api/payroll/runs', { year: Number(year), month: Number(month) });
       setOpen(false);
       refresh();
-      window.location.assign(`/payroll/${run.id}`);
+      window.location.assign(`/payroll/${recordKey(run)}`);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not start this payroll.');
     } finally {
@@ -63,7 +64,7 @@ export default function PayrollPage() {
       accessor: (r) => r.year * 100 + r.month,
       sortable: true,
       render: (r) => (
-        <Link to={`/payroll/${r.id}`} className="font-medium text-primary hover:underline">
+        <Link to={`/payroll/${recordKey(r)}`} className="font-medium text-primary hover:underline">
           {period(r)}
         </Link>
       ),
@@ -90,7 +91,7 @@ export default function PayrollPage() {
       render: (r) => (
         <RowActions>
           <RowAction
-            to={`/payroll/${r.id}`}
+            to={`/payroll/${recordKey(r)}`}
             icon={<Eye className="h-4 w-4" />}
             label={r.status === 'CLOSED' ? 'View payroll' : 'Review payroll'}
           />

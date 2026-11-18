@@ -177,14 +177,14 @@ export async function syncRoutes(app: FastifyInstance) {
           costPrice: s.costPrice == null ? null : String(s.costPrice),
         })),
         customer: customers.map((c) => ({
-          uuid: c.uuid, name: c.name, type: c.type, contactPerson: c.contactPerson, phone: c.phone, email: c.email,
+          uuid: c.uuid, ref: c.ref, name: c.name, type: c.type, contactPerson: c.contactPerson, phone: c.phone, email: c.email,
           address: c.address, kraPin: c.kraPin, paymentTermsDays: c.paymentTermsDays, openingBalance: String(c.openingBalance),
           chargeVat: c.chargeVat, vatMode: c.vatMode,
           createdAt: c.createdAt, updatedAt: c.updatedAt, deletedAt: c.deletedAt,
         })),
         permission: permissions.map((p) => ({ userUuid: p.user.uuid, capability: p.capability, allowed: p.allowed, expiresAt: p.expiresAt })),
         supplier: suppliers.map((s) => ({
-          uuid: s.uuid, name: s.name, contactPerson: s.contactPerson, phone: s.phone, email: s.email,
+          uuid: s.uuid, ref: s.ref, name: s.name, contactPerson: s.contactPerson, phone: s.phone, email: s.email,
           address: s.address, kraPin: s.kraPin, paymentTermsDays: s.paymentTermsDays, openingBalance: String(s.openingBalance),
           createdAt: s.createdAt, updatedAt: s.updatedAt, deletedAt: s.deletedAt,
         })),
@@ -420,10 +420,17 @@ async function ingestGoodsReceipt(tx: Tx, uuid: string, data: Record<string, any
     deletedAt: data.deletedAt ? new Date(data.deletedAt) : null,
   };
 
-  const existing = await tx.goodsReceipt.findUnique({ where: { uuid }, select: { id: true } });
+  const existing = await tx.goodsReceipt.findUnique({ where: { uuid }, select: { id: true, ref: true } });
+  // Link code: kept once set; else the laptop's if well-formed and free; else a new one.
+  let ref: string | null = existing?.ref ?? null;
+  if (!ref && isRef(data.ref)) {
+    const holder = await tx.goodsReceipt.findUnique({ where: { ref: data.ref }, select: { uuid: true } });
+    if (!holder || holder.uuid === uuid) ref = data.ref;
+  }
+  ref = ref ?? newRef();
   const grn = existing
-    ? await tx.goodsReceipt.update({ where: { id: existing.id }, data: fields })
-    : await tx.goodsReceipt.create({ data: { uuid, ...fields, createdAt: data.createdAt ? new Date(data.createdAt) : undefined } });
+    ? await tx.goodsReceipt.update({ where: { id: existing.id }, data: { ...fields, ref } })
+    : await tx.goodsReceipt.create({ data: { uuid, ...fields, ref, createdAt: data.createdAt ? new Date(data.createdAt) : undefined } });
 
   await tx.goodsReceiptItem.deleteMany({ where: { receiptId: grn.id } });
   for (const [i, it] of (Array.isArray(data.items) ? data.items : []).entries()) {

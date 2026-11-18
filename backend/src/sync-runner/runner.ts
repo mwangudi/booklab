@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { isRef } from '../lib/docNumber.js';
 
 /** Branch-side sync runner: drains the Outbox to the cloud (push) and applies cloud
  *  master-data changes locally (pull). Both take a branch PrismaClient + cloud URL + token. */
@@ -105,7 +106,10 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
   }
 
   for (const c of data.entities.customer ?? []) {
+    // The cloud's link code, unless a different local customer already holds it.
+    const refHolder = isRef(c.ref) ? await branch.customer.findUnique({ where: { ref: c.ref }, select: { uuid: true } }) : null;
     const fields = {
+      ...(isRef(c.ref) && (!refHolder || refHolder.uuid === c.uuid) ? { ref: c.ref } : {}),
       name: c.name, type: c.type, contactPerson: c.contactPerson, phone: c.phone, email: c.email,
       address: c.address, kraPin: c.kraPin, paymentTermsDays: c.paymentTermsDays, openingBalance: c.openingBalance,
       chargeVat: c.chargeVat, vatMode: c.vatMode,
@@ -120,7 +124,9 @@ export async function pullMaster(branch: PrismaClient, cloudBase: string, token:
   counts.customer = (data.entities.customer ?? []).length;
 
   for (const s of data.entities.supplier ?? []) {
+    const refHolder = isRef(s.ref) ? await branch.supplier.findUnique({ where: { ref: s.ref }, select: { uuid: true } }) : null;
     const fields = {
+      ...(isRef(s.ref) && (!refHolder || refHolder.uuid === s.uuid) ? { ref: s.ref } : {}),
       name: s.name, contactPerson: s.contactPerson, phone: s.phone, email: s.email,
       address: s.address, kraPin: s.kraPin, paymentTermsDays: s.paymentTermsDays, openingBalance: s.openingBalance,
       updatedAt: toDate(s.updatedAt)!, deletedAt: toDate(s.deletedAt),

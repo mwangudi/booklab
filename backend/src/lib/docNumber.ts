@@ -25,6 +25,22 @@ export function newRef(length = 6): string {
   return out;
 }
 
+/**
+ * The record a page address names: its link code (e.g. XR56LK) or — so old links and
+ * bookmarks keep working — its numeric id. Null when the parameter is neither.
+ */
+export async function idFromParam(
+  param: string,
+  findByRef: (ref: string) => Promise<{ id: number } | null>,
+): Promise<number | null> {
+  if (/^\d+$/.test(param)) {
+    const n = Number(param);
+    return Number.isSafeInteger(n) ? n : null;
+  }
+  if (!/^[A-Za-z0-9]{4,12}$/.test(param)) return null;
+  return (await findByRef(param.toUpperCase()))?.id ?? null;
+}
+
 /** The shape of a link code we accept from a branch laptop. */
 export const isRef = (v: unknown): v is string => typeof v === 'string' && /^[A-HJ-NP-Z][A-HJ-NP-Z2-9]{5}$/.test(v);
 

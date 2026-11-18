@@ -418,6 +418,8 @@ model Employee {
 /// closing locks the figures and posts the cost to the P&L as SALARY expenses.
 model PayrollRun {
   id              Int           @id @default(autoincrement())
+  /// Short random code used in this record's page address instead of the sequential id.
+  ref           String?      @unique @db.VarChar(12)
   year            Int
   month           Int
   status          PayrollStatus @default(DRAFT)
@@ -483,6 +485,8 @@ model PayrollSetting {
 /// A school, institution or business we supply on account.
 model Customer {
   id            Int          @id @default(autoincrement())
+  /// Short random code used in this record's page address instead of the sequential id.
+  ref           String?      @unique @db.VarChar(12)
   name          String
   type          CustomerType @default(SCHOOL)
   contactPerson String?
@@ -611,6 +615,8 @@ model InvoiceItem {
 /// A supplier we buy stock from.
 model Supplier {
   id            Int            @id @default(autoincrement())
+  /// Short random code used in this record's page address instead of the sequential id.
+  ref           String?      @unique @db.VarChar(12)
   name          String
   contactPerson String?
   phone         String?
@@ -661,6 +667,8 @@ model SupplierPayment {
 /// adds the quantities to branch stock as attributable intake movements.
 model GoodsReceipt {
   id             Int                @id @default(autoincrement())
+  /// Short random code used in this record's page address instead of the sequential id.
+  ref           String?      @unique @db.VarChar(12)
   uuid           String             @unique @default(uuid())
   number         String             @unique
   supplierId     Int
@@ -771,6 +779,8 @@ enum CustomerRequestStatus {
 /// customer would like, and how to reach them. Staff turn it into an invoice.
 model CustomerRequest {
   id            Int                   @id @default(autoincrement())
+  /// Short random code used in this record's page address instead of the sequential id.
+  ref           String?      @unique @db.VarChar(12)
   uuid          String                @unique @default(uuid())
   /// Shown to the customer as their reference, e.g. REQ-0007.
   number        String                @unique
