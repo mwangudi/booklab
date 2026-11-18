@@ -56,10 +56,10 @@ export default function StockReportPage() {
     { key: 'branch', header: 'Branch', accessor: (r) => r.branch, sortable: true },
     { key: 'title', header: 'Product', accessor: (r) => r.title, sortable: true, render: (r) => <span className="font-medium text-foreground">{r.title}</span> },
     { key: 'sku', header: 'SKU', accessor: (r) => r.sku, render: (r) => <span className="font-mono text-xs">{r.sku}</span> },
-    { key: 'qty', header: 'Qty', align: 'right', accessor: (r) => r.quantity, sortable: true, render: (r) => <span className="font-mono font-semibold">{fmt(r.quantity)}</span> },
+    { key: 'qty', filter: 'range', header: 'Qty', align: 'right', accessor: (r) => r.quantity, sortable: true, render: (r) => <span className="font-mono font-semibold">{fmt(r.quantity)}</span> },
     { key: 'price', header: 'Unit price', align: 'right', accessor: (r) => r.unitPrice, render: (r) => <span className="font-mono">{money(r.unitPrice)}</span> },
     { key: 'value', header: 'Value', align: 'right', accessor: (r) => r.value, sortable: true, render: (r) => <span className="font-mono">{money(r.value)}</span> },
-    { key: 'status', header: 'Status', accessor: (r) => r.status, render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
+    { key: 'status', filter: 'select', header: 'Status', accessor: (r) => r.status, render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
   ];
 
   return (

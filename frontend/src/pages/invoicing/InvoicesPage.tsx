@@ -91,11 +91,11 @@ export default function InvoicesPage() {
         </div>
       ),
     },
-    { key: 'customer', header: 'Customer', accessor: (r) => r.customer?.name ?? '', sortable: true, render: (r) => r.customer?.name ?? '—' },
+    { key: 'customer', filter: 'select', header: 'Customer', accessor: (r) => r.customer?.name ?? '', sortable: true, render: (r) => r.customer?.name ?? '—' },
     { key: 'date', header: 'Date', accessor: (r) => r.issueDate, sortable: true, render: (r) => dateShort(r.issueDate) },
     { key: 'due', header: 'Due', render: (r) => (r.dueDate ? dateShort(r.dueDate) : '—') },
     { key: 'items', header: 'Items', align: 'right', render: (r) => fmt(r._count?.items ?? 0) },
-    { key: 'total', header: 'Total', align: 'right', accessor: (r) => num(r.total), sortable: true, render: (r) => <span className="font-mono font-semibold">{money(r.total)}</span> },
+    { key: 'total', filter: 'range', header: 'Total', align: 'right', accessor: (r) => num(r.total), sortable: true, render: (r) => <span className="font-mono font-semibold">{money(r.total)}</span> },
     {
       key: 'status',
       header: 'Status',

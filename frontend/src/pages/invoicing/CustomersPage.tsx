@@ -7,7 +7,7 @@ import { useCan } from '../../lib/permissions';
 import { fmt, money, num } from '../../lib/format';
 import { downloadCsv } from '../../lib/reportExport';
 import type { Customer, CustomerBalance } from '../../types';
-import { DataTable, type Column } from '../../components/DataTable';
+import { DataTable, type Column, prettyEnum } from '../../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { recordKey } from '../../lib/recordLink';
 
@@ -56,7 +56,7 @@ export default function CustomersPage() {
         </div>
       ),
     },
-    { key: 'type', header: 'Type', accessor: (c) => c.type, render: (c) => <Pill tone="blue">{c.type.toLowerCase()}</Pill> },
+    { key: 'type', filter: 'select', filterOptionLabel: prettyEnum, header: 'Type', accessor: (c) => c.type, render: (c) => <Pill tone="blue">{c.type.toLowerCase()}</Pill> },
     { key: 'phone', header: 'Phone', render: (c) => c.phone ?? '—' },
     { key: 'terms', header: 'Terms', align: 'right', render: (c) => `${c.paymentTermsDays} days` },
     {
@@ -68,7 +68,7 @@ export default function CustomersPage() {
       render: (c) => fmt(balanceById.get(c.id)?.invoices ?? 0),
     },
     {
-      key: 'balance',
+      key: 'balance', filter: 'range',
       header: 'Balance',
       align: 'right',
       accessor: (c) => balanceById.get(c.id)?.balance ?? 0,

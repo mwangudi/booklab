@@ -63,10 +63,10 @@ export default function SalesReportPage() {
     { key: 'id', header: '#', accessor: (r) => r.id, sortable: true, render: (r) => <span className="font-mono text-xs">#{r.id}</span> },
     { key: 'date', header: 'Date', accessor: (r) => r.date, sortable: true, render: (r) => dateTime(r.date) },
     { key: 'branch', header: 'Branch', accessor: (r) => r.branch, sortable: true },
-    { key: 'cashier', header: 'Cashier', accessor: (r) => r.cashier },
-    { key: 'payment', header: 'Payment', accessor: (r) => r.payment },
+    { key: 'cashier', filter: 'select', header: 'Cashier', accessor: (r) => r.cashier },
+    { key: 'payment', filter: 'select', header: 'Payment', accessor: (r) => r.payment },
     { key: 'items', header: 'Items', align: 'right', accessor: (r) => r.items, sortable: true },
-    { key: 'total', header: 'Total', align: 'right', accessor: (r) => r.total, sortable: true, render: (r) => <span className="font-mono">{money(r.total)}</span> },
+    { key: 'total', filter: 'range', header: 'Total', align: 'right', accessor: (r) => r.total, sortable: true, render: (r) => <span className="font-mono">{money(r.total)}</span> },
   ];
 
   return (

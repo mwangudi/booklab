@@ -5,7 +5,7 @@ import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { fmt, money, num } from '../../lib/format';
 import type { Employee } from '../../types';
-import { DataTable, type Column } from '../../components/DataTable';
+import { DataTable, type Column, prettyEnum } from '../../components/DataTable';
 import { Alert, Button, Card, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 
 const fullName = (e: Employee) => `${e.firstName} ${e.lastName}`.trim();
@@ -62,8 +62,8 @@ export default function EmployeesPage() {
       ),
     },
     { key: 'job', header: 'Job title', accessor: (e) => e.jobTitle ?? '', render: (e) => e.jobTitle ?? '—' },
-    { key: 'branch', header: 'Branch', accessor: (e) => e.branch?.name ?? '', render: (e) => e.branch?.name ?? '—' },
-    { key: 'type', header: 'Type', accessor: (e) => e.employmentType, render: (e) => <Pill tone="blue">{e.employmentType.toLowerCase()}</Pill> },
+    { key: 'branch', filter: 'select', header: 'Branch', accessor: (e) => e.branch?.name ?? '', render: (e) => e.branch?.name ?? '—' },
+    { key: 'type', filter: 'select', filterOptionLabel: prettyEnum, header: 'Type', accessor: (e) => e.employmentType, render: (e) => <Pill tone="blue">{e.employmentType.toLowerCase()}</Pill> },
     {
       key: 'gross',
       header: 'Gross pay',
@@ -82,7 +82,7 @@ export default function EmployeesPage() {
       render: (e) => (e.user ? <Pill tone="green">{e.user.email}</Pill> : <span className="text-xs text-muted-foreground">No login</span>),
     },
     {
-      key: 'status',
+      key: 'status', filter: 'select', filterValue: (e) => (e.active ? 'Active' : 'Inactive'),
       header: 'Status',
       accessor: (e) => (e.active ? 1 : 0),
       render: (e) => (e.deletedAt ? <Pill tone="red">Archived</Pill> : e.active ? <Pill tone="green">Active</Pill> : <Pill tone="amber">Inactive</Pill>),

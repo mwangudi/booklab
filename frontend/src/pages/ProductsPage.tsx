@@ -148,8 +148,8 @@ export default function ProductsPage() {
       render: (b) => (b.category ? <Pill tone="blue">{b.category}</Pill> : <span className="text-muted-foreground">—</span>),
     },
     { key: 'isbn', header: 'ISBN', render: (b) => <span className="font-mono text-xs text-muted-foreground">{b.isbn ?? '—'}</span> },
-    { key: 'cost', header: 'Cost', align: 'right', accessor: (b) => num(b.costPrice), sortable: true, render: (b) => <span className="font-mono">{money(b.costPrice)}</span> },
-    { key: 'price', header: 'Price', align: 'right', accessor: (b) => num(b.unitPrice), sortable: true, render: (b) => <span className="font-mono">{money(b.unitPrice)}</span> },
+    { key: 'cost', filter: 'range', header: 'Cost', align: 'right', accessor: (b) => num(b.costPrice), sortable: true, render: (b) => <span className="font-mono">{money(b.costPrice)}</span> },
+    { key: 'price', filter: 'range', header: 'Price', align: 'right', accessor: (b) => num(b.unitPrice), sortable: true, render: (b) => <span className="font-mono">{money(b.unitPrice)}</span> },
     {
       key: 'margin',
       header: 'Margin',

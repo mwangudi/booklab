@@ -10,7 +10,8 @@ export function RequireAuth() {
   const { isAuthenticated } = useAuth();
   const location = useLocation();
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    // The full address, so a filtered link (/stock?level=low) survives having to sign in.
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
   return <Outlet />;
 }

@@ -130,15 +130,15 @@ export default function SalesPage() {
     { key: 'id', header: '#', accessor: (r) => r.id, sortable: true, render: (r) => <span className="font-mono text-xs">#{r.id}</span> },
     { key: 'date', header: 'Date', accessor: (r) => r.createdAt, sortable: true, render: (r) => dateTime(r.createdAt) },
     { key: 'branch', header: 'Branch', accessor: (r) => r.branch?.name ?? '', render: (r) => r.branch?.name ?? '—' },
-    { key: 'cashier', header: 'Cashier', accessor: (r) => r.user?.name ?? '', render: (r) => r.user?.name ?? '—' },
+    { key: 'cashier', filter: 'select', header: 'Cashier', accessor: (r) => r.user?.name ?? '', render: (r) => r.user?.name ?? '—' },
     { key: 'items', header: 'Items', align: 'right', accessor: (r) => r.items.reduce((a, i) => a + i.quantity, 0) },
     {
-      key: 'payment',
+      key: 'payment', filter: 'select', filterValue: (r) => (isVoid(r) ? 'Voided' : r.paymentMethod),
       header: 'Payment',
       render: (r) => (isVoid(r) ? <Pill tone="red">Voided</Pill> : <Pill tone={paymentTone(r.paymentMethod)}>{r.paymentMethod}</Pill>),
     },
     {
-      key: 'total',
+      key: 'total', filter: 'range',
       header: 'Total',
       align: 'right',
       accessor: (r) => num(r.total),

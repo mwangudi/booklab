@@ -3,7 +3,7 @@ import { Pencil, Plus, Users as UsersIcon } from 'lucide-react';
 import { useApi } from '../lib/useApi';
 import { titleCase } from '../lib/categories';
 import type { User } from '../types';
-import { DataTable, type Column } from '../components/DataTable';
+import { DataTable, type Column, prettyEnum } from '../components/DataTable';
 import { Button, Card, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../components/ui';
 
 const roleTone = (r: string): 'purple' | 'blue' | 'gray' => (r === 'ADMIN' ? 'purple' : r === 'MANAGER' ? 'blue' : 'gray');
@@ -25,10 +25,10 @@ export default function UsersPage() {
           : <span className="text-muted-foreground text-xs">{u.email}</span>,
     },
     { key: 'email', header: 'Email', accessor: (u) => u.email, sortable: true, render: (u) => <span className="text-muted-foreground">{u.email}</span> },
-    { key: 'role', header: 'Role', accessor: (u) => u.role, render: (u) => <Pill tone={roleTone(u.role)}>{titleCase(u.role)}</Pill> },
-    { key: 'branch', header: 'Branch', accessor: (u) => u.branch?.name ?? '', render: (u) => u.branch?.name ?? <span className="text-muted-foreground">—</span> },
+    { key: 'role', filter: 'select', filterOptionLabel: prettyEnum, header: 'Role', accessor: (u) => u.role, render: (u) => <Pill tone={roleTone(u.role)}>{titleCase(u.role)}</Pill> },
+    { key: 'branch', filter: 'select', header: 'Branch', accessor: (u) => u.branch?.name ?? '', render: (u) => u.branch?.name ?? <span className="text-muted-foreground">—</span> },
     {
-      key: 'status',
+      key: 'status', filter: 'select', filterValue: (u) => (u.active === false ? 'Inactive' : 'Active'),
       header: 'Status',
       accessor: (u) => (u.active === false ? 0 : 1),
       render: (u) => (u.active === false ? <Pill tone="red">Inactive</Pill> : <Pill tone="green">Active</Pill>),

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ArrowLeftRight, Boxes, History, PackagePlus, SlidersHorizontal, Tag } from 'lucide-react';
 import { api, ApiError } from '../lib/api';
 import { useApi } from '../lib/useApi';
@@ -7,7 +7,7 @@ import { useAuth } from '../lib/auth';
 import { BranchSelect, useBranches } from '../components/BranchSelect';
 import { fmt, money, num } from '../lib/format';
 import type { Stock } from '../types';
-import { DataTable, type Column } from '../components/DataTable';
+import { DataTable, type Column, type PresetFilter } from '../components/DataTable';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../components/ui';
 import { Select2 } from '../components/Select2';
 
@@ -15,13 +15,58 @@ const LOW = 5;
 /// Mirrors CASHIER_ADJUST_LIMIT on the server; shown so a cashier is not
 /// surprised by a refusal halfway through a count.
 const CASHIER_ADJUST_LIMIT = 3;
+/** A product this branch has never held: the catalogue row the API adds with a negative id. */
+const neverStocked = (r: Stock) => r.id < 0;
+/** Stocked here before and now at nothing — what the dashboard counts as "out". */
+const ranOut = (r: Stock) => !neverStocked(r) && r.quantity <= 0;
+const isLow = (r: Stock) => r.quantity > 0 && r.quantity < LOW;
+
+/**
+ * Stock level filter. "Low or out" is exactly what the dashboard's low-stock alert counts,
+ * so its links (/stock?level=attention) open the same products.
+ */
+const LEVEL_FILTER: PresetFilter<Stock> = {
+  key: 'level',
+  label: 'Stock level',
+  options: [
+    { value: 'attention', label: 'Low or out', test: (r) => isLow(r) || ranOut(r) },
+    { value: 'low', label: `Low (under ${LOW})`, test: isLow },
+    { value: 'out', label: 'Ran out', test: ranOut },
+    { value: 'ok', label: 'In stock', test: (r) => r.quantity >= LOW },
+    { value: 'never', label: 'Never stocked here', test: neverStocked },
+  ],
+};
+
+const statusOfRow = (r: Stock) =>
+  neverStocked(r) ? { label: 'Never stocked', tone: 'gray' as const } : statusOf(r.quantity);
 const statusOf = (q: number) => (q <= 0 ? { label: 'Out of stock', tone: 'red' as const } : q < LOW ? { label: 'Low stock', tone: 'amber' as const } : { label: 'OK', tone: 'green' as const });
 
 export default function StockPage() {
   const { isAdmin, canManage, role, branchId: myBranch } = useAuth();
   const isCashier = role === 'CASHIER';
   const { data: branches } = useBranches();
-  const [branchId, setBranchId] = useState<number | null>(myBranch);
+  // An admin can be sent to a branch (or all of them) by a link: /stock?branchId=2 or ?branchId=all.
+  // (Not `branch`: that is the Branch column's filter in the all-branches view.)
+  const [params, setParams] = useSearchParams();
+  // Only "all" or a positive whole number counts as a link; anything else is ignored.
+  const raw = isAdmin ? params.get('branchId') : null;
+  const linkedBranch = raw === 'all' || (raw != null && /^[1-9]\d*$/.test(raw)) ? raw : null;
+  const branchFromLink = (v: string) => (v === 'all' ? null : Number(v));
+  const [branchId, setBranchIdState] = useState<number | null>(linkedBranch != null ? branchFromLink(linkedBranch) : myBranch);
+  // Follow the address when it changes after the page has opened (Back/Forward, another link).
+  useEffect(() => {
+    if (linkedBranch != null) setBranchIdState(branchFromLink(linkedBranch));
+  }, [linkedBranch]);
+  const setBranchId = (id: number | null) => {
+    setBranchIdState(id);
+    if (isAdmin) {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev);
+        next.set('branchId', id == null ? 'all' : String(id));
+        return next;
+      }, { replace: true });
+    }
+  };
   const [editRow, setEditRow] = useState<Stock | null>(null);
   const [qty, setQty] = useState('');
   const [priceRow, setPriceRow] = useState<Stock | null>(null);
@@ -35,7 +80,7 @@ export default function StockPage() {
 
   // Default admins to the first branch, but only once — otherwise choosing
   // "All branches" (which is null) would immediately snap back to a branch.
-  const defaulted = useRef(false);
+  const defaulted = useRef(linkedBranch != null);
   useEffect(() => {
     if (!defaulted.current && branchId == null && branches && branches.length > 0) {
       defaulted.current = true;
@@ -82,8 +127,9 @@ export default function StockPage() {
       units += r.quantity;
       retail += r.quantity * num(r.price ?? r.book.unitPrice);
       cost += r.quantity * num(r.book.costPrice);
-      if (r.quantity <= 0) out += 1;
-      else if (r.quantity < LOW) low += 1;
+      // Counted as the dashboard does: "out" is a product that ran out here, not one never stocked.
+      if (ranOut(r)) out += 1;
+      else if (isLow(r)) low += 1;
     }
     return { units, retail, cost, low, out };
   }, [rows]);
@@ -175,6 +221,7 @@ export default function StockPage() {
           header: 'Branch',
           accessor: (r: Stock) => branches?.find((b) => b.id === r.branchId)?.name ?? '',
           sortable: true,
+          filter: 'select',
           render: (r: Stock) => (
             <span className="text-xs text-muted-foreground">{branches?.find((b) => b.id === r.branchId)?.name ?? '—'}</span>
           ),
@@ -196,15 +243,16 @@ export default function StockPage() {
       key: 'category',
       header: 'Category',
       accessor: (r) => r.book.category ?? '',
+      filter: 'select',
       render: (r) => (r.book.category ? <Pill tone="blue">{r.book.category}</Pill> : <span className="text-muted-foreground">—</span>),
     },
-    { key: 'qty', header: 'On hand', align: 'right', accessor: (r) => r.quantity, sortable: true, render: (r) => <span className="font-mono font-semibold">{fmt(r.quantity)}</span> },
+    { key: 'qty', header: 'On hand', align: 'right', accessor: (r) => r.quantity, sortable: true, filter: 'range', render: (r) => <span className="font-mono font-semibold">{fmt(r.quantity)}</span> },
     {
       key: 'status',
       header: 'Status',
       accessor: (r) => r.quantity,
       render: (r) => {
-        const s = statusOf(r.quantity);
+        const s = statusOfRow(r);
         return <Pill tone={s.tone}>{s.label}</Pill>;
       },
     },
@@ -291,13 +339,18 @@ export default function StockPage() {
       </div>
 
       <Card className="p-4">
-        {loading || allLoading ? (
+        {/* Until the rows are in, show Loading rather than an empty, filtered table. */}
+        {/* Loading only until the first rows arrive; a refresh keeps the table (and any open
+            Filters pop-up) on screen. */}
+        {(!showingAll && loading && !stock) || (showingAll && allRows == null) || (isAdmin && linkedBranch === 'all' && !branches) ? (
           <Loading />
         ) : (
           <DataTable
             data={rows}
             columns={columns}
             searchable={(r) => `${r.book.title} ${r.book.sku} ${r.book.category ?? ''}`}
+            filters={[LEVEL_FILTER]}
+            depsKey={branches?.map((b) => `${b.id}:${b.name}`).join(',') ?? ''}
             searchPlaceholder="Search stock…"
             initialSort={{ key: 'qty', dir: 'asc' }}
             emptyText={showingAll ? 'No stock recorded yet.' : 'No stock recorded for this branch yet.'}

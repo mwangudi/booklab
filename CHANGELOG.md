@@ -3,6 +3,31 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-18 — Filters on every grid; low-stock alert opens the low stock
+
+### Filters
+- Every grid has a **Filters** button after the search box (with the number active). It
+  opens a pop-up with that grid's filters — dropdowns of a column's values (with "(none)"
+  for blanks), from/to ranges, and named filters such as stock level. Nothing changes
+  until **Apply**; Cancel or Escape discards. Active filters show as removable chips with
+  "Clear all", and the count reads "of 27 (filtered from 4,956)".
+- Filters live in the page address (/stock?level=low&category=Stationery), so a link can
+  open a grid already filtered, a filtered view can be bookmarked, and it survives reload
+  and signing in. Added to 15 grids (stock, products, sales, invoices, customers,
+  expenses, goods receipts, stock movements, users, employees, payroll, sync tokens and
+  the low-stock, sales and stock reports); filters a page already had are not repeated.
+
+### Low-stock alert
+- The dashboard's "Low / out of stock" card opens Stock filtered to **Low or out** (all
+  branches for an admin); each branch's "N low" / "N out" pill opens that branch filtered.
+  Stock's level filter: Low or out, Low (under 5), Ran out, In stock, Never stocked here.
+- Stock's own Low/out figure now counts like the dashboard (a product never stocked at a
+  branch is "Never stocked", not "out"). Stock takes `?branchId=` (or `all`) in its address.
+
+### Dialogs
+- Every pop-up in the app now closes with Escape, takes keyboard focus when it opens,
+  returns it when it closes, and is announced as a dialog to screen readers.
+
 ## 2026-11-18 — Link codes for customers, suppliers, receipts, requests and payroll
 
 - The pages of customers (edit and statement), supplier statements, goods receipts,

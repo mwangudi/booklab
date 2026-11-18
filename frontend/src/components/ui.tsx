@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from 'react';
+import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 import { Link } from 'react-router-dom';
 import { Loader2, X } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -267,6 +267,7 @@ export const Modal = ({
   children,
   footer,
   wide = false,
+  overflowVisible = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -274,19 +275,46 @@ export const Modal = ({
   children: ReactNode;
   footer?: ReactNode;
   wide?: boolean;
+  /** Let dropdowns inside spill past the body instead of being clipped (short bodies only). */
+  overflowVisible?: boolean;
 }) => {
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  // Escape closes; focus moves into the dialog on open and back to where it was on close.
+  useEffect(() => {
+    if (!open) return;
+    const before = document.activeElement as HTMLElement | null;
+    panelRef.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !e.defaultPrevented) closeRef.current();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      before?.focus?.();
+    };
+  }, [open]);
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className={cn('relative w-full rounded-xl border border-border bg-card shadow-xl', wide ? 'max-w-2xl' : 'max-w-md')}>
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className={cn('relative w-full rounded-xl border border-border bg-card shadow-xl outline-none', wide ? 'max-w-2xl' : 'max-w-md')}
+      >
         <div className="flex items-center justify-between border-b border-border px-5 py-3.5">
-          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+          <h3 id={titleId} className="text-sm font-semibold text-foreground">{title}</h3>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground" aria-label="Close">
             <X className="h-5 w-5" />
           </button>
         </div>
-        <div className="px-5 py-4 max-h-[70vh] overflow-y-auto">{children}</div>
+        <div className={cn('px-5 py-4', overflowVisible ? 'overflow-visible' : 'max-h-[70vh] overflow-y-auto')}>{children}</div>
         {footer && <div className="flex justify-end gap-2 border-t border-border px-5 py-3.5">{footer}</div>}
       </div>
     </div>

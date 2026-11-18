@@ -10,7 +10,10 @@ import { DueStockTakes } from '../components/StockTakeSchedule';
 import { Inbox } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { user, canManage } = useAuth();
+  const { user, canManage, isAdmin } = useAuth();
+  // The stock page filtered to what the alerts count. An admin's totals cover every branch.
+  const stockLink = (level: 'attention' | 'low' | 'out', branchId?: number) =>
+    `/stock?level=${level}${branchId != null ? `&branchId=${branchId}` : isAdmin ? '&branchId=all' : ''}`;
   const can = useCan();
   const { data: reqSummary } = useApi<{ new: number }>(can('customer.view', 'invoice.create') ? '/api/requests/summary' : null);
   const newRequests = reqSummary?.new ?? 0;
@@ -84,13 +87,19 @@ export default function DashboardPage() {
               tone="purple"
               icon={<Wallet className="h-4 w-4" />}
             />
-            <KpiCard
-              label="Low / out of stock"
-              value={`${fmt(totals?.lowCount ?? 0)} / ${fmt(totals?.outCount ?? 0)}`}
-              sub="Items needing a reorder"
-              tone={(totals?.outCount ?? 0) > 0 ? 'red' : 'amber'}
-              icon={<TrendingUp className="h-4 w-4" />}
-            />
+            <Link
+              to={stockLink('attention')}
+              className="block rounded-xl transition hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/40"
+              title="Show the products that are low or out of stock"
+            >
+              <KpiCard
+                label="Low / out of stock"
+                value={`${fmt(totals?.lowCount ?? 0)} / ${fmt(totals?.outCount ?? 0)}`}
+                sub="Items needing a reorder · View →"
+                tone={(totals?.outCount ?? 0) > 0 ? 'red' : 'amber'}
+                icon={<TrendingUp className="h-4 w-4" />}
+              />
+            </Link>
           </div>
 
           {canManage && pnl && (
@@ -159,8 +168,16 @@ export default function DashboardPage() {
                         <Td num>{money(b.retailValue)}</Td>
                         <Td>
                           <div className="flex gap-1">
-                            {b.lowCount > 0 && <Pill tone="amber">{b.lowCount} low</Pill>}
-                            {b.outCount > 0 && <Pill tone="red">{b.outCount} out</Pill>}
+                            {b.lowCount > 0 && (
+                              <Link to={stockLink('low', b.branchId)} className="hover:opacity-80" title={`Show the low-stock products at ${b.name}`}>
+                                <Pill tone="amber">{b.lowCount} low</Pill>
+                              </Link>
+                            )}
+                            {b.outCount > 0 && (
+                              <Link to={stockLink('out', b.branchId)} className="hover:opacity-80" title={`Show the products that ran out at ${b.name}`}>
+                                <Pill tone="red">{b.outCount} out</Pill>
+                              </Link>
+                            )}
                             {b.lowCount === 0 && b.outCount === 0 && <Pill tone="green">OK</Pill>}
                           </div>
                         </Td>

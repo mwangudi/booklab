@@ -5,7 +5,7 @@ import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { dateShort, fmt, money, num } from '../../lib/format';
 import type { PayrollRun } from '../../types';
-import { DataTable, type Column } from '../../components/DataTable';
+import { DataTable, type Column, prettyEnum } from '../../components/DataTable';
 import { Alert, Button, Card, FormField, KpiCard, Loading, Modal, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
 import { recordKey } from '../../lib/recordLink';
@@ -74,7 +74,7 @@ export default function PayrollPage() {
     { key: 'ded', header: 'Deductions', align: 'right', accessor: (r) => num(r.deductionsTotal), render: (r) => <span className="font-mono">{money(r.deductionsTotal)}</span> },
     { key: 'net', header: 'Net pay', align: 'right', accessor: (r) => num(r.netTotal), sortable: true, render: (r) => <span className="font-mono font-semibold">{money(r.netTotal)}</span> },
     {
-      key: 'status',
+      key: 'status', filter: 'select', filterOptionLabel: prettyEnum,
       header: 'Status',
       accessor: (r) => r.status,
       render: (r) =>

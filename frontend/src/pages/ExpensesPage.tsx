@@ -46,7 +46,7 @@ export default function ExpensesPage() {
     { key: 'branch', header: 'Branch', accessor: (e) => e.branch?.name ?? 'HQ', render: (e) => e.branch?.name ?? <span className="text-muted-foreground">HQ / unassigned</span> },
     { key: 'category', header: 'Category', accessor: (e) => e.category, render: (e) => <Pill tone={catTone(e.category)}>{titleCase(e.category)}</Pill> },
     { key: 'description', header: 'Description', accessor: (e) => e.description ?? '', render: (e) => e.description || <span className="text-muted-foreground">—</span> },
-    { key: 'amount', header: 'Amount', align: 'right', accessor: (e) => num(e.amount), sortable: true, render: (e) => <span className="font-mono">{money(e.amount)}</span> },
+    { key: 'amount', filter: 'range', header: 'Amount', align: 'right', accessor: (e) => num(e.amount), sortable: true, render: (e) => <span className="font-mono">{money(e.amount)}</span> },
   ];
 
   return (

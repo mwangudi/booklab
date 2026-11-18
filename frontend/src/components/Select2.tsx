@@ -18,6 +18,8 @@ interface Select2Props {
   clearable?: boolean;
   className?: string;
   id?: string;
+  /** Accessible name for the control, e.g. "Category filter". */
+  ariaLabel?: string;
   /** Shown on the closed control instead of the selected option's label (e.g. a full product name). */
   displayLabel?: string;
   /** Let the closed control's text wrap onto more lines instead of being cut off. */
@@ -38,6 +40,7 @@ export function Select2({
   clearable = false,
   className,
   id,
+  ariaLabel,
   displayLabel,
   wrap = false,
 }: Select2Props) {
@@ -84,7 +87,15 @@ export function Select2({
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (disabled) return;
-    if (e.key === 'Escape') return setOpen(false);
+    if (e.key === 'Escape') {
+      // Close just this list; an enclosing dialog should stay open.
+      if (open) {
+        e.preventDefault();
+        e.nativeEvent.preventDefault();
+        e.stopPropagation();
+      }
+      return setOpen(false);
+    }
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!open) return setOpen(true);
@@ -106,6 +117,7 @@ export function Select2({
       <button
         type="button"
         id={id}
+        aria-label={ariaLabel}
         disabled={disabled}
         onClick={() => !disabled && setOpen((o) => !o)}
         onKeyDown={onKeyDown}

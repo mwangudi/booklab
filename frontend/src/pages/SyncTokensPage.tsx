@@ -66,7 +66,7 @@ export default function SyncTokensPage() {
 
   const columns: Column<SyncToken>[] = [
     {
-      key: 'branch', header: 'Branch', sortable: true, accessor: (t) => t.branch.name,
+      key: 'branch', filter: 'select', header: 'Branch', sortable: true, accessor: (t) => t.branch.name,
       render: (t) => (
         <div>
           <div className="font-medium text-foreground">{t.branch.name}</div>
@@ -76,7 +76,7 @@ export default function SyncTokensPage() {
     },
     { key: 'label', header: 'Machine', sortable: true, accessor: (t) => t.label },
     {
-      key: 'status', header: 'Status', sortable: true, accessor: (t) => (t.active ? 'Active' : 'Revoked'),
+      key: 'status', filter: 'select', header: 'Status', sortable: true, accessor: (t) => (t.active ? 'Active' : 'Revoked'),
       render: (t) => (t.active ? <Pill tone="green">Active</Pill> : <Pill tone="red">Revoked</Pill>),
     },
     {

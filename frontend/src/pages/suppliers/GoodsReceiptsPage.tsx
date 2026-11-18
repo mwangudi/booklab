@@ -57,12 +57,12 @@ export default function GoodsReceiptsPage() {
         </div>
       ),
     },
-    { key: 'supplier', header: 'Supplier', accessor: (r) => r.supplier?.name ?? '', sortable: true, render: (r) => r.supplier?.name ?? '—' },
-    { key: 'branch', header: 'Branch', render: (r) => r.branch?.name ?? '—' },
+    { key: 'supplier', filter: 'select', header: 'Supplier', accessor: (r) => r.supplier?.name ?? '', sortable: true, render: (r) => r.supplier?.name ?? '—' },
+    { key: 'branch', filter: 'select', filterValue: (r) => r.branch?.name ?? '', header: 'Branch', render: (r) => r.branch?.name ?? '—' },
     { key: 'invoice', header: 'Their invoice', render: (r) => <span className="font-mono text-xs">{r.invoiceNo ?? '—'}</span> },
     { key: 'date', header: 'Received', accessor: (r) => r.receivedAt, sortable: true, render: (r) => dateShort(r.receivedAt) },
     { key: 'items', header: 'Lines', align: 'right', render: (r) => fmt(r._count?.items ?? r.items?.length ?? 0) },
-    { key: 'total', header: 'Cost', align: 'right', accessor: (r) => num(r.totalCost), sortable: true, render: (r) => <span className="font-mono font-semibold">{money(r.totalCost)}</span> },
+    { key: 'total', filter: 'range', header: 'Cost', align: 'right', accessor: (r) => num(r.totalCost), sortable: true, render: (r) => <span className="font-mono font-semibold">{money(r.totalCost)}</span> },
     {
       key: 'status',
       header: 'Status',

@@ -6,7 +6,7 @@ import { dateTime, fmt, startOfMonth, today } from '../lib/format';
 import { downloadCsv } from '../lib/reportExport';
 import type { StockMovement } from '../types';
 import { BranchSelect } from '../components/BranchSelect';
-import { DataTable, type Column } from '../components/DataTable';
+import { DataTable, type Column, prettyEnum } from '../components/DataTable';
 import { Button, Card, FormField, Input, KpiCard, Loading, PageHeader, Pill } from '../components/ui';
 
 const TYPE_TONE: Record<string, 'green' | 'red' | 'amber' | 'blue' | 'purple'> = {
@@ -63,7 +63,7 @@ export default function StockMovementsPage() {
         </div>
       ),
     },
-    { key: 'type', header: 'Type', accessor: (r) => r.type, render: (r) => <Pill tone={TYPE_TONE[r.type] ?? 'blue'}>{label(r.type)}</Pill> },
+    { key: 'type', filter: 'select', filterOptionLabel: prettyEnum, header: 'Type', accessor: (r) => r.type, render: (r) => <Pill tone={TYPE_TONE[r.type] ?? 'blue'}>{label(r.type)}</Pill> },
     {
       key: 'delta',
       header: 'Change',
@@ -77,7 +77,7 @@ export default function StockMovementsPage() {
         </span>
       ),
     },
-    { key: 'user', header: 'By', accessor: (r) => r.user, sortable: true },
+    { key: 'user', filter: 'select', header: 'By', accessor: (r) => r.user, sortable: true },
     { key: 'note', header: 'Note', render: (r) => <span className="text-xs text-muted-foreground">{r.note ?? '—'}</span> },
   ];
 

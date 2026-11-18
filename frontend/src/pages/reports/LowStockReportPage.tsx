@@ -90,11 +90,11 @@ export default function LowStockReportPage() {
         </div>
       ),
     },
-    { key: 'category', header: 'Category', accessor: (r) => r.category, render: (r) => <Pill tone="blue">{r.category}</Pill> },
+    { key: 'category', filter: 'select', header: 'Category', accessor: (r) => r.category, render: (r) => <Pill tone="blue">{r.category}</Pill> },
     { key: 'qty', header: 'On hand', align: 'right', accessor: (r) => r.quantity, sortable: true, render: (r) => <span className="font-mono font-semibold">{fmt(r.quantity)}</span> },
     { key: 'order', header: 'Suggested order', align: 'right', accessor: (r) => r.suggestedOrder, sortable: true, render: (r) => <span className="font-mono">{fmt(r.suggestedOrder)}</span> },
     { key: 'cost', header: 'Order cost', align: 'right', accessor: (r) => r.suggestedOrder * r.costPrice, sortable: true, render: (r) => <span className="font-mono">{money(r.suggestedOrder * r.costPrice)}</span> },
-    { key: 'status', header: 'Status', accessor: (r) => r.status, render: (r) => <Pill tone={r.quantity <= 0 ? 'red' : 'amber'}>{r.status}</Pill> },
+    { key: 'status', filter: 'select', header: 'Status', accessor: (r) => r.status, render: (r) => <Pill tone={r.quantity <= 0 ? 'red' : 'amber'}>{r.status}</Pill> },
   ];
 
   return (
