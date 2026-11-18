@@ -13,6 +13,7 @@ import type { Book, Customer, Invoice, Stock } from '../../types';
 import { BranchSelect, useBranches } from '../../components/BranchSelect';
 import { Alert, Button, Card, FormField, Input, Loading, Modal, PageHeader, Pill, SectionTitle, Textarea } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { invoicePath } from '../../lib/invoiceLink';
 
 interface Line {
   /** The saved line this is; absent on a line added since the last save. */
@@ -43,6 +44,11 @@ export default function InvoiceEditorPage() {
   const can = useCan();
 
   const { data: invoice, loading, refresh } = useApi<Invoice>(isEdit ? `/api/invoices/${id}` : null, [id]);
+  // An old link (/invoices/4) or a lower-case code moves to the invoice's own address.
+  const here = useLocation();
+  useEffect(() => {
+    if (invoice?.ref && id !== invoice.ref) navigate(invoicePath(invoice), { replace: true, state: here.state });
+  }, [invoice, id, navigate, here.state]);
   const { data: customers } = useApi<Customer[]>('/api/invoices/customers');
   const { user } = useAuth();
 
@@ -221,7 +227,7 @@ export default function InvoiceEditorPage() {
         refreshShelf();
       } else {
         const created = await api.post<Invoice>('/api/invoices', body);
-        navigate(`/invoices/${created.id}`, { replace: true });
+        navigate(invoicePath(created), { replace: true });
       }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not save the invoice.');

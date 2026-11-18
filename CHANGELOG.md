@@ -3,6 +3,19 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-18 — Invoice links use a short code; change runbook
+
+- Invoice pages are addressed by a short random code, **/invoices/XR56LK**, instead of
+  the sequential id (/invoices/4), so a link reveals nothing about how many invoices
+  exist. Codes are 6 characters, always starting with a letter, from an alphabet without
+  look-alikes (0/O, 1/I/L). Existing invoices get codes in migration
+  `20261118140000_invoice_ref`; old numeric links still open and switch to the code.
+- Invoices from branch laptops sync with their code; once an invoice has a code it
+  never changes, and a malformed or clashing code from a laptop is replaced.
+- **docs/RUNBOOK.md**: the change process from request to production — local build and
+  tests, an independent read-only audit, commit/push, pre-deploy drift checks and
+  backups, deploy, verification, rollback and direct data fixes.
+
 ## 2026-11-18 — Rename products in the grid; invoice numbers by year
 
 ### Product names in the grid

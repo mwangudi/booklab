@@ -11,6 +11,7 @@ import type { Invoice } from '../../types';
 import { DataTable, type Column } from '../../components/DataTable';
 import { Alert, Button, Card, FormField, Input, KpiCard, Loading, PageHeader, Pill, RowAction, RowActions } from '../../components/ui';
 import { Select2 } from '../../components/Select2';
+import { invoicePath } from '../../lib/invoiceLink';
 
 const STATUS_TONE: Record<string, 'green' | 'red' | 'amber' | 'blue' | 'purple' | 'gray'> = {
   DRAFT: 'gray',
@@ -83,7 +84,7 @@ export default function InvoicesPage() {
       sortable: true,
       render: (r) => (
         <div>
-          <Link to={`/invoices/${r.id}`} className="font-medium text-primary hover:underline">
+          <Link to={invoicePath(r)} className="font-medium text-primary hover:underline">
             {r.number}
           </Link>
           {r.deliveryNoteNo && <div className="text-[11px] text-muted-foreground font-mono">DN {r.deliveryNoteNo}</div>}
@@ -107,7 +108,7 @@ export default function InvoicesPage() {
       align: 'right',
       render: (r) => (
         <RowActions>
-          <RowAction to={`/invoices/${r.id}`} icon={<Eye className="h-4 w-4" />} label={r.status === 'DRAFT' ? 'Edit invoice' : 'View invoice'} />
+          <RowAction to={invoicePath(r)} icon={<Eye className="h-4 w-4" />} label={r.status === 'DRAFT' ? 'Edit invoice' : 'View invoice'} />
           <RowAction onClick={() => printDoc(r.id, 'invoice')} disabled={busy === r.id} icon={<Receipt className="h-4 w-4" />} label="Print invoice" />
           <RowAction onClick={() => printDoc(r.id, 'delivery')} disabled={busy === r.id} icon={<Truck className="h-4 w-4" />} label="Print delivery note" />
           {/* Drafts can be thrown away by whoever raises invoices; cancelling an issued one is a manager's call. */}

@@ -540,6 +540,10 @@ model Invoice {
   id                  Int           @id @default(autoincrement())
   uuid                String        @unique @default(uuid())
   number              String        @unique
+  /// Short random code used in links (/invoices/XR56LK) instead of the sequential id,
+  /// so a URL reveals nothing about how many invoices exist. Null only on rows a branch
+  /// laptop created before it had this column; the id still works for those.
+  ref                 String?       @unique @db.VarChar(12)
   /// Unique, so two invoices issued at the same moment can never share one.
   deliveryNoteNo      String?       @unique
   customerId          Int

@@ -38,7 +38,7 @@ export async function requestRoutes(app: FastifyInstance) {
     if (!r) return reply.code(404).send({ error: 'Request not found' });
     const [handler, invoice, stock] = await Promise.all([
       r.handledById ? app.prisma.user.findUnique({ where: { id: r.handledById }, select: { name: true } }) : null,
-      r.invoiceId ? app.prisma.invoice.findUnique({ where: { id: r.invoiceId }, select: { id: true, number: true, status: true } }) : null,
+      r.invoiceId ? app.prisma.invoice.findUnique({ where: { id: r.invoiceId }, select: { id: true, ref: true, number: true, status: true } }) : null,
       app.prisma.stock.groupBy({ by: ['bookId'], where: { bookId: { in: r.items.map((i) => i.bookId) } }, _sum: { quantity: true } }),
     ]);
     // Staff see what the shop actually holds, to judge what can be supplied.

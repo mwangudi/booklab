@@ -6,7 +6,7 @@ import { can, requireAnyCapability, requireCapability } from '../middleware/perm
 import { asVatMode, type InvoiceStatus } from '../lib/enums.js';
 import { auditRequest, diff } from '../lib/audit.js';
 import { SYNC_ROLE, enqueueOutbox, queueInvoice, queueCustomerPayment } from '../lib/outbox.js';
-import { HEAD_OFFICE_CODE, nextInSeries, seriesStem } from '../lib/docNumber.js';
+import { HEAD_OFFICE_CODE, newRef, nextInSeries, seriesStem } from '../lib/docNumber.js';
 
 const customerSchema = z.object({
   name: z.string().min(1).max(160),
@@ -63,7 +63,8 @@ const round2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 const isNumberClash = (e: unknown) => {
   if ((e as { code?: string })?.code !== 'P2002') return false;
   const target = String((e as { meta?: { target?: unknown } }).meta?.target ?? '');
-  return target.includes('number') || target.includes('deliveryNoteNo');
+  // Invoice_number_key, Invoice_deliveryNoteNo_key, or Invoice_ref_key (a link-code clash).
+  return target.includes('number') || target.includes('deliveryNoteNo') || target.includes('ref');
 };
 
 /** The calendar year in Kenya, whatever the server clock's own timezone. */
@@ -292,6 +293,20 @@ export async function invoiceRoutes(app: FastifyInstance) {
   // customers and raise invoices by default; delivery, payments and customer edits
   // are manager defaults an admin can grant to a person.
 
+  /**
+   * The invoice a URL names: its link code (/invoices/XR56LK), or — so old links and
+   * bookmarks keep working — its numeric id. Null when there is no such invoice.
+   */
+  async function invoiceIdFrom(param: string): Promise<number | null> {
+    if (/^\d+$/.test(param)) {
+      const n = Number(param);
+      return Number.isSafeInteger(n) ? n : null;
+    }
+    if (!/^[A-Za-z0-9]{4,12}$/.test(param)) return null;
+    const row = await app.prisma.invoice.findUnique({ where: { ref: param.toUpperCase() }, select: { id: true } });
+    return row?.id ?? null;
+  }
+
   async function branchCode(branchId: number | null): Promise<string> {
     if (branchId == null) return HEAD_OFFICE_CODE;
     const b = await app.prisma.branch.findUnique({ where: { id: branchId }, select: { code: true } });
@@ -416,7 +431,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.get('/:id', { preHandler: requireAnyCapability('customer.view', 'invoice.create') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await invoiceIdFrom((req.params as { id: string }).id);
+    if (id == null) return reply.code(404).send({ error: 'Invoice not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: withItems });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
@@ -443,6 +459,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     const created = await withFreshNumber(async () => app.prisma.invoice.create({
       data: {
         number: await nextNumber('INV', branchId),
+        ref: newRef(),
         customerId: body.customerId,
         branchId,
         priceTier: body.priceTier,
@@ -469,7 +486,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.patch('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await invoiceIdFrom((req.params as { id: string }).id);
+    if (id == null) return reply.code(404).send({ error: 'Invoice not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const body = invoiceUpdateSchema.parse(req.body);
     const before = await app.prisma.invoice.findUnique({ where: { id }, include: { items: { orderBy: { sortOrder: 'asc' } } } });
@@ -600,7 +618,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.delete('/:id', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await invoiceIdFrom((req.params as { id: string }).id);
+    if (id == null) return reply.code(404).send({ error: 'Invoice not found' });
     if (!Number.isInteger(id)) return reply.code(400).send({ error: 'Invalid invoice id' });
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
@@ -695,6 +714,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
       const inv = await tx.invoice.create({
         data: {
           number: await nextNumber('INV', branchId),
+          ref: newRef(),
           customerId: customer.id,
           branchId,
           priceTier: tier,
@@ -732,7 +752,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
 
   /** Issue the invoice — it stops being a draft and gets a delivery note number. */
   app.post('/:id/issue', { preHandler: requireCapability('invoice.create') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await invoiceIdFrom((req.params as { id: string }).id);
+    if (id == null) return reply.code(404).send({ error: 'Invoice not found' });
     const inv = await app.prisma.invoice.findUnique({ where: { id }, include: { items: true } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
     if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });
@@ -759,7 +780,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
    * COGS and revenue all flow through the normal reporting.
    */
   app.post('/:id/deliver', { preHandler: requireCapability('invoice.deliver') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await invoiceIdFrom((req.params as { id: string }).id);
+    if (id == null) return reply.code(404).send({ error: 'Invoice not found' });
     const body = z.object({
       receivedBy: z.string().max(120).optional(),
       receivedIdNo: z.string().max(60).optional(),
@@ -814,7 +836,8 @@ export async function invoiceRoutes(app: FastifyInstance) {
   });
 
   app.post('/:id/paid', { preHandler: requireCapability('payment.record') }, async (req, reply) => {
-    const id = Number((req.params as { id: string }).id);
+    const id = await invoiceIdFrom((req.params as { id: string }).id);
+    if (id == null) return reply.code(404).send({ error: 'Invoice not found' });
     const inv = await app.prisma.invoice.findUnique({ where: { id } });
     if (!inv || inv.deletedAt) return reply.code(404).send({ error: 'Invoice not found' });
     if (!ownsBranchRecord(req, inv.branchId)) return reply.code(404).send({ error: 'Invoice not found' });

@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { authGuard, requireRole } from '../middleware/authGuard.js';
 import { auditRequest } from '../lib/audit.js';
+import { isRef, newRef } from '../lib/docNumber.js';
 
 /**
  * Sync engine (cloud master side).
@@ -365,10 +366,19 @@ async function ingestInvoice(tx: Tx, uuid: string, data: Record<string, any>, al
     deletedAt: data.deletedAt ? new Date(data.deletedAt) : null,
   };
 
-  const existing = await tx.invoice.findUnique({ where: { uuid }, select: { id: true } });
+  const existing = await tx.invoice.findUnique({ where: { uuid }, select: { id: true, ref: true } });
+  // The link code: once an invoice has one here it never changes (links to it may be
+  // saved). Otherwise the laptop's, if well-formed and not held by another invoice, else
+  // a fresh one.
+  let ref: string | null = existing?.ref ?? null;
+  if (!ref && isRef(data.ref)) {
+    const holder = await tx.invoice.findUnique({ where: { ref: data.ref }, select: { uuid: true } });
+    if (!holder || holder.uuid === uuid) ref = data.ref;
+  }
+  ref = ref ?? newRef();
   const inv = existing
-    ? await tx.invoice.update({ where: { id: existing.id }, data: fields })
-    : await tx.invoice.create({ data: { uuid, ...fields, createdAt: data.createdAt ? new Date(data.createdAt) : undefined } });
+    ? await tx.invoice.update({ where: { id: existing.id }, data: { ...fields, ref } })
+    : await tx.invoice.create({ data: { uuid, ...fields, ref, createdAt: data.createdAt ? new Date(data.createdAt) : undefined } });
 
   await tx.invoiceItem.deleteMany({ where: { invoiceId: inv.id } });
   for (const [i, it] of (Array.isArray(data.items) ? data.items : []).entries()) {

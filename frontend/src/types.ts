@@ -180,6 +180,8 @@ export interface InvoiceItem {
 export interface Invoice {
   id: number;
   number: string;
+  /** Short random code used in the invoice's address, e.g. XR56LK. */
+  ref?: string | null;
   deliveryNoteNo: string | null;
   customerId: number;
   branchId: number | null;

@@ -9,6 +9,25 @@
  * Older invoices (INV-LUA-0001) keep the numbers they were issued with.
  */
 
+import { randomInt } from 'node:crypto';
+
+/** Letters and digits that cannot be misread for one another (no 0/O, 1/I/L). */
+const REF_LETTERS = 'ABCDEFGHJKMNPQRSTUVWXYZ';
+const REF_ALPHABET = `${REF_LETTERS}23456789`;
+
+/**
+ * A short random code for links, e.g. XR56LK (23 × 31^5 ≈ 656 million possibilities).
+ * It always starts with a letter, so it can never be mistaken for a numeric id.
+ */
+export function newRef(length = 6): string {
+  let out = REF_LETTERS[randomInt(REF_LETTERS.length)];
+  for (let i = 1; i < length; i++) out += REF_ALPHABET[randomInt(REF_ALPHABET.length)];
+  return out;
+}
+
+/** The shape of a link code we accept from a branch laptop. */
+export const isRef = (v: unknown): v is string => typeof v === 'string' && /^[A-HJ-NP-Z][A-HJ-NP-Z2-9]{5}$/.test(v);
+
 /** Code used when a document is raised centrally rather than at a branch. */
 export const HEAD_OFFICE_CODE = 'HQ';
 

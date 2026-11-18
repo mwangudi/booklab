@@ -11,10 +11,11 @@ import { BranchSelect } from '../../components/BranchSelect';
 import { Select2 } from '../../components/Select2';
 import { Alert, Button, Card, FormField, Loading, PageHeader, Pill, SectionTitle, Select, Table, Td, Th } from '../../components/ui';
 import { REQUEST_TONE, type CustomerRequestRow } from './CustomerRequestsPage';
+import { invoicePath } from '../../lib/invoiceLink';
 
 interface Detail extends CustomerRequestRow {
   handledBy: string | null;
-  invoice: { id: number; number: string; status: string } | null;
+  invoice: { id: number; ref?: string | null; number: string; status: string } | null;
   items: Array<{ id: number; bookId: number; title: string; quantity: number; onHand: number; book: { sku: string; unit: string; deletedAt: string | null } }>;
 }
 
@@ -49,13 +50,13 @@ export default function CustomerRequestPage() {
     setBusy(true);
     setError(null);
     try {
-      const res = await api.post<{ invoice: { id: number }; unpriced: string[] }>(`/api/invoices/from-request/${id}`, {
+      const res = await api.post<{ invoice: { id: number; ref?: string | null }; unpriced: string[] }>(`/api/invoices/from-request/${id}`, {
         customerId: createCustomer ? undefined : Number(customerId),
         createCustomer: createCustomer || undefined,
         branchId: isAdmin ? branchId : undefined,
         priceTier: tier,
       });
-      navigate(`/invoices/${res.invoice.id}`, { state: { unpriced: res.unpriced } });
+      navigate(invoicePath(res.invoice), { state: { unpriced: res.unpriced } });
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Could not make the invoice.');
       setBusy(false);
@@ -137,7 +138,7 @@ export default function CustomerRequestPage() {
 
       {done && r.invoice ? (
         <Alert tone="green">
-          Invoiced as <Link to={`/invoices/${r.invoice.id}`} className="font-semibold underline">{r.invoice.number}</Link> ({r.invoice.status.toLowerCase()}).
+          Invoiced as <Link to={invoicePath(r.invoice)} className="font-semibold underline">{r.invoice.number}</Link> ({r.invoice.status.toLowerCase()}).
           Issue it, then confirm delivery when the goods go out.
         </Alert>
       ) : (

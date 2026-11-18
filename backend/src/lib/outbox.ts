@@ -84,6 +84,7 @@ export async function queueInvoice(tx: Tx, invoiceId: number): Promise<void> {
   const sale = inv.saleId ? await tx.sale.findUnique({ where: { id: inv.saleId }, select: { uuid: true } }) : null;
   await enqueueOutbox(tx, 'invoice', inv.uuid, {
     number: inv.number,
+    ref: inv.ref,
     deliveryNoteNo: inv.deliveryNoteNo,
     branchUuid: inv.branch?.uuid ?? null,
     customerUuid: inv.customer.uuid,
