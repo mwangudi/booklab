@@ -3,6 +3,23 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://booklab.localinvestors.co.ke`).
 
+## 2026-11-20 — Duplicate items on invoices; quotations
+
+### Duplicate items
+- Picking a product that is already on the invoice adds to that line's quantity instead
+  of making a second line, and says so. The product list shows "on this invoice (qty N)".
+- An invoice that already has the same product on several lines shows a notice with
+  **Combine duplicates** (same price, VAT and unit; lines already delivered are kept).
+  Repeats that can't be combined (different price, or both partly delivered) are listed
+  to check by hand.
+
+### Quotations
+- Draft and issued invoices have a **Quotation** button that downloads a PDF quotation
+  (QTN-2026-NNNN) with the shop header and a dark-brown QUOTATION badge, the customer,
+  items and totals, 30-day validity, terms, and prepared-by / accepted-by / school stamp
+  boxes. On phones (and browsers that support it) **Send** shares the PDF straight to
+  WhatsApp, email and other apps.
+
 ## 2026-11-18 — Filters on every grid; low-stock alert opens the low stock
 
 ### Filters

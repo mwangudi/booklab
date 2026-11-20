@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Plus, Receipt, Save, Trash2, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, FileText, Plus, Receipt, Save, Send, Trash2, Truck } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useLocation } from 'react-router-dom';
@@ -8,7 +8,7 @@ import { useCan } from '../../lib/permissions';
 import { useAuth } from '../../lib/auth';
 import { money, num, today } from '../../lib/format';
 import { PRODUCT_UNITS } from '../../lib/categories';
-import { printDeliveryNote, printInvoice } from '../../lib/documents';
+import { buildQuotation, printDeliveryNote, printInvoice, type QuotationInput } from '../../lib/documents';
 import type { Book, Customer, Invoice, Stock } from '../../types';
 import { BranchSelect, useBranches } from '../../components/BranchSelect';
 import { Alert, Button, Card, FormField, Input, Loading, Modal, PageHeader, Pill, SectionTitle, Textarea } from '../../components/ui';
@@ -32,6 +32,9 @@ interface Line {
 
 /** The picker's "type your own" choice. */
 const FREE_TEXT = '__free__';
+
+/** Quantities to 2 decimals, so adding 0.1 + 0.2 shows 0.3. */
+const r2q = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
 
 const blankLine = (): Line => ({ delivered: 0, bookId: null, description: '', unit: 'Piece', quantity: '1', unitPrice: '0', vatRate: '16' });
 
@@ -62,6 +65,8 @@ export default function InvoiceEditorPage() {
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
+  /** Told when a product picked again was added to its existing line instead. */
+  const [lineNotice, setLineNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [deliverOpen, setDeliverOpen] = useState(false);
   const [received, setReceived] = useState({ receivedBy: '', receivedIdNo: '', receivedDesignation: '' });
@@ -94,10 +99,15 @@ export default function InvoiceEditorPage() {
     setVatMode(invoice.vatMode);
     setPriceTier(invoice.priceTier);
     setNotes(invoice.notes ?? '');
+    setLineNotice(null);
+    // Delivered before lines tracked it, every line reads 0 delivered: the server treats such
+    // an invoice as delivered in full, so the editor must too (no merging those lines away).
+    const legacyDelivered =
+      (invoice.status === 'DELIVERED' || invoice.status === 'PAID') && (invoice.items ?? []).every((i) => num(i.deliveredQty) === 0);
     setLines(
       (invoice.items ?? []).map((i) => ({
         id: i.id,
-        delivered: num(i.deliveredQty),
+        delivered: legacyDelivered ? num(i.quantity) : num(i.deliveredQty),
         free: i.bookId == null,
         bookId: i.bookId,
         description: i.description,
@@ -143,7 +153,51 @@ export default function InvoiceEditorPage() {
     })();
     if (!s) return;
     const b = s.book;
+    // Already on the invoice: add to that line rather than start a second one.
+    const other = lines.findIndex((l, j) => j !== i && l.bookId === b.id);
+    if (other >= 0 && lines[i].delivered === 0) {
+      const add = Math.max(1, num(lines[i].quantity) || 1);
+      const newQty = r2q(num(lines[other].quantity) + add);
+      setLines((p) => p.map((l, idx) => (idx === other ? { ...l, quantity: String(newQty) } : l)).filter((_, idx) => idx !== i));
+      setLineNotice(`${b.title} is already on this invoice, so its quantity is now ${newQty} instead of a second line.`);
+      return;
+    }
+    setLineNotice(null);
     setLine(i, { bookId: b.id, free: false, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)), vatRate: String(num(b.vatRate)) });
+  };
+
+  /**
+   * Products on more than one line. Lines with the same price, VAT and unit can be combined
+   * into one; a line already delivered is never removed (it can only grow), so extra
+   * delivered lines and lines at a different price are left for a person to look at.
+   */
+  const sameTerms = (a: Line, b: Line) =>
+    num(a.unitPrice) === num(b.unitPrice) && num(a.vatRate) === num(b.vatRate) && a.unit === b.unit;
+  const duplicates = (() => {
+    const byBook = new Map<number, number[]>();
+    lines.forEach((l, idx) => {
+      if (l.bookId != null) byBook.set(l.bookId, [...(byBook.get(l.bookId) ?? []), idx]);
+    });
+    return [...byBook.values()]
+      .filter((g) => g.length > 1)
+      .map((g) => {
+        // Keep the delivered line if there is one, else the first.
+        const keep = g.reduce((best, idx) => (lines[idx].delivered > lines[best].delivered ? idx : best), g[0]);
+        const merge = g.filter((idx) => idx !== keep && lines[idx].delivered === 0 && sameTerms(lines[idx], lines[keep]));
+        return { name: lines[keep].description || `#${lines[keep].bookId}`, count: g.length, keep, merge, leftover: g.length - 1 - merge.length };
+      });
+  })();
+  const mergeable = duplicates.filter((d) => d.merge.length > 0);
+  const unmergeable = duplicates.filter((d) => d.leftover > 0);
+  const combineDuplicates = () => {
+    const drop = new Set(mergeable.flatMap((d) => d.merge));
+    const extra = new Map(mergeable.map((d) => [d.keep, d.merge.reduce((t, idx) => t + num(lines[idx].quantity), 0)]));
+    setLines((p) =>
+      p
+        .map((l, idx) => (extra.has(idx) ? { ...l, quantity: String(r2q(num(l.quantity) + extra.get(idx)!)) } : l))
+        .filter((_, idx) => !drop.has(idx)),
+    );
+    setLineNotice(`Combined ${drop.size} duplicate line${drop.size === 1 ? '' : 's'}. Save to keep the change.`);
   };
 
   // Units each product still needs from the shelf: what is on the lines less what has gone out.
@@ -207,6 +261,7 @@ export default function InvoiceEditorPage() {
 
   const save = async () => {
     setError(null);
+    setLineNotice(null);
     if (!customerId) return setError('Choose a customer.');
     const body = payload();
     if (body.items.length === 0) return setError('Add at least one item with a description and quantity.');
@@ -236,6 +291,77 @@ export default function InvoiceEditorPage() {
     }
   };
 
+  /** Days a quotation's prices hold. */
+  const QUOTE_VALID_DAYS = 30;
+  // Phones can hand the PDF to WhatsApp, email and the like; elsewhere it downloads.
+  const canShareFiles =
+    typeof navigator !== 'undefined' &&
+    typeof navigator.canShare === 'function' &&
+    navigator.canShare({ files: [new File([''], 'q.pdf', { type: 'application/pdf' })] });
+
+  /**
+   * The quotation for what is on screen now (unsaved edits included), numbered after the
+   * invoice: INV-2026-0005 → QTN-2026-0005. Prices are worked out as the server does.
+   */
+  const quotation = (): QuotationInput | null => {
+    if (!invoice || !customer) return null;
+    const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
+    const items = payload().items.map((it) => {
+      const rate = chargeVat ? it.vatRate : 0;
+      const raw = r2(it.quantity * it.unitPrice);
+      const net = rate > 0 && vatMode === 'INCLUSIVE' ? r2(raw / (1 + rate / 100)) : raw;
+      const vat = rate === 0 ? 0 : vatMode === 'INCLUSIVE' ? r2(raw - net) : r2(net * (rate / 100));
+      return { description: it.description, quantity: it.quantity, unit: it.unit, unitPrice: it.unitPrice, vatRate: rate, net, vat, total: r2(net + vat) };
+    });
+    return {
+      number: `QTN-${invoice.number.replace(/^INV-/, '')}`,
+      date: issueDate,
+      validDays: QUOTE_VALID_DAYS,
+      customer: { name: customer.name, phone: customer.phone, address: customer.address },
+      chargeVat,
+      vatMode,
+      items,
+      subtotal: r2(items.reduce((t, i) => t + i.net, 0)),
+      vatTotal: r2(items.reduce((t, i) => t + i.vat, 0)),
+      total: r2(items.reduce((t, i) => t + i.total, 0)),
+      notes: notes.trim() || null,
+      preparedBy: user?.name ?? null,
+    };
+  };
+
+  const sendQuotation = async (mode: 'download' | 'share') => {
+    setError(null);
+    if (!customer) return setError('Choose the customer the quotation is for.');
+    const q = quotation();
+    if (!q || q.items.length === 0) return setError('Add at least one item before making a quotation.');
+    try {
+      const { blob, fileName } = await buildQuotation(q);
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      if (mode === 'share' && canShareFiles) {
+        try {
+          await navigator.share({ files: [file], title: `Quotation ${q.number}`, text: `Quotation ${q.number} from Booklab Bookshop for ${q.customer.name}.` });
+          return;
+        } catch (err) {
+          // Closing the share sheet is not an error; a refused share (e.g. iPhone after the
+          // PDF took a moment to build) falls back to downloading it.
+          if ((err as { name?: string })?.name === 'AbortError') return;
+        }
+      }
+      const url = URL.createObjectURL(file);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    } catch (err) {
+      // Closing the share sheet is not an error.
+      if ((err as { name?: string })?.name === 'AbortError') return;
+      setError('Could not make the quotation. Try again.');
+    }
+  };
+
   const act = async (path: string, fail: string, body?: unknown) => {
     setSaving(true);
     setError(null);
@@ -259,17 +385,20 @@ export default function InvoiceEditorPage() {
   ];
   // The whole catalogue, what the branch has on its shelf first. Out-of-stock items are
   // flagged, not hidden: they can be invoiced, and need stock only to be delivered.
+  const qtyOnInvoice = new Map<number, number>();
+  for (const l of lines) if (l.bookId != null) qtyOnInvoice.set(l.bookId, r2q((qtyOnInvoice.get(l.bookId) ?? 0) + num(l.quantity)));
+  const onInvoice = (bookId: number) => (qtyOnInvoice.has(bookId) ? ` · on this invoice (qty ${qtyOnInvoice.get(bookId)})` : '');
   const bookOptions = [
     { value: FREE_TEXT, label: 'Free text — type your own description (a service, delivery…)' },
     ...(stockBranch == null
       ? [...(catalogueBooks ?? [])]
           .sort((a, b) => a.title.localeCompare(b.title))
-          .map((b) => ({ value: String(b.id), label: `${b.title} — ${b.sku}` }))
+          .map((b) => ({ value: String(b.id), label: `${b.title} — ${b.sku}${onInvoice(b.id)}` }))
       : [...(shelf ?? [])]
           .sort((a, b) => Number(b.quantity > 0) - Number(a.quantity > 0) || a.book.title.localeCompare(b.book.title))
           .map((s) => ({
             value: String(s.bookId),
-            label: `${s.book.title} — ${s.book.sku} · ${s.quantity > 0 ? `${s.quantity} in stock` : 'OUT OF STOCK'}`,
+            label: `${s.book.title} — ${s.book.sku} · ${s.quantity > 0 ? `${s.quantity} in stock` : 'OUT OF STOCK'}${onInvoice(s.bookId)}`,
           }))),
   ];
 
@@ -295,6 +424,18 @@ export default function InvoiceEditorPage() {
                 <Button variant="outline" onClick={() => printDeliveryNote(invoice)}>
                   <Truck className="h-4 w-4" /> Delivery note
                 </Button>
+                {(invoice.status === 'DRAFT' || invoice.status === 'ISSUED') && (
+                  <>
+                    <Button variant="outline" onClick={() => sendQuotation('download')} title="Download a quotation for these items to send the customer">
+                      <FileText className="h-4 w-4" /> Quotation
+                    </Button>
+                    {canShareFiles && (
+                      <Button variant="outline" onClick={() => sendQuotation('share')} title="Send the quotation by WhatsApp, email…">
+                        <Send className="h-4 w-4" /> Send
+                      </Button>
+                    )}
+                  </>
+                )}
               </>
             )}
             {!readOnly && (
@@ -308,6 +449,27 @@ export default function InvoiceEditorPage() {
 
       {error && <Alert tone="red">{error}</Alert>}
       {/* Lists every line short of stock; gone once the line changes or the stock arrives. */}
+      {lineNotice && <Alert tone="blue">{lineNotice}</Alert>}
+      {!readOnly && mergeable.length > 0 && (
+        <Alert tone="amber">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>
+              <b>The same product is on more than one line:</b>{' '}
+              {mergeable.map((d) => `${d.name} (${d.count} lines)`).join('; ')}. Combine them into one line each, with the
+              quantities added up.
+            </span>
+            <Button size="sm" onClick={combineDuplicates}>
+              Combine duplicates
+            </Button>
+          </div>
+        </Alert>
+      )}
+      {!readOnly && unmergeable.length > 0 && (
+        <Alert tone="amber">
+          <b>Check these repeated products:</b> {unmergeable.map((d) => d.name).join('; ')}: they are on more than one line at a
+          different price or unit, or already delivered on each, so they are not combined automatically.
+        </Alert>
+      )}
       {!readOnly && shortLines.length > 0 && (
         <Alert tone="amber">
           <b>Not enough stock at {branchName}:</b>{' '}

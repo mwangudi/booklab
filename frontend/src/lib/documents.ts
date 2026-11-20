@@ -33,8 +33,14 @@ const dmy = (iso: string | Date | null | undefined) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
-/** Shared letterhead: logo on the left, shop details centred. Returns the y to continue from. */
-function header(doc: jsPDF, title: string, logo: string | null): number {
+/** Dark brown of the QUOTATION badge on the shop's stationery. */
+const BADGE_RGB: [number, number, number] = [122, 46, 14];
+
+/**
+ * Shared letterhead: logo on the left, shop details centred. Returns the y to continue from.
+ * With `badge` the title is set in white on a dark-brown rounded panel, as on the quotation.
+ */
+function header(doc: jsPDF, title: string, logo: string | null, badge = false): number {
   const w = doc.internal.pageSize.getWidth();
 
   if (logo) {
@@ -70,6 +76,18 @@ function header(doc: jsPDF, title: string, logo: string | null): number {
   doc.line(40, 110, w - 40, 110);
 
   doc.setFont('helvetica', 'bold');
+  if (badge) {
+    doc.setFontSize(18);
+    const tw = doc.getTextWidth(title);
+    const bw = tw + 36;
+    const bh = 30;
+    doc.setFillColor(...BADGE_RGB);
+    doc.roundedRect(w / 2 - bw / 2, 118, bw, bh, 7, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.text(title, w / 2, 139, { align: 'center' });
+    doc.setTextColor(...TEXT_RGB);
+    return 170;
+  }
   doc.setFontSize(13);
   doc.setTextColor(...TEXT_RGB);
   doc.text(title, w / 2, 130, { align: 'center' });
@@ -403,4 +421,155 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
     doc.text(`Page ${i} / ${pages}`, w - 40, pageH - 24, { align: "right" });
   }
   doc.save(`supplier-statement-${s.supplier.name.replace(/\s+/g, "-").toLowerCase()}.pdf`);
+}
+
+
+/** What a quotation prints: the invoice editor's current lines, numbered after its invoice. */
+export interface QuotationInput {
+  number: string;
+  date: string;
+  /** Days the prices hold; printed as a "valid until" date. */
+  validDays: number;
+  customer: { name: string; phone?: string | null; address?: string | null };
+  chargeVat: boolean;
+  vatMode: 'EXCLUSIVE' | 'INCLUSIVE';
+  items: Array<{ description: string; quantity: number; unit: string; unitPrice: number; vatRate: number; total: number }>;
+  subtotal: number;
+  vatTotal: number;
+  total: number;
+  notes?: string | null;
+  preparedBy?: string | null;
+}
+
+/**
+ * A quotation to send a customer before they order: the same letterhead with a dark-brown
+ * QUOTATION badge, the items and totals, how long the prices hold, and a place for the
+ * customer to accept. Returns the PDF so the page can download it or share it.
+ */
+export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; fileName: string }> {
+  const logo = await loadPrintLogo();
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const w = doc.internal.pageSize.getWidth();
+  let y = header(doc, 'QUOTATION', logo, true);
+
+  // "2026-11-20" read as a local date (not UTC midnight), so no timezone shifts it a day.
+  const ymd = /^\d{4}-\d{2}-\d{2}$/.test(q.date) ? q.date.split('-').map(Number) : null;
+  const now = new Date();
+  const issued = ymd ? new Date(ymd[0], ymd[1] - 1, ymd[2]) : new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const valid = new Date(issued.getFullYear(), issued.getMonth(), issued.getDate() + q.validDays);
+  const pageH = doc.internal.pageSize.getHeight();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...TEXT_RGB);
+  doc.text(`QUOTE NO: ${q.number}`, 40, y);
+  doc.text(`DATE: ${dmy(issued)}`, w - 40, y, { align: 'right' });
+  y += 14;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Valid until: ${dmy(valid)}`, w - 40, y, { align: 'right' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text('TO:', 40, y);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...BRAND_RGB);
+  const nameLines = doc.splitTextToSize(q.customer.name.toUpperCase(), w - 80) as string[];
+  doc.text(nameLines, 40, y + 15);
+  y += 15 + (nameLines.length - 1) * 14;
+  const meta = [q.customer.phone, q.customer.address].filter(Boolean).join(' · ');
+  if (meta) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...TEXT_RGB);
+    const metaLines = doc.splitTextToSize(meta, w - 80) as string[];
+    doc.text(metaLines, 40, y + 13);
+    y += 13 + (metaLines.length - 1) * 11;
+  }
+
+  const vatShown = q.chargeVat && q.vatTotal > 0;
+  const head = vatShown
+    ? [['ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT PRICE', 'VAT %', 'TOTAL']]
+    : [['ITEM DESCRIPTION', 'QTTY', 'UNIT', 'UNIT PRICE', 'TOTAL']];
+  const body = q.items.map((i) =>
+    vatShown
+      ? [i.description, String(i.quantity), i.unit, money(i.unitPrice), `${i.vatRate}%`, money(i.total)]
+      : [i.description, String(i.quantity), i.unit, money(i.unitPrice), money(i.total)],
+  );
+  const cols: Record<number, { halign?: 'right' | 'center'; cellWidth: number }> = vatShown
+    ? { 1: { halign: 'center', cellWidth: 42 }, 2: { cellWidth: 52 }, 3: { halign: 'right', cellWidth: 66 }, 4: { halign: 'right', cellWidth: 44 }, 5: { halign: 'right', cellWidth: 72 } }
+    : { 1: { halign: 'center', cellWidth: 45 }, 2: { cellWidth: 60 }, 3: { halign: 'right', cellWidth: 72 }, 4: { halign: 'right', cellWidth: 80 } };
+  const span = vatShown ? 5 : 4;
+  const foot: RowInput[] = [];
+  if (vatShown) {
+    foot.push(totalRow('SUBTOTAL', money(q.subtotal), span));
+    foot.push(totalRow('VAT', money(q.vatTotal), span));
+  }
+  foot.push(totalRow('TOTAL', money(q.total), span));
+
+  autoTable(doc, {
+    startY: y + 16,
+    head,
+    body,
+    margin: { left: 40, right: 40 },
+    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
+    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
+    columnStyles: cols,
+    foot,
+    showFoot: 'lastPage',
+    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right' },
+  });
+
+  y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 16;
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(...TEXT_RGB);
+  const terms = [
+    `This quotation is valid until ${dmy(valid)}.`,
+    !vatShown ? 'No VAT is charged on this quotation.' : q.vatMode === 'INCLUSIVE' ? 'Prices include VAT.' : 'VAT is added as shown.',
+    'Items are supplied subject to availability at the time of order.',
+    'To accept, sign and stamp below, or reply with your order quoting the quotation number.',
+  ];
+  if (q.notes) terms.push(q.notes);
+  for (const t of terms) {
+    for (const line of doc.splitTextToSize(`• ${t}`, w - 80) as string[]) {
+      // Never past the bottom margin: carry on at the top of a new page.
+      if (y > pageH - 50) {
+        doc.addPage();
+        y = 60;
+      }
+      doc.text(line, 40, y);
+      y += 11;
+    }
+  }
+
+  // Prepared by (the shop) and accepted by (the customer), with a stamp box.
+  let top = Math.max(y + 22, pageH - 150);
+  if (top > pageH - 120) {
+    doc.addPage();
+    top = 120;
+  }
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9);
+  doc.text('PREPARED BY', 40, top);
+  doc.text('ACCEPTED BY', 220, top);
+  doc.text('SCHOOL STAMP', w - 40 - 150, top);
+  doc.setFont('helvetica', 'normal');
+  doc.setDrawColor(150, 150, 150);
+  doc.setLineWidth(0.6);
+  doc.setFontSize(10);
+  if (q.preparedBy) doc.text(q.preparedBy, 44, top + 22);
+  doc.line(40, top + 26, 190, top + 26);
+  doc.setFontSize(8);
+  doc.text('For Booklab Bookshop', 40, top + 37);
+  doc.line(220, top + 26, 370, top + 26);
+  doc.text('Name and signature', 220, top + 37);
+  doc.line(220, top + 62, 370, top + 62);
+  doc.text('Date', 220, top + 73);
+  doc.setDrawColor(190, 190, 190);
+  doc.rect(w - 40 - 150, top + 8, 150, 70);
+
+  const fileName = `quotation-${q.number}.pdf`;
+  return { blob: doc.output('blob'), fileName };
 }
