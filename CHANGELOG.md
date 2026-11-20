@@ -1,7 +1,7 @@
 # Changelog
 
 All notable changes to Booklab Bookshop. Dates are release dates to production
-(`https://booklab.localinvestors.co.ke`).
+(`https://www.booklabbookshop.co.ke`).
 
 ## 2026-11-20 — Duplicate items on invoices; quotations
 
@@ -201,7 +201,7 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
 - The system is now at **https://www.booklabbookshop.co.ke**. `booklabbookshop.co.ke` and
   plain HTTP redirect there (vhost `deploy/nginx/booklabbookshop.co.ke.conf`, Let's Encrypt
   certificate via webroot `/var/www/letsencrypt`, auto-renewal tested).
-- `booklab.localinvestors.co.ke` is **retired**: its vhost and certificate are deleted and
+- The previous address is **retired**: its vhost and certificate are deleted and
   the server refuses the name. `CORS_ORIGIN` and the M-Pesa callback use the new address.
 - Installed apps (PWA) belong to the old address: staff reinstall from the new one. Branch
   laptops need `CLOUD_URL="https://www.booklabbookshop.co.ke"` (the Kapsabet laptop is
