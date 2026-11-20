@@ -20,6 +20,13 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   boxes. On phones (and browsers that support it) **Send** shares the PDF straight to
   WhatsApp, email and other apps.
 
+### More items per page
+- Invoices, delivery notes and quotations fit about a quarter more items per page (tighter
+  rows, same fonts and layout): about 27 items on a one-page invoice, 45 on each following
+  page. Invoice totals print once at the end, the signature block stays on the last page
+  when it fits, a long item name is no longer split across two pages, and long invoice
+  notes no longer run into the signature block.
+
 ## 2026-11-18 — Filters on every grid; low-stock alert opens the low stock
 
 ### Filters

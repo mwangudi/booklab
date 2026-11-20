@@ -35,6 +35,8 @@ const dmy = (iso: string | Date | null | undefined) => {
 
 /** Dark brown of the QUOTATION badge on the shop's stationery. */
 const BADGE_RGB: [number, number, number] = [122, 46, 14];
+// Item rows: tight top/bottom padding so more lines fit per page (headers and totals keep 5).
+const ITEM_PAD = { top: 3, bottom: 3, left: 5, right: 5 };
 
 /**
  * Shared letterhead: logo on the left, shop details centred. Returns the y to continue from.
@@ -98,8 +100,8 @@ function header(doc: jsPDF, title: string, logo: string | null, badge = false): 
 function signatureBlock(doc: jsPDF, y: number, inv?: Invoice) {
   const w = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
-  let top = Math.max(y + 24, pageH - 150);
-  if (top > pageH - 120) {
+  let top = Math.max(y + 18, pageH - 150);
+  if (top > pageH - 110) {
     doc.addPage();
     top = 120;
   }
@@ -196,11 +198,13 @@ export async function printInvoice(inv: Invoice): Promise<void> {
     head,
     body,
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
-    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
+    rowPageBreak: 'avoid',
+    styles: { fontSize: 9, cellPadding: ITEM_PAD, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
+    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold', cellPadding: 5 },
     columnStyles: cols,
     foot,
-    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right' },
+    showFoot: 'lastPage',
+    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right', cellPadding: 5 },
   });
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY;
@@ -212,8 +216,15 @@ export async function printInvoice(inv: Invoice): Promise<void> {
     y += 10;
   }
   if (inv.notes) {
-    doc.text(doc.splitTextToSize(inv.notes, w - 80) as string[], 40, y + 16);
-    y += 16;
+    const lines = doc.splitTextToSize(inv.notes, w - 80) as string[];
+    const lineH = 8 * 1.15;
+    // Notes that would run off the page start a new one.
+    if (y + 16 + lines.length * lineH > doc.internal.pageSize.getHeight() - 40) {
+      doc.addPage();
+      y = 40;
+    }
+    doc.text(lines, 40, y + 16);
+    y += 16 + (lines.length - 1) * lineH;
   }
   signatureBlock(doc, y, inv);
   doc.save(`invoice-${inv.number}.pdf`);
@@ -251,8 +262,9 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
     head: [['#', 'ITEM DESCRIPTION', 'QTTY', 'UNIT']],
     body: (inv.items ?? []).map((i, n) => [String(n + 1), i.description, String(num(i.quantity)), i.unit]),
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
-    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
+    rowPageBreak: 'avoid',
+    styles: { fontSize: 9, cellPadding: ITEM_PAD, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
+    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold', cellPadding: 5 },
     columnStyles: { 0: { halign: 'center', cellWidth: 26 }, 2: { halign: 'center', cellWidth: 60 }, 3: { cellWidth: 80 } },
   });
 
@@ -513,12 +525,13 @@ export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; f
     head,
     body,
     margin: { left: 40, right: 40 },
-    styles: { fontSize: 9, cellPadding: 5, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
-    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold' },
+    rowPageBreak: 'avoid',
+    styles: { fontSize: 9, cellPadding: ITEM_PAD, textColor: TEXT_RGB, lineColor: RULE_RGB, lineWidth: 0.4 },
+    headStyles: { fillColor: [255, 237, 213], textColor: [154, 52, 18], fontStyle: 'bold', cellPadding: 5 },
     columnStyles: cols,
     foot,
     showFoot: 'lastPage',
-    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right' },
+    footStyles: { fillColor: [245, 245, 245], textColor: TEXT_RGB, fontStyle: 'bold', halign: 'right', cellPadding: 5 },
   });
 
   y = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 16;
@@ -545,8 +558,8 @@ export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; f
   }
 
   // Prepared by (the shop) and accepted by (the customer), with a stamp box.
-  let top = Math.max(y + 22, pageH - 150);
-  if (top > pageH - 120) {
+  let top = Math.max(y + 18, pageH - 150);
+  if (top > pageH - 110) {
     doc.addPage();
     top = 120;
   }
