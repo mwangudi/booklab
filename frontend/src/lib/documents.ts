@@ -109,7 +109,9 @@ function signatureBlock(doc: jsPDF, y: number, inv?: Invoice) {
   doc.setFontSize(9);
   doc.setTextColor(...TEXT_RGB);
   doc.text('RECEIVED BY', 40, top);
-  doc.text('SCHOOL STAMP', w / 2 + 20, top);
+  // The stamp box sits at the far right margin.
+  const stampX = w - 40 - 170;
+  doc.text('SCHOOL STAMP', stampX, top);
 
   doc.setFont('helvetica', 'normal');
   doc.setDrawColor(150, 150, 150);
@@ -131,7 +133,7 @@ function signatureBlock(doc: jsPDF, y: number, inv?: Invoice) {
 
   // Stamp box
   doc.setDrawColor(190, 190, 190);
-  doc.rect(w / 2 + 20, top + 8, 170, 80);
+  doc.rect(stampX, top + 8, 170, 80);
 }
 
 /** Tax invoice: description, quantity, unit, unit cost and line total. */
@@ -154,20 +156,23 @@ export async function printInvoice(inv: Invoice): Promise<void> {
     doc.text(`Due: ${dmy(inv.dueDate)}`, w - 40, y, { align: 'right' });
   }
 
-  // Customer name, prominent, as on the template.
+  // Customer name, prominent and centred (below the due date when there is one).
+  if (inv.dueDate) y += 12;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...BRAND_RGB);
-  doc.text((inv.customer?.name ?? '').toUpperCase(), 40, y + 4);
-  y += 12;
+  const nameLines = doc.splitTextToSize((inv.customer?.name ?? '').toUpperCase(), w - 80) as string[];
+  doc.text(nameLines, w / 2, y + 4, { align: 'center' });
+  y += 12 + (nameLines.length - 1) * 14;
   // The contact person is for the shop's records, not printed on the invoice.
   const meta = [inv.customer?.phone, inv.customer?.address].filter(Boolean).join(' · ');
   if (meta) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_RGB);
-    doc.text(meta, 40, y + 12);
-    y += 12;
+    const metaLines = doc.splitTextToSize(meta, w - 80) as string[];
+    doc.text(metaLines, w / 2, y + 12, { align: 'center' });
+    y += 12 + (metaLines.length - 1) * 11;
   }
 
   const vatShown = inv.chargeVat && num(inv.vatTotal) > 0;
@@ -215,17 +220,7 @@ export async function printInvoice(inv: Invoice): Promise<void> {
     doc.text('Prices shown are inclusive of VAT.', 40, y + 14);
     y += 10;
   }
-  if (inv.notes) {
-    const lines = doc.splitTextToSize(inv.notes, w - 80) as string[];
-    const lineH = 8 * 1.15;
-    // Notes that would run off the page start a new one.
-    if (y + 16 + lines.length * lineH > doc.internal.pageSize.getHeight() - 40) {
-      doc.addPage();
-      y = 40;
-    }
-    doc.text(lines, 40, y + 16);
-    y += 16 + (lines.length - 1) * lineH;
-  }
+  // Invoice notes are for the shop's records and are not printed.
   signatureBlock(doc, y, inv);
   doc.save(`invoice-${inv.number}.pdf`);
 }
@@ -247,14 +242,16 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(...BRAND_RGB);
-  doc.text((inv.customer?.name ?? '').toUpperCase(), 40, y + 4);
-  y += 12;
+  const nameLines = doc.splitTextToSize((inv.customer?.name ?? '').toUpperCase(), w - 80) as string[];
+  doc.text(nameLines, w / 2, y + 4, { align: 'center' });
+  y += 12 + (nameLines.length - 1) * 14;
   if (inv.customer?.address) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_RGB);
-    doc.text(inv.customer.address, 40, y + 12);
-    y += 12;
+    const addrLines = doc.splitTextToSize(inv.customer.address, w - 80) as string[];
+    doc.text(addrLines, w / 2, y + 12, { align: 'center' });
+    y += 12 + (addrLines.length - 1) * 11;
   }
 
   autoTable(doc, {
@@ -449,7 +446,6 @@ export interface QuotationInput {
   subtotal: number;
   vatTotal: number;
   total: number;
-  notes?: string | null;
   preparedBy?: string | null;
 }
 
@@ -488,7 +484,7 @@ export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; f
   doc.setFontSize(12);
   doc.setTextColor(...BRAND_RGB);
   const nameLines = doc.splitTextToSize(q.customer.name.toUpperCase(), w - 80) as string[];
-  doc.text(nameLines, 40, y + 15);
+  doc.text(nameLines, w / 2, y + 15, { align: 'center' });
   y += 15 + (nameLines.length - 1) * 14;
   const meta = [q.customer.phone, q.customer.address].filter(Boolean).join(' · ');
   if (meta) {
@@ -496,7 +492,7 @@ export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; f
     doc.setFontSize(9);
     doc.setTextColor(...TEXT_RGB);
     const metaLines = doc.splitTextToSize(meta, w - 80) as string[];
-    doc.text(metaLines, 40, y + 13);
+    doc.text(metaLines, w / 2, y + 13, { align: 'center' });
     y += 13 + (metaLines.length - 1) * 11;
   }
 
@@ -544,7 +540,6 @@ export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; f
     'Items are supplied subject to availability at the time of order.',
     'To accept, sign and stamp below, or reply with your order quoting the quotation number.',
   ];
-  if (q.notes) terms.push(q.notes);
   for (const t of terms) {
     for (const line of doc.splitTextToSize(`• ${t}`, w - 80) as string[]) {
       // Never past the bottom margin: carry on at the top of a new page.

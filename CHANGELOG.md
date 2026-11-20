@@ -27,6 +27,11 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   when it fits, a long item name is no longer split across two pages, and long invoice
   notes no longer run into the signature block.
 
+### Layout
+- The school (customer) name is centred on invoices, quotations and delivery notes, and the
+  school stamp box sits at the far right. Invoice and quotation notes are no longer printed
+  (they stay on the invoice in the system); the quotation keeps its standard terms.
+
 ## 2026-11-18 — Filters on every grid; low-stock alert opens the low stock
 
 ### Filters

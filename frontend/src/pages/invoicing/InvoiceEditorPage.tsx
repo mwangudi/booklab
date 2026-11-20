@@ -324,7 +324,6 @@ export default function InvoiceEditorPage() {
       subtotal: r2(items.reduce((t, i) => t + i.net, 0)),
       vatTotal: r2(items.reduce((t, i) => t + i.vat, 0)),
       total: r2(items.reduce((t, i) => t + i.total, 0)),
-      notes: notes.trim() || null,
       preparedBy: user?.name ?? null,
     };
   };
