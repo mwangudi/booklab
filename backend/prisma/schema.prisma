@@ -80,6 +80,14 @@ enum InvoiceStatus {
   CANCELLED
 }
 
+/// Where a quotation stands with the customer.
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
 enum PaymentChannel {
   CASH
   MPESA
@@ -141,6 +149,7 @@ model Branch {
   movements StockMovement[]
   employees Employee[]
   invoices  Invoice[]
+  quotations Quotation[]
   receipts  GoodsReceipt[]
   syncTokens SyncToken[]
   stockTakeSchedule StockTakeSchedule?
@@ -171,6 +180,7 @@ model Book {
   saleItems SaleItem[]
   movements StockMovement[]
   invoiceItems InvoiceItem[]
+  quotationItems QuotationItem[]
   receiptItems GoodsReceiptItem[]
   requestItems CustomerRequestItem[]
 
@@ -509,6 +519,7 @@ model Customer {
   updatedAt     DateTime     @updatedAt
   uuid          String       @unique @default(uuid())
   invoices      Invoice[]
+  quotations    Quotation[]
   payments      CustomerPayment[]
 
   @@index([deletedAt])
@@ -610,6 +621,63 @@ model InvoiceItem {
   book        Book?   @relation(fields: [bookId], references: [id])
 
   @@index([invoiceId])
+}
+
+/// A price quotation for a customer. It stands on its own: it is not an invoice and
+/// moves no stock. Main system only (not synced from branch laptops).
+model Quotation {
+  id          Int             @id @default(autoincrement())
+  uuid        String          @unique @default(uuid())
+  /// QTN-2026-0001: one company-wide series a year.
+  number      String          @unique
+  /// Short random code used in links (/quotations/XR56LK).
+  ref         String?         @unique @db.VarChar(12)
+  customerId  Int
+  branchId    Int?
+  status      QuotationStatus @default(DRAFT)
+  priceTier   PriceTier       @default(SCHOOL)
+  issueDate   DateTime        @default(now())
+  /// Days the prices hold from the issue date.
+  validDays   Int             @default(30)
+  /// For the shop's records; not printed.
+  notes       String?         @db.Text
+  chargeVat   Boolean         @default(true)
+  vatMode     VatMode         @default(EXCLUSIVE)
+  subtotal    Decimal         @default(0) @db.Decimal(12, 2)
+  vatTotal    Decimal         @default(0) @db.Decimal(12, 2)
+  total       Decimal         @default(0) @db.Decimal(12, 2)
+  createdById Int?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+  customer    Customer        @relation(fields: [customerId], references: [id])
+  branch      Branch?         @relation(fields: [branchId], references: [id])
+  items       QuotationItem[]
+
+  @@index([customerId, issueDate])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+/// A line on a quotation; description and unit are snapshots, as on an invoice line.
+model QuotationItem {
+  id          Int       @id @default(autoincrement())
+  uuid        String    @unique @default(uuid())
+  quotationId Int
+  bookId      Int?
+  description String
+  unit        String    @default("Piece")
+  quantity    Decimal   @default(0) @db.Decimal(12, 2)
+  unitPrice   Decimal   @default(0) @db.Decimal(12, 2)
+  vatRate     Decimal   @default(16) @db.Decimal(5, 2)
+  netAmount   Decimal   @default(0) @db.Decimal(12, 2)
+  vatAmount   Decimal   @default(0) @db.Decimal(12, 2)
+  total       Decimal   @default(0) @db.Decimal(12, 2)
+  sortOrder   Int       @default(0)
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  book        Book?     @relation(fields: [bookId], references: [id])
+
+  @@index([quotationId])
 }
 
 /// A supplier we buy stock from.

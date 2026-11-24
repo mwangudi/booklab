@@ -3,6 +3,28 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://www.booklabbookshop.co.ke`).
 
+## 2026-11-24 — Quotations on their own; badge titles; compact delivery note
+
+### Quotations
+- **Quotations** has its own page under Customers & Invoicing, with a **New quotation**
+  form like a new invoice: customer, branch, price tier, date, how many days it is valid,
+  status (draft, sent, accepted, declined), VAT and items. Products picked twice add to
+  one line; repeated lines can be combined.
+- Each quotation is saved with its own number (QTN-2026-0001, one series a year) and a
+  short link (/quotations/RN7QAJ). **Download PDF** and, on phones, **Send** (WhatsApp,
+  email…) save first and print what was saved; a draft becomes "sent". The notes are for
+  the shop only and are not printed.
+- Quotations are no longer made from an invoice: the invoice page's Quotation and Send
+  buttons are gone. Quotations are made on the main system, not on branch laptops.
+
+### Printed documents
+- INVOICE and DELIVERY NOTE titles are printed on the same dark-brown badge as QUOTATION.
+- The delivery note puts its number, the school and the date on one line.
+
+### Checks
+- Invoice and quotation lines refuse impossible quantities and prices with a clear message
+  instead of a server error.
+
 ## 2026-11-20 — Duplicate items on invoices; quotations
 
 ### Duplicate items

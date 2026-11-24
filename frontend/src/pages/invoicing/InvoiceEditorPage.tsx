@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, FileText, Plus, Receipt, Save, Send, Trash2, Truck } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Plus, Receipt, Save, Trash2, Truck } from 'lucide-react';
 import { api, ApiError } from '../../lib/api';
 import { useApi } from '../../lib/useApi';
 import { useLocation } from 'react-router-dom';
@@ -8,7 +8,7 @@ import { useCan } from '../../lib/permissions';
 import { useAuth } from '../../lib/auth';
 import { money, num, today } from '../../lib/format';
 import { PRODUCT_UNITS } from '../../lib/categories';
-import { buildQuotation, printDeliveryNote, printInvoice, type QuotationInput } from '../../lib/documents';
+import { printDeliveryNote, printInvoice } from '../../lib/documents';
 import type { Book, Customer, Invoice, Stock } from '../../types';
 import { BranchSelect, useBranches } from '../../components/BranchSelect';
 import { Alert, Button, Card, FormField, Input, Loading, Modal, PageHeader, Pill, SectionTitle, Textarea } from '../../components/ui';
@@ -291,76 +291,6 @@ export default function InvoiceEditorPage() {
     }
   };
 
-  /** Days a quotation's prices hold. */
-  const QUOTE_VALID_DAYS = 30;
-  // Phones can hand the PDF to WhatsApp, email and the like; elsewhere it downloads.
-  const canShareFiles =
-    typeof navigator !== 'undefined' &&
-    typeof navigator.canShare === 'function' &&
-    navigator.canShare({ files: [new File([''], 'q.pdf', { type: 'application/pdf' })] });
-
-  /**
-   * The quotation for what is on screen now (unsaved edits included), numbered after the
-   * invoice: INV-2026-0005 → QTN-2026-0005. Prices are worked out as the server does.
-   */
-  const quotation = (): QuotationInput | null => {
-    if (!invoice || !customer) return null;
-    const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-    const items = payload().items.map((it) => {
-      const rate = chargeVat ? it.vatRate : 0;
-      const raw = r2(it.quantity * it.unitPrice);
-      const net = rate > 0 && vatMode === 'INCLUSIVE' ? r2(raw / (1 + rate / 100)) : raw;
-      const vat = rate === 0 ? 0 : vatMode === 'INCLUSIVE' ? r2(raw - net) : r2(net * (rate / 100));
-      return { description: it.description, quantity: it.quantity, unit: it.unit, unitPrice: it.unitPrice, vatRate: rate, net, vat, total: r2(net + vat) };
-    });
-    return {
-      number: `QTN-${invoice.number.replace(/^INV-/, '')}`,
-      date: issueDate,
-      validDays: QUOTE_VALID_DAYS,
-      customer: { name: customer.name, phone: customer.phone, address: customer.address },
-      chargeVat,
-      vatMode,
-      items,
-      subtotal: r2(items.reduce((t, i) => t + i.net, 0)),
-      vatTotal: r2(items.reduce((t, i) => t + i.vat, 0)),
-      total: r2(items.reduce((t, i) => t + i.total, 0)),
-      preparedBy: user?.name ?? null,
-    };
-  };
-
-  const sendQuotation = async (mode: 'download' | 'share') => {
-    setError(null);
-    if (!customer) return setError('Choose the customer the quotation is for.');
-    const q = quotation();
-    if (!q || q.items.length === 0) return setError('Add at least one item before making a quotation.');
-    try {
-      const { blob, fileName } = await buildQuotation(q);
-      const file = new File([blob], fileName, { type: 'application/pdf' });
-      if (mode === 'share' && canShareFiles) {
-        try {
-          await navigator.share({ files: [file], title: `Quotation ${q.number}`, text: `Quotation ${q.number} from Booklab Bookshop for ${q.customer.name}.` });
-          return;
-        } catch (err) {
-          // Closing the share sheet is not an error; a refused share (e.g. iPhone after the
-          // PDF took a moment to build) falls back to downloading it.
-          if ((err as { name?: string })?.name === 'AbortError') return;
-        }
-      }
-      const url = URL.createObjectURL(file);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 10_000);
-    } catch (err) {
-      // Closing the share sheet is not an error.
-      if ((err as { name?: string })?.name === 'AbortError') return;
-      setError('Could not make the quotation. Try again.');
-    }
-  };
-
   const act = async (path: string, fail: string, body?: unknown) => {
     setSaving(true);
     setError(null);
@@ -423,18 +353,6 @@ export default function InvoiceEditorPage() {
                 <Button variant="outline" onClick={() => printDeliveryNote(invoice)}>
                   <Truck className="h-4 w-4" /> Delivery note
                 </Button>
-                {(invoice.status === 'DRAFT' || invoice.status === 'ISSUED') && (
-                  <>
-                    <Button variant="outline" onClick={() => sendQuotation('download')} title="Download a quotation for these items to send the customer">
-                      <FileText className="h-4 w-4" /> Quotation
-                    </Button>
-                    {canShareFiles && (
-                      <Button variant="outline" onClick={() => sendQuotation('share')} title="Send the quotation by WhatsApp, email…">
-                        <Send className="h-4 w-4" /> Send
-                      </Button>
-                    )}
-                  </>
-                )}
               </>
             )}
             {!readOnly && (

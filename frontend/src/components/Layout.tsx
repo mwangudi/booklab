@@ -7,6 +7,7 @@ import {
   Building2,
   ChevronDown,
   ClipboardList,
+  FileSignature,
   FileText,
   History,
   LayoutDashboard,
@@ -79,6 +80,7 @@ const GROUPS: NavGroup[] = [
     icon: <FileText className={ic} />,
     items: [
       { to: '/invoices', label: 'Invoices', icon: <FileText className={ic} />, caps: ['customer.view', 'invoice.create'] },
+      { to: '/quotations', label: 'Quotations', icon: <FileSignature className={ic} />, caps: ['customer.view', 'invoice.create'] },
       { to: '/customers', label: 'Customers', icon: <Users className={ic} />, caps: ['customer.view', 'invoice.create'] },
       { to: '/requests', label: 'Website requests', icon: <FileText className={ic} />, caps: ['customer.view', 'invoice.create'] },
     ],

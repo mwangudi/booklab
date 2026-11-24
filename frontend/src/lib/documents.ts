@@ -1,6 +1,6 @@
 import { jsPDF } from 'jspdf';
 import autoTable, { type RowInput } from 'jspdf-autotable';
-import type { Invoice, Statement, SupplierStatement } from '../types';
+import type { Invoice, Quotation, Statement, SupplierStatement } from '../types';
 import { num } from './format';
 import { PRINT_LOGO_RATIO, loadPrintLogo } from './printLogo';
 
@@ -40,7 +40,8 @@ const ITEM_PAD = { top: 3, bottom: 3, left: 5, right: 5 };
 
 /**
  * Shared letterhead: logo on the left, shop details centred. Returns the y to continue from.
- * With `badge` the title is set in white on a dark-brown rounded panel, as on the quotation.
+ * With `badge` the title is set in white on a dark-brown rounded panel (invoice, delivery
+ * note and quotation).
  */
 function header(doc: jsPDF, title: string, logo: string | null, badge = false): number {
   const w = doc.internal.pageSize.getWidth();
@@ -141,7 +142,7 @@ export async function printInvoice(inv: Invoice): Promise<void> {
   const logo = await loadPrintLogo();
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const w = doc.internal.pageSize.getWidth();
-  let y = header(doc, 'INVOICE', logo);
+  let y = header(doc, 'INVOICE', logo, true);
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
@@ -230,21 +231,25 @@ export async function printDeliveryNote(inv: Invoice): Promise<void> {
   const logo = await loadPrintLogo();
   const doc = new jsPDF({ unit: 'pt', format: 'a4' });
   const w = doc.internal.pageSize.getWidth();
-  let y = header(doc, 'DELIVERY NOTE', logo);
+  let y = header(doc, 'DELIVERY NOTE', logo, true);
 
+  // Number, school and date share one line to save space: number left, school centred,
+  // date right. A long school name wraps within the space between them.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
   doc.setTextColor(...TEXT_RGB);
-  doc.text(`NO: ${inv.deliveryNoteNo ?? inv.number}`, 40, y);
-  doc.text(`DATE: ${dmy(inv.deliveredAt ?? inv.issueDate)}`, w - 40, y, { align: 'right' });
-  y += 16;
+  const noText = `NO: ${inv.deliveryNoteNo ?? inv.number}`;
+  const dateText = `DATE: ${dmy(inv.deliveredAt ?? inv.issueDate)}`;
+  doc.text(noText, 40, y);
+  doc.text(dateText, w - 40, y, { align: 'right' });
+  const gap = 14;
+  const nameRoom = 2 * Math.min(w / 2 - (40 + doc.getTextWidth(noText)), w - 40 - doc.getTextWidth(dateText) - w / 2) - 2 * gap;
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(11);
   doc.setTextColor(...BRAND_RGB);
-  const nameLines = doc.splitTextToSize((inv.customer?.name ?? '').toUpperCase(), w - 80) as string[];
-  doc.text(nameLines, w / 2, y + 4, { align: 'center' });
-  y += 12 + (nameLines.length - 1) * 14;
+  const nameLines = doc.splitTextToSize((inv.customer?.name ?? '').toUpperCase(), Math.max(nameRoom, 120)) as string[];
+  doc.text(nameLines, w / 2, y, { align: 'center' });
+  y += 4 + (nameLines.length - 1) * 13;
   if (inv.customer?.address) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
@@ -433,7 +438,7 @@ export async function printSupplierStatement(s: SupplierStatement): Promise<void
 }
 
 
-/** What a quotation prints: the invoice editor's current lines, numbered after its invoice. */
+/** What a quotation prints. */
 export interface QuotationInput {
   number: string;
   date: string;
@@ -447,6 +452,83 @@ export interface QuotationInput {
   vatTotal: number;
   total: number;
   preparedBy?: string | null;
+}
+
+const localYmd = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso.slice(0, 10);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+/** A saved quotation, as the server priced it, ready to print. */
+export function quotationInput(q: Quotation, preparedBy?: string | null): QuotationInput {
+  return {
+    number: q.number,
+    // The calendar day in the shop's timezone, as printed invoices show it (a quotation saved
+    // just after midnight in Kenya is still dated today, not yesterday in UTC).
+    date: localYmd(q.issueDate),
+    validDays: q.validDays,
+    customer: { name: q.customer?.name ?? '', phone: q.customer?.phone, address: q.customer?.address },
+    chargeVat: q.chargeVat,
+    vatMode: q.vatMode,
+    items: (q.items ?? []).map((i) => ({
+      description: i.description,
+      quantity: num(i.quantity),
+      unit: i.unit,
+      unitPrice: num(i.unitPrice),
+      vatRate: num(i.vatRate),
+      total: num(i.total),
+    })),
+    subtotal: num(q.subtotal),
+    vatTotal: num(q.vatTotal),
+    total: num(q.total),
+    preparedBy: preparedBy ?? null,
+  };
+}
+
+/** What happened to a PDF handed to deliverPdf. */
+export type PdfOutcome = 'shared' | 'downloaded' | 'cancelled' | 'blocked';
+
+/**
+ * Download the PDF, or on a phone hand it to WhatsApp, email and the like. A phone only
+ * shares straight after a tap; when the PDF took too long (saving first, say) the share
+ * is refused and this returns 'blocked' so the page can offer a fresh "Share now" tap.
+ * Other share failures fall back to downloading.
+ */
+export async function deliverPdf(blob: Blob, fileName: string, share?: { title: string; text: string }): Promise<PdfOutcome> {
+  if (share && canShareFiles()) {
+    try {
+      await navigator.share({ files: [new File([blob], fileName, { type: 'application/pdf' })], title: share.title, text: share.text });
+      return 'shared';
+    } catch (err) {
+      const name = (err as { name?: string })?.name;
+      if (name === 'AbortError') return 'cancelled';
+      if (name === 'NotAllowedError') return 'blocked';
+    }
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // Long enough for a slow save dialog.
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return 'downloaded';
+}
+
+/** Whether this browser can share a PDF file (phones, some desktops). */
+export function canShareFiles(): boolean {
+  try {
+    return (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.canShare === 'function' &&
+      navigator.canShare({ files: [new File([''], 'q.pdf', { type: 'application/pdf' })] })
+    );
+  } catch {
+    return false;
+  }
 }
 
 /**

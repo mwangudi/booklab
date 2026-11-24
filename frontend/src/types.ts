@@ -212,6 +212,33 @@ export interface Invoice {
   _count?: { items: number };
 }
 
+export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'DECLINED';
+
+/** A price offer to a customer, made on its own (not from an invoice). */
+export interface Quotation {
+  id: number;
+  number: string;
+  ref?: string | null;
+  customerId: number;
+  branchId: number | null;
+  status: QuotationStatus;
+  priceTier: PriceTier;
+  issueDate: string;
+  /** Days the prices hold from the issue date. */
+  validDays: number;
+  /** For the shop's records; not printed. */
+  notes: string | null;
+  chargeVat: boolean;
+  vatMode: 'EXCLUSIVE' | 'INCLUSIVE';
+  subtotal: Money;
+  vatTotal: Money;
+  total: Money;
+  customer?: Customer;
+  branch?: { id?: number; name: string; location?: string } | null;
+  items?: InvoiceItem[];
+  _count?: { items: number };
+}
+
 export interface CustomerPayment {
   id: number;
   customerId: number;

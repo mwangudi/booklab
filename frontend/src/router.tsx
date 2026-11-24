@@ -26,6 +26,8 @@ import CustomersPage from './pages/invoicing/CustomersPage';
 import CustomerUpsertPage from './pages/invoicing/CustomerUpsertPage';
 import InvoicesPage from './pages/invoicing/InvoicesPage';
 import InvoiceEditorPage from './pages/invoicing/InvoiceEditorPage';
+import QuotationsPage from './pages/invoicing/QuotationsPage';
+import QuotationEditorPage from './pages/invoicing/QuotationEditorPage';
 import StatementPage from './pages/invoicing/StatementPage';
 import SuppliersPage from './pages/suppliers/SuppliersPage';
 import GoodsReceiptsPage from './pages/suppliers/GoodsReceiptsPage';
@@ -109,6 +111,9 @@ export const router = createBrowserRouter([
           { path: 'invoices', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><InvoicesPage /></CapabilityOnly> },
           { path: 'invoices/new', element: <CapabilityOnly any={['invoice.create']}><InvoiceEditorPage /></CapabilityOnly> },
           { path: 'invoices/:id', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><InvoiceEditorPage /></CapabilityOnly> },
+          { path: 'quotations', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><QuotationsPage /></CapabilityOnly> },
+          { path: 'quotations/new', element: <CapabilityOnly any={['invoice.create']}><QuotationEditorPage /></CapabilityOnly> },
+          { path: 'quotations/:id', element: <CapabilityOnly any={['customer.view', 'invoice.create']}><QuotationEditorPage /></CapabilityOnly> },
 
           { path: 'suppliers', element: <ManagerOnly><SuppliersPage /></ManagerOnly> },
           { path: 'suppliers/:id/statement', element: <ManagerOnly><SupplierStatementPage /></ManagerOnly> },

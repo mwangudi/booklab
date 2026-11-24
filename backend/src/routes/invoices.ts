@@ -26,16 +26,23 @@ const customerSchema = z.object({
 });
 const customerUpdateSchema = customerSchema.partial();
 
-const itemSchema = z.object({
+export const itemFields = z.object({
   /** The saved line this edits. Needed to keep track of what has already been delivered. */
   id: z.number().int().optional(),
   bookId: z.number().int().nullable().optional(),
   description: z.string().min(1).max(190),
   unit: z.string().min(1).max(40).default('Piece'),
-  quantity: z.number().nonnegative(),
-  unitPrice: z.number().nonnegative(),
+  // Bounded so a slip of the keyboard is a clear 400 rather than a database overflow.
+  quantity: z.number().nonnegative().max(1_000_000),
+  unitPrice: z.number().nonnegative().max(100_000_000),
   vatRate: z.number().min(0).max(100).default(16),
 });
+/** A line's total must fit its DECIMAL(12,2) column. */
+export const lineTotalFits = [
+  (l: { quantity: number; unitPrice: number }) => l.quantity * l.unitPrice <= 9_000_000_000,
+  { message: 'A line total is too large. Check the quantity and price.' },
+] as const;
+export const itemSchema = itemFields.refine(...lineTotalFits);
 const invoiceSchema = z.object({
   customerId: z.number().int(),
   branchId: z.number().int().nullable().optional(),
@@ -68,13 +75,13 @@ const isNumberClash = (e: unknown) => {
 };
 
 /** The calendar year in Kenya, whatever the server clock's own timezone. */
-const kenyaYear = () => new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', year: 'numeric' }).format(new Date());
+export const kenyaYear = () => new Intl.DateTimeFormat('en-KE', { timeZone: 'Africa/Nairobi', year: 'numeric' }).format(new Date());
 
 /**
  * Run a create that mints an invoice number, taking the next free one if saves race.
  * A short random pause between attempts spreads out saves that arrive together.
  */
-async function withFreshNumber<T>(create: () => Promise<T>): Promise<T> {
+export async function withFreshNumber<T>(create: () => Promise<T>): Promise<T> {
   for (let attempt = 1; ; attempt++) {
     try {
       return await create();
@@ -216,14 +223,14 @@ async function bookOutPending(
   return saleId;
 }
 
-type LineInput = { bookId?: number | null; description: string; unit: string; quantity: number; unitPrice: number; vatRate: number };
+export type LineInput = { bookId?: number | null; description: string; unit: string; quantity: number; unitPrice: number; vatRate: number };
 
 /**
  * Split each line into net, VAT and gross. With EXCLUSIVE pricing the captured
  * price is net and VAT is added; with INCLUSIVE it already contains VAT.
  * When the customer is not charged VAT every line is zero-rated.
  */
-function priceLines(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', chargeVat: boolean) {
+export function priceLines(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', chargeVat: boolean) {
   const lines = items.map((it, i) => {
     const rate = chargeVat ? (it.vatRate ?? 16) : 0;
     const raw = round2(it.quantity * it.unitPrice);
@@ -250,44 +257,45 @@ function priceLines(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', char
   };
 }
 
-export async function invoiceRoutes(app: FastifyInstance) {
-  /**
-   * A cashier may raise invoices, but not below the price the shop has set for the
-   * invoice's tier. The floor is the lower of the branch's and the catalogue's tier
-   * price, so the price the editor suggests is always accepted. Lines with no
-   * catalogue product (a service, a delivery charge) move no stock and are not checked.
-   */
-  async function cashierPriceProblem(
-    branchId: number | null,
-    priceTier: string,
-    items: Array<{ bookId?: number | null; description: string; unitPrice: unknown }>,
-  ): Promise<string | null> {
-    const ids = items.map((i) => i.bookId).filter((x): x is number => x != null);
-    if (ids.length === 0) return null;
-    const [books, shelf] = await Promise.all([
-      app.prisma.book.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, unitPrice: true, priceWholesale: true, priceSchool: true } }),
-      branchId == null ? Promise.resolve([]) : app.prisma.stock.findMany({ where: { branchId, bookId: { in: ids } }, select: { bookId: true, price: true, priceWholesale: true, priceSchool: true } }),
-    ]);
-    const bookById = new Map(books.map((b) => [b.id, b]));
-    const shelfById = new Map(shelf.map((s) => [s.bookId, s]));
-    const tierOf = (retail: unknown, wholesale: unknown, school: unknown) =>
-      Number(priceTier === 'WHOLESALE' ? wholesale ?? retail : priceTier === 'SCHOOL' ? school ?? retail : retail);
-    const problems: string[] = [];
-    for (const it of items) {
-      if (it.bookId == null) continue;
-      const b = bookById.get(it.bookId);
-      if (!b) continue;
-      const sh = shelfById.get(it.bookId);
-      const catalogue = tierOf(b.unitPrice, b.priceWholesale, b.priceSchool);
-      const branch = tierOf(sh?.price ?? b.unitPrice, sh?.priceWholesale ?? b.priceWholesale, sh?.priceSchool ?? b.priceSchool);
-      const floor = Math.min(catalogue, branch);
-      const price = Number(it.unitPrice);
-      if (floor <= 0 && price <= 0) problems.push(`${b.title} (no price set)`);
-      else if (floor > 0 && price < floor - 0.01) problems.push(`${b.title} (minimum ${floor.toFixed(2)})`);
-    }
-    return problems.length ? `These lines are below the ${priceTier.toLowerCase()} price: ${problems.join('; ')}. Ask a manager.` : null;
+/**
+ * A cashier may raise invoices (and quotations), but not below the price the shop has
+ * set for the document's tier. The floor is the lower of the branch's and the catalogue's tier
+ * price, so the price the editor suggests is always accepted. Lines with no
+ * catalogue product (a service, a delivery charge) move no stock and are not checked.
+ */
+export async function cashierPriceProblem(
+  prisma: FastifyInstance['prisma'],
+  branchId: number | null,
+  priceTier: string,
+  items: Array<{ bookId?: number | null; description: string; unitPrice: unknown }>,
+): Promise<string | null> {
+  const ids = items.map((i) => i.bookId).filter((x): x is number => x != null);
+  if (ids.length === 0) return null;
+  const [books, shelf] = await Promise.all([
+    prisma.book.findMany({ where: { id: { in: ids } }, select: { id: true, title: true, unitPrice: true, priceWholesale: true, priceSchool: true } }),
+    branchId == null ? Promise.resolve([]) : prisma.stock.findMany({ where: { branchId, bookId: { in: ids } }, select: { bookId: true, price: true, priceWholesale: true, priceSchool: true } }),
+  ]);
+  const bookById = new Map(books.map((b) => [b.id, b]));
+  const shelfById = new Map(shelf.map((s) => [s.bookId, s]));
+  const tierOf = (retail: unknown, wholesale: unknown, school: unknown) =>
+    Number(priceTier === 'WHOLESALE' ? wholesale ?? retail : priceTier === 'SCHOOL' ? school ?? retail : retail);
+  const problems: string[] = [];
+  for (const it of items) {
+    if (it.bookId == null) continue;
+    const b = bookById.get(it.bookId);
+    if (!b) continue;
+    const sh = shelfById.get(it.bookId);
+    const catalogue = tierOf(b.unitPrice, b.priceWholesale, b.priceSchool);
+    const branch = tierOf(sh?.price ?? b.unitPrice, sh?.priceWholesale ?? b.priceWholesale, sh?.priceSchool ?? b.priceSchool);
+    const floor = Math.min(catalogue, branch);
+    const price = Number(it.unitPrice);
+    if (floor <= 0 && price <= 0) problems.push(`${b.title} (no price set)`);
+    else if (floor > 0 && price < floor - 0.01) problems.push(`${b.title} (minimum ${floor.toFixed(2)})`);
   }
+  return problems.length ? `These lines are below the ${priceTier.toLowerCase()} price: ${problems.join('; ')}. Ask a manager.` : null;
+}
 
+export async function invoiceRoutes(app: FastifyInstance) {
   app.addHook('preHandler', authGuard);
   // Each route is gated by capability (Administration → Permissions): cashiers see
   // customers and raise invoices by default; delivery, payments and customer edits
@@ -456,7 +464,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     // A manager raises documents for their own branch; only an admin picks another.
     const branchId = isAdmin(req) ? body.branchId ?? req.user.branchId ?? null : req.user.branchId ?? null;
     if (req.user.role === 'CASHIER') {
-      const problem = await cashierPriceProblem(branchId, body.priceTier, body.items);
+      const problem = await cashierPriceProblem(app.prisma, branchId, body.priceTier, body.items);
       if (problem) return reply.code(400).send({ error: problem });
     }
 
@@ -542,7 +550,7 @@ export async function invoiceRoutes(app: FastifyInstance) {
     // Changing the lines or the tier must not take a cashier's invoice below the set price.
     if (req.user.role === 'CASHIER' && (body.items || body.priceTier)) {
       const lines = body.items ?? before.items;
-      const problem = await cashierPriceProblem(before.branchId, body.priceTier ?? before.priceTier, lines);
+      const problem = await cashierPriceProblem(app.prisma, before.branchId, body.priceTier ?? before.priceTier, lines);
       if (problem) return reply.code(400).send({ error: problem });
     }
 
