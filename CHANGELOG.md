@@ -9,6 +9,8 @@ All notable changes to Booklab Bookshop. Dates are release dates to production
   total is quantity × price, and the printed quotation no longer mentions VAT. A
   quotation saved earlier with VAT drops it the next time it is saved.
 - The school name on the printed invoice is larger and heavier.
+- Drop-down lists show their options in full on larger screens (the item Unit list no
+  longer reads "P…", "Do…"), and the Unit box on invoice and quotation lines is wider.
 
 ## 2026-11-24 — Quotations on their own; badge titles; compact delivery note
 

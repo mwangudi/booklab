@@ -419,7 +419,7 @@ export default function QuotationEditorPage() {
         <div className="space-y-2">
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-border p-2.5">
-              <div className="col-span-12 lg:col-span-7">
+              <div className="col-span-12 lg:col-span-6">
                 <FormField label={i === 0 ? 'Item description' : ''}>
                   {l.bookId == null && l.free ? (
                     <div className="flex items-center gap-2">
@@ -464,7 +464,7 @@ export default function QuotationEditorPage() {
                   <Input type="number" min="0" step="0.01" value={l.quantity} onChange={(e) => setLine(i, { quantity: e.target.value })} className="font-mono" disabled={readOnly} aria-label={`Quantity, line ${i + 1}`} />
                 </FormField>
               </div>
-              <div className="col-span-4 lg:col-span-1">
+              <div className="col-span-4 lg:col-span-2">
                 <FormField label={i === 0 ? 'Unit' : ''}>
                   <Select2 value={l.unit} onChange={(v) => setLine(i, { unit: v })} options={PRODUCT_UNITS.map((u) => ({ value: u, label: u }))} searchable={false} disabled={readOnly} ariaLabel={`Unit, line ${i + 1}`} />
                 </FormField>

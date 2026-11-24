@@ -148,8 +148,11 @@ export function Select2({
         </span>
       </button>
 
+      {/* The list is at least as wide as the control, wider when its labels need it (a narrow
+          Unit box still lists "Packet" in full), but never wider than the screen. On phones it
+          keeps the control's width, which already fits short lists and never spills sideways. */}
       {open && (
-        <div className="absolute z-50 mt-1 w-full rounded-lg border border-border bg-card shadow-lg">
+        <div className="absolute z-50 mt-1 w-full sm:w-max sm:min-w-full sm:max-w-[min(24rem,calc(100vw-2rem))] rounded-lg border border-border bg-card shadow-lg">
           {canSearch && (
             <div className="p-2 border-b border-border">
               <div className="relative">

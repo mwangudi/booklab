@@ -519,7 +519,7 @@ export default function InvoiceEditorPage() {
             return (
               <div key={i} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-border p-2.5">
                 {/* One column: pick a product (its full name is shown) or type a free-text line. */}
-                <div className="col-span-12 lg:col-span-6">
+                <div className="col-span-12 lg:col-span-5">
                   <FormField label={i === 0 ? 'Item description' : ''}>
                     {l.bookId == null && l.free ? (
                       <div className="flex items-center gap-2">
@@ -577,7 +577,7 @@ export default function InvoiceEditorPage() {
                     <div className="mt-0.5 text-[11px] text-muted-foreground">{onHand} in stock</div>
                   ) : null}
                 </div>
-                <div className="col-span-4 lg:col-span-1">
+                <div className="col-span-4 lg:col-span-2">
                   <FormField label={i === 0 ? 'Unit' : ''}>
                     <Select2
                       value={l.unit}
