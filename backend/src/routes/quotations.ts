@@ -2,7 +2,6 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { authGuard, branchScope, isAdmin, ownsBranchRecord } from '../middleware/authGuard.js';
 import { requireAnyCapability, requireCapability } from '../middleware/permissions.js';
-import { asVatMode } from '../lib/enums.js';
 import { auditRequest } from '../lib/audit.js';
 import { SYNC_ROLE } from '../lib/outbox.js';
 import { idFromParam, newRef, nextInSeries } from '../lib/docNumber.js';
@@ -41,14 +40,13 @@ const listQuerySchema = z.object({
 const n = (v: unknown) => Number(v ?? 0);
 
 /**
- * Price the lines as invoices do, but keep each line's own VAT rate even while VAT is not
- * charged: amounts are worked out at 0%, so turning VAT back on later restores the right
- * rates instead of leaving every line at 0.
+ * Quotations carry no VAT (the shop's choice): every line is priced at 0%, so the total
+ * is quantity × price. chargeVat/vatMode sent by a client are accepted but ignored.
  */
-function priceQuotation(items: LineInput[], vatMode: 'EXCLUSIVE' | 'INCLUSIVE', chargeVat: boolean) {
-  const priced = priceLines(items, vatMode, chargeVat);
-  return { ...priced, lines: priced.lines.map((l, i) => ({ ...l, vatRate: items[i].vatRate ?? 16 })) };
+function priceQuotation(items: LineInput[]) {
+  return priceLines(items.map((i) => ({ ...i, vatRate: 0 })), 'EXCLUSIVE', false);
 }
+const NO_VAT = { chargeVat: false, vatMode: 'EXCLUSIVE' as const };
 /** Why the products or branch named are not usable, or null when they are. */
 async function referenceProblem(
   prisma: FastifyInstance['prisma'],
@@ -130,9 +128,7 @@ export async function quotationRoutes(app: FastifyInstance) {
     const refs = await referenceProblem(app.prisma, body.items, isAdmin(req) ? body.branchId : null);
     if (refs) return reply.code(400).send({ error: refs });
 
-    const chargeVat = body.chargeVat ?? customer.chargeVat;
-    const vatMode = asVatMode(body.vatMode ?? customer.vatMode);
-    const priced = priceQuotation(body.items, vatMode, chargeVat);
+    const priced = priceQuotation(body.items);
     // As with invoices, a manager quotes for their own branch; only an admin picks another.
     const branchId = isAdmin(req) ? body.branchId ?? req.user.branchId ?? null : req.user.branchId ?? null;
     if (req.user.role === 'CASHIER') {
@@ -148,8 +144,7 @@ export async function quotationRoutes(app: FastifyInstance) {
         branchId,
         status: body.status ?? 'DRAFT',
         priceTier: body.priceTier,
-        chargeVat,
-        vatMode,
+        ...NO_VAT,
         issueDate: body.issueDate ? new Date(body.issueDate) : new Date(),
         validDays: body.validDays ?? 30,
         notes: body.notes ?? null,
@@ -182,12 +177,10 @@ export async function quotationRoutes(app: FastifyInstance) {
     const refs = await referenceProblem(app.prisma, body.items, isAdmin(req) ? body.branchId : null);
     if (refs) return reply.code(400).send({ error: refs });
 
-    const chargeVat = body.chargeVat ?? before.chargeVat;
-    const vatMode = asVatMode(body.vatMode ?? before.vatMode);
     const branchId = body.branchId !== undefined && isAdmin(req) ? body.branchId : before.branchId;
     const priceTier = body.priceTier ?? before.priceTier;
-    // Changing the VAT terms reprices the saved lines even when the lines are not resent.
-    const source = body.items ?? (body.chargeVat !== undefined || body.vatMode !== undefined
+    // A quotation saved with VAT before VAT was dropped is repriced without it on its next save.
+    const source = body.items ?? (before.chargeVat || n(before.vatTotal) > 0
       ? before.items.map((i) => ({ bookId: i.bookId, description: i.description, unit: i.unit, quantity: n(i.quantity), unitPrice: n(i.unitPrice), vatRate: n(i.vatRate) }))
       : null);
     // A cashier's prices are checked against the tier whenever the lines or the tier change.
@@ -198,7 +191,7 @@ export async function quotationRoutes(app: FastifyInstance) {
       const problem = await cashierPriceProblem(app.prisma, branchId, priceTier, toCheck);
       if (problem) return reply.code(400).send({ error: problem });
     }
-    const priced = source ? priceQuotation(source, vatMode, chargeVat) : null;
+    const priced = source ? priceQuotation(source) : null;
 
     const updated = await app.prisma.$transaction(async (tx) => {
       if (priced) {
@@ -212,8 +205,7 @@ export async function quotationRoutes(app: FastifyInstance) {
           ...(body.branchId !== undefined && isAdmin(req) ? { branchId: body.branchId } : {}),
           ...(body.priceTier !== undefined ? { priceTier: body.priceTier } : {}),
           ...(body.status !== undefined ? { status: body.status } : {}),
-          ...(body.chargeVat !== undefined ? { chargeVat } : {}),
-          ...(body.vatMode !== undefined ? { vatMode } : {}),
+          ...NO_VAT,
           ...(body.issueDate !== undefined ? { issueDate: new Date(body.issueDate) } : {}),
           ...(body.validDays !== undefined ? { validDays: body.validDays } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),

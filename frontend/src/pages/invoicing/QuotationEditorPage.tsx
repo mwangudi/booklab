@@ -22,13 +22,12 @@ interface Line {
   unit: string;
   quantity: string;
   unitPrice: string;
-  vatRate: string;
 }
 
 /** The picker's "type your own" choice. */
 const FREE_TEXT = '__free__';
 const r2 = (v: number) => Math.round((v + Number.EPSILON) * 100) / 100;
-const blankLine = (): Line => ({ bookId: null, description: '', unit: 'Piece', quantity: '1', unitPrice: '0', vatRate: '16' });
+const blankLine = (): Line => ({ bookId: null, description: '', unit: 'Piece', quantity: '1', unitPrice: '0' });
 
 export const QUOTATION_STATUS_LABEL: Record<QuotationStatus, string> = {
   DRAFT: 'Draft',
@@ -74,8 +73,6 @@ export default function QuotationEditorPage() {
   const [issueDate, setIssueDate] = useState(today());
   const [validDays, setValidDays] = useState('30');
   const [status, setStatus] = useState<QuotationStatus>('DRAFT');
-  const [chargeVat, setChargeVat] = useState(true);
-  const [vatMode, setVatMode] = useState<'EXCLUSIVE' | 'INCLUSIVE'>('EXCLUSIVE');
   const [priceTier, setPriceTier] = useState('SCHOOL');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<Line[]>([blankLine()]);
@@ -101,8 +98,6 @@ export default function QuotationEditorPage() {
     setIssueDate(quotation.issueDate.slice(0, 10));
     setValidDays(String(quotation.validDays));
     setStatus(quotation.status);
-    setChargeVat(quotation.chargeVat);
-    setVatMode(quotation.vatMode);
     setPriceTier(quotation.priceTier);
     setNotes(quotation.notes ?? '');
     setLines(
@@ -113,17 +108,9 @@ export default function QuotationEditorPage() {
         unit: i.unit,
         quantity: String(num(i.quantity)),
         unitPrice: String(num(i.unitPrice)),
-        vatRate: String(num(i.vatRate)),
       })),
     );
   }, [quotation]);
-
-  // A new quotation takes the customer's VAT arrangement.
-  useEffect(() => {
-    if (isEdit || !customer) return;
-    setChargeVat(customer.chargeVat);
-    setVatMode(customer.vatMode);
-  }, [customer, isEdit]);
 
   const setLine = (i: number, patch: Partial<Line>) => setLines((p) => p.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
 
@@ -136,7 +123,7 @@ export default function QuotationEditorPage() {
     return retail;
   };
 
-  /** Picking a product fills its description, unit, price and VAT; picking one already listed adds to that line. */
+  /** Picking a product fills its description, unit and price; picking one already listed adds to that line. */
   const chooseBook = (i: number, value: string) => {
     if (value === FREE_TEXT) return setLine(i, { bookId: null, free: true, description: '' });
     if (!value) return setLine(i, { bookId: null, free: false, description: '' });
@@ -155,11 +142,11 @@ export default function QuotationEditorPage() {
       return;
     }
     setNotice(null);
-    setLine(i, { bookId: b.id, free: false, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)), vatRate: String(num(b.vatRate)) });
+    setLine(i, { bookId: b.id, free: false, description: b.title, unit: b.unit || 'Piece', unitPrice: String(tierPrice(s)) });
   };
 
-  /** Products on more than one line at the same price, VAT and unit, which can become one line. */
-  const sameTerms = (a: Line, b: Line) => num(a.unitPrice) === num(b.unitPrice) && num(a.vatRate) === num(b.vatRate) && a.unit === b.unit;
+  /** Products on more than one line at the same price and unit, which can become one line. */
+  const sameTerms = (a: Line, b: Line) => num(a.unitPrice) === num(b.unitPrice) && a.unit === b.unit;
   const groups = (() => {
     const byBook = new Map<number, number[]>();
     lines.forEach((l, idx) => l.bookId != null && byBook.set(l.bookId, [...(byBook.get(l.bookId) ?? []), idx]));
@@ -180,26 +167,14 @@ export default function QuotationEditorPage() {
     setNotice(`Combined ${drop.size} duplicate line${drop.size === 1 ? '' : 's'}. Save to keep the change.`);
   };
 
-  const computed = useMemo(() => {
-    let net = 0;
-    let vat = 0;
-    for (const l of lines) {
-      const rate = chargeVat ? num(l.vatRate) : 0;
-      const raw = num(l.quantity) * num(l.unitPrice);
-      const lineNet = rate > 0 && vatMode === 'INCLUSIVE' ? raw / (1 + rate / 100) : raw;
-      net += lineNet;
-      vat += rate === 0 ? 0 : vatMode === 'INCLUSIVE' ? raw - lineNet : lineNet * (rate / 100);
-    }
-    return { net, vat, total: net + vat };
-  }, [lines, chargeVat, vatMode]);
+  // Quotations carry no VAT: the total is quantity × price.
+  const total = useMemo(() => lines.reduce((t, l) => t + num(l.quantity) * num(l.unitPrice), 0), [lines]);
 
   const payload = (nextStatus: QuotationStatus) => ({
     customerId,
     branchId,
     priceTier,
     status: nextStatus,
-    chargeVat,
-    vatMode,
     issueDate,
     validDays: Math.min(365, Math.max(1, Math.round(num(validDays)) || 30)),
     notes: notes.trim() || null,
@@ -211,7 +186,7 @@ export default function QuotationEditorPage() {
         unit: l.unit,
         quantity: num(l.quantity),
         unitPrice: num(l.unitPrice),
-        vatRate: num(l.vatRate),
+        vatRate: 0,
       })),
   });
 
@@ -428,33 +403,6 @@ export default function QuotationEditorPage() {
         </div>
       </Card>
 
-      <Card className="p-4 space-y-4">
-        <SectionTitle>VAT</SectionTitle>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
-          <label className="flex items-start gap-2 text-sm text-foreground">
-            <input type="checkbox" checked={chargeVat} onChange={(e) => setChargeVat(e.target.checked)} disabled={readOnly} className="h-4 w-4 mt-0.5 rounded border-border" />
-            <span>
-              Charge VAT on this quotation
-              <span className="block text-xs text-muted-foreground">
-                {customer ? `${customer.name} is set to ${customer.chargeVat ? 'charge' : 'not charge'} VAT.` : 'Defaults to the customer’s setting.'}
-              </span>
-            </span>
-          </label>
-          <FormField label="Prices are">
-            <Select2
-              value={vatMode}
-              onChange={(v) => setVatMode(v as 'EXCLUSIVE' | 'INCLUSIVE')}
-              options={[
-                { value: 'EXCLUSIVE', label: 'Exclusive of VAT (add on top)' },
-                { value: 'INCLUSIVE', label: 'Inclusive of VAT' },
-              ]}
-              searchable={false}
-              disabled={readOnly || !chargeVat}
-            />
-          </FormField>
-        </div>
-      </Card>
-
       <Card className="p-4 space-y-3">
         <SectionTitle
           right={
@@ -471,7 +419,7 @@ export default function QuotationEditorPage() {
         <div className="space-y-2">
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-12 gap-2 items-end rounded-lg border border-border p-2.5">
-              <div className="col-span-12 lg:col-span-6">
+              <div className="col-span-12 lg:col-span-7">
                 <FormField label={i === 0 ? 'Item description' : ''}>
                   {l.bookId == null && l.free ? (
                     <div className="flex items-center gap-2">
@@ -526,11 +474,6 @@ export default function QuotationEditorPage() {
                   <Input type="number" min="0" step="0.01" value={l.unitPrice} onChange={(e) => setLine(i, { unitPrice: e.target.value })} className="font-mono" disabled={readOnly} aria-label={`Unit price, line ${i + 1}`} />
                 </FormField>
               </div>
-              <div className="col-span-4 lg:col-span-1">
-                <FormField label={i === 0 ? 'VAT %' : ''}>
-                  <Input type="number" min="0" max="100" step="0.5" value={l.vatRate} onChange={(e) => setLine(i, { vatRate: e.target.value })} className="font-mono" disabled={readOnly || !chargeVat} aria-label={`VAT %, line ${i + 1}`} />
-                </FormField>
-              </div>
               <div className="col-span-6 lg:col-span-1 text-right">
                 <div className="text-[11px] text-muted-foreground">Total</div>
                 <div className="font-mono text-sm font-semibold">{money(num(l.quantity) * num(l.unitPrice))}</div>
@@ -553,17 +496,9 @@ export default function QuotationEditorPage() {
 
         <div className="flex justify-end">
           <div className="w-full sm:w-72 space-y-1 border-t border-border pt-3 text-sm">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">Subtotal (net)</span>
-              <span className="font-mono">{money(computed.net)}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">VAT</span>
-              <span className="font-mono">{chargeVat ? money(computed.vat) : 'Not charged'}</span>
-            </div>
             <div className="flex justify-between text-base font-semibold border-t border-border pt-2">
               <span>Total</span>
-              <span className="font-mono">{money(computed.total)}</span>
+              <span className="font-mono">{money(total)}</span>
             </div>
           </div>
         </div>

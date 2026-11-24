@@ -159,12 +159,15 @@ export async function printInvoice(inv: Invoice): Promise<void> {
 
   // Customer name, prominent and centred (below the due date when there is one).
   if (inv.dueDate) y += 12;
+  // Heavier than plain bold: stroked as well as filled, like the shop's wordmark.
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
+  doc.setFontSize(14);
   doc.setTextColor(...BRAND_RGB);
+  doc.setDrawColor(...BRAND_RGB);
+  doc.setLineWidth(0.45);
   const nameLines = doc.splitTextToSize((inv.customer?.name ?? '').toUpperCase(), w - 80) as string[];
-  doc.text(nameLines, w / 2, y + 4, { align: 'center' });
-  y += 12 + (nameLines.length - 1) * 14;
+  doc.text(nameLines, w / 2, y + 5, { align: 'center', renderingMode: 'fillThenStroke' });
+  y += 14 + (nameLines.length - 1) * 16;
   // The contact person is for the shop's records, not printed on the invoice.
   const meta = [inv.customer?.phone, inv.customer?.address].filter(Boolean).join(' · ');
   if (meta) {
@@ -618,7 +621,6 @@ export async function buildQuotation(q: QuotationInput): Promise<{ blob: Blob; f
   doc.setTextColor(...TEXT_RGB);
   const terms = [
     `This quotation is valid until ${dmy(valid)}.`,
-    !vatShown ? 'No VAT is charged on this quotation.' : q.vatMode === 'INCLUSIVE' ? 'Prices include VAT.' : 'VAT is added as shown.',
     'Items are supplied subject to availability at the time of order.',
     'To accept, sign and stamp below, or reply with your order quoting the quotation number.',
   ];

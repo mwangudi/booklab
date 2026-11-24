@@ -3,6 +3,13 @@
 All notable changes to Booklab Bookshop. Dates are release dates to production
 (`https://www.booklabbookshop.co.ke`).
 
+## 2026-11-24 (later) — Quotations without VAT; bolder school name on invoices
+
+- Quotations carry no VAT: the New quotation form has no VAT box or VAT % column, the
+  total is quantity × price, and the printed quotation no longer mentions VAT. A
+  quotation saved earlier with VAT drops it the next time it is saved.
+- The school name on the printed invoice is larger and heavier.
+
 ## 2026-11-24 — Quotations on their own; badge titles; compact delivery note
 
 ### Quotations
